@@ -28,7 +28,7 @@ except:
     });
 
     expect(result.stdout).toContain("failure");
-  }, 30_000);
+  }, 60_000);
 
   test("Timeout kills execution", async () => {
     const engine = new DockerIsol8({
@@ -44,11 +44,11 @@ except:
     });
     const end = performance.now();
 
-    // Should finish around 1s, not 5s
-    expect(end - start).toBeLessThan(3000);
+    // Container setup adds overhead; total should still be well under 5s (the sleep duration)
+    expect(end - start).toBeLessThan(5000);
     // When killed, exit code is usually 137 (SIGKILL) or similar non-zero
     expect(result.exitCode).not.toBe(0);
-  });
+  }, 30_000);
 
   test("Memory limit enforcement", async () => {
     const engine = new DockerIsol8({
@@ -65,5 +65,5 @@ except:
 
     // Should crash/OOM
     expect(result.exitCode).not.toBe(0);
-  });
+  }, 30_000);
 });

@@ -28,6 +28,83 @@ import {
   truncateOutput,
 } from "./utils";
 
+/**
+ * Writes a file into a running container using `docker exec`.
+ * This bypasses the `putArchive` limitation where Docker rejects archive
+ * uploads when `ReadonlyRootfs` is enabled — even to writable tmpfs mounts.
+ *
+ * Uses detached exec with polling to avoid Bun/dockerode hijack incompatibilities.
+ */
+async function writeFileViaExec(
+  container: Docker.Container,
+  filePath: string,
+  content: Buffer | string
+): Promise<void> {
+  const data = typeof content === "string" ? Buffer.from(content, "utf-8") : content;
+  const b64 = data.toString("base64");
+
+  const exec = await container.exec({
+    Cmd: ["sh", "-c", `printf '%s' '${b64}' | base64 -d > ${filePath}`],
+  });
+
+  // Run detached — avoids hijack/stream issues with Bun
+  await exec.start({ Detach: true });
+
+  // Poll until the exec completes
+  let info = await exec.inspect();
+  while (info.Running) {
+    await new Promise((r) => setTimeout(r, 50));
+    info = await exec.inspect();
+  }
+
+  if (info.ExitCode !== 0) {
+    throw new Error(`Failed to write file ${filePath} in container (exit code ${info.ExitCode})`);
+  }
+}
+
+/**
+ * Reads a file from a running container using `docker exec`.
+ * This bypasses the `getArchive` limitation where Docker rejects archive
+ * downloads when `ReadonlyRootfs` is enabled — even from writable tmpfs mounts.
+ *
+ * Works by running `base64 <path>` and decoding the output.
+ */
+async function readFileViaExec(container: Docker.Container, filePath: string): Promise<Buffer> {
+  const exec = await container.exec({
+    Cmd: ["base64", filePath],
+    AttachStdout: true,
+    AttachStderr: true,
+  });
+
+  const stream = await exec.start({ Tty: false });
+
+  const chunks: Buffer[] = [];
+  const stderrChunks: Buffer[] = [];
+
+  const stdoutStream = new PassThrough();
+  const stderrStream = new PassThrough();
+  container.modem.demuxStream(stream, stdoutStream, stderrStream);
+
+  stdoutStream.on("data", (chunk: Buffer) => chunks.push(chunk));
+  stderrStream.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
+
+  await new Promise<void>((resolve, reject) => {
+    stream.on("end", resolve);
+    stream.on("error", reject);
+  });
+
+  const inspectResult = await exec.inspect();
+  if (inspectResult.ExitCode !== 0) {
+    const stderr = Buffer.concat(stderrChunks).toString("utf-8").trim();
+    throw new Error(
+      `Failed to read file ${filePath} in container: ${stderr} (exit code ${inspectResult.ExitCode})`
+    );
+  }
+
+  const b64Output = Buffer.concat(chunks).toString("utf-8").trim();
+  return Buffer.from(b64Output, "base64");
+}
+
 const SANDBOX_WORKDIR = "/sandbox";
 const MAX_OUTPUT_BYTES = 1024 * 1024; // 1MB default
 const PROXY_PORT = 8118;
@@ -145,8 +222,12 @@ export class DockerIsol8 implements Isol8Engine {
     if (!this.container) {
       throw new Error("No active container. Call execute() first in persistent mode.");
     }
-    const tar = createTarBuffer(path, content);
-    await this.container.putArchive(tar, { path: "/" });
+    if (this.readonlyRootFs) {
+      await writeFileViaExec(this.container, path, content);
+    } else {
+      const tar = createTarBuffer(path, content);
+      await this.container.putArchive(tar, { path: "/" });
+    }
   }
 
   /**
@@ -160,6 +241,11 @@ export class DockerIsol8 implements Isol8Engine {
     if (!this.container) {
       throw new Error("No active container. Call execute() first in persistent mode.");
     }
+
+    if (this.readonlyRootFs) {
+      return readFileViaExec(this.container, path);
+    }
+
     const stream = await this.container.getArchive({ path });
 
     const chunks: Buffer[] = [];
@@ -196,10 +282,14 @@ export class DockerIsol8 implements Isol8Engine {
     try {
       await container.start();
 
-      // Write code to the active tmpfs
+      // Write code to the active tmpfs via exec (putArchive fails with ReadonlyRootfs)
       const filePath = `${SANDBOX_WORKDIR}/main${adapter.getFileExtension()}`;
-      const tar = createTarBuffer(filePath, req.code);
-      await container.putArchive(tar, { path: "/" });
+      if (this.readonlyRootFs) {
+        await writeFileViaExec(container, filePath, req.code);
+      } else {
+        const tar = createTarBuffer(filePath, req.code);
+        await container.putArchive(tar, { path: "/" });
+      }
 
       // Execute the actual command
       const cmd = adapter.getCommand(req.code, filePath);
@@ -215,7 +305,7 @@ export class DockerIsol8 implements Isol8Engine {
       });
 
       const start = performance.now();
-      const execStream = await exec.start({ hijack: true, stdin: false });
+      const execStream = await exec.start({ Tty: false });
 
       const { stdout, stderr, truncated } = await this.collectExecOutput(
         execStream,
@@ -254,9 +344,13 @@ export class DockerIsol8 implements Isol8Engine {
 
     const filePath = `${SANDBOX_WORKDIR}/exec_${Date.now()}${adapter.getFileExtension()}`;
 
-    // Write code to the container
-    const tar = createTarBuffer(filePath, req.code);
-    await this.container!.putArchive(tar, { path: "/" });
+    // Write code to the container via exec (putArchive fails with ReadonlyRootfs)
+    if (this.readonlyRootFs) {
+      await writeFileViaExec(this.container!, filePath, req.code);
+    } else {
+      const tar = createTarBuffer(filePath, req.code);
+      await this.container!.putArchive(tar, { path: "/" });
+    }
 
     const cmd = adapter.getCommand(req.code, filePath);
     const execEnv = this.buildEnv(req.env);
@@ -270,7 +364,7 @@ export class DockerIsol8 implements Isol8Engine {
     });
 
     const start = performance.now();
-    const execStream = await exec.start({ hijack: true, stdin: false });
+    const execStream = await exec.start({ Tty: false });
 
     const { stdout, stderr, truncated } = await this.collectExecOutput(
       execStream,

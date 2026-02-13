@@ -151,6 +151,7 @@ export function createTarBuffer(filePath: string, content: Buffer | string): Buf
  */
 export function extractFromTar(tarBuffer: Buffer, targetPath: string): Buffer {
   const normalizedTarget = targetPath.replace(/^\//, "");
+  const basename = targetPath.split("/").pop() ?? targetPath;
   let offset = 0;
 
   while (offset < tarBuffer.length - 512) {
@@ -176,7 +177,7 @@ export function extractFromTar(tarBuffer: Buffer, targetPath: string): Buffer {
     const dataStart = offset + 512;
     const dataBlocks = Math.ceil(size / 512);
 
-    if (name === normalizedTarget || name.endsWith(`/${normalizedTarget}`)) {
+    if (name === normalizedTarget || name.endsWith(`/${normalizedTarget}`) || name === basename) {
       return Buffer.from(tarBuffer.subarray(dataStart, dataStart + size));
     }
 

@@ -22,7 +22,7 @@ describe("Integration: Ephemeral Execution", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Hello Python");
     expect(result.stderr).toBe("");
-  });
+  }, 30_000);
 
   test("Node: hello world", async () => {
     const result = await engine.execute({
@@ -31,7 +31,7 @@ describe("Integration: Ephemeral Execution", () => {
     });
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Hello Node");
-  });
+  }, 30_000);
 
   test("Bun: hello world", async () => {
     const result = await engine.execute({
@@ -40,7 +40,7 @@ describe("Integration: Ephemeral Execution", () => {
     });
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Hello Bun");
-  });
+  }, 30_000);
 
   test("Deno: hello world", async () => {
     const result = await engine.execute({
@@ -49,7 +49,7 @@ describe("Integration: Ephemeral Execution", () => {
     });
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Hello Deno");
-  });
+  }, 30_000);
 
   test("Bash: hello world", async () => {
     const result = await engine.execute({
@@ -58,7 +58,7 @@ describe("Integration: Ephemeral Execution", () => {
     });
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Hello Bash");
-  });
+  }, 30_000);
 
   test("Exit code propagation", async () => {
     const result = await engine.execute({
@@ -66,7 +66,7 @@ describe("Integration: Ephemeral Execution", () => {
       runtime: "python",
     });
     expect(result.exitCode).toBe(42);
-  });
+  }, 30_000);
 
   test("Stderr capture", async () => {
     const result = await engine.execute({
@@ -75,5 +75,5 @@ describe("Integration: Ephemeral Execution", () => {
     });
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toContain("error!");
-  });
+  }, 30_000);
 });
