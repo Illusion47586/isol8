@@ -297,7 +297,10 @@ export class DockerIsol8 implements Isol8Engine {
       NanoCpus: Math.floor(this.cpuLimit * 1e9),
       PidsLimit: this.pidsLimit,
       ReadonlyRootfs: this.readonlyRootFs,
-      Tmpfs: { "/tmp": "rw,noexec,nosuid,size=64m" },
+      Tmpfs: {
+        "/tmp": "rw,noexec,nosuid,size=64m",
+        [SANDBOX_WORKDIR]: "rw,size=64m",
+      },
       SecurityOpt: ["no-new-privileges"],
     };
 
