@@ -1,0 +1,142 @@
+{
+  "$ref": "#/definitions/Isol8UserConfig",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "Isol8Dependencies": {
+      "additionalProperties": false,
+      "description": "Runtime-specific packages to bake into custom Docker images. Populated via `isol8.config.json` or CLI flags on `isol8 setup`.",
+      "properties": {
+        "bash": {
+          "description": "Bash packages to install via apk (Alpine).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "bun": {
+          "description": "Bun packages to install globally.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "deno": {
+          "description": "Deno module URLs to pre-cache.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "node": {
+          "description": "Node.js packages to install globally via npm.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "python": {
+          "description": "Python packages to install via pip.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "Isol8UserConfig": {
+      "additionalProperties": false,
+      "description": "User configuration file schema (partial/optional version of Isol8Config). Used for generating the JSON Schema.",
+      "properties": {
+        "$schema": {
+          "description": "JSON Schema URI for editor validation/completion.",
+          "type": "string"
+        },
+        "cleanup": {
+          "additionalProperties": false,
+          "description": "Container cleanup and lifecycle settings. (Partial override allowed).",
+          "properties": {
+            "autoPrune": {
+              "default": true,
+              "description": "Automatically prune idle persistent containers.",
+              "type": "boolean"
+            },
+            "maxContainerAgeMs": {
+              "default": 3600000,
+              "description": "Maximum idle time (ms) before pruning. One hour = 3600000.",
+              "type": "number"
+            }
+          },
+          "type": "object"
+        },
+        "defaults": {
+          "additionalProperties": false,
+          "description": "Default execution settings applied to all runs. (Partial override allowed).",
+          "properties": {
+            "cpuLimit": {
+              "default": 1,
+              "description": "Default CPU limit (1.0 = one full core).",
+              "type": "number"
+            },
+            "memoryLimit": {
+              "default": "512m",
+              "description": "Default memory limit.",
+              "type": "string"
+            },
+            "network": {
+              "$ref": "#/definitions/NetworkMode",
+              "default": "none",
+              "description": "Default network mode."
+            },
+            "timeoutMs": {
+              "default": 30000,
+              "description": "Default timeout in milliseconds.",
+              "type": "number"
+            }
+          },
+          "type": "object"
+        },
+        "dependencies": {
+          "$ref": "#/definitions/Isol8Dependencies",
+          "description": "Runtime-specific packages to bake into custom Docker images."
+        },
+        "maxConcurrent": {
+          "default": 10,
+          "description": "Maximum number of containers that can run concurrently.",
+          "type": "number"
+        },
+        "network": {
+          "additionalProperties": false,
+          "description": "Global network filtering rules for `\"filtered\"` mode.",
+          "properties": {
+            "blacklist": {
+              "description": "Regex patterns for blocked hostnames. Matching hosts are always denied, even if whitelisted.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "whitelist": {
+              "description": "Regex patterns for allowed hostnames. If non-empty, only matching hosts are allowed.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "NetworkMode": {
+      "description": "Network access mode for isol8 containers.\n\n- `\"none\"` — All network access blocked (default, most secure).\n- `\"host\"` — Full host network access (use with caution).\n- `\"filtered\"` — HTTP/HTTPS traffic routed through a proxy that enforces   whitelist/blacklist regex rules on hostnames.",
+      "enum": [
+        "none",
+        "host",
+        "filtered"
+      ],
+      "type": "string"
+    }
+  }
+}

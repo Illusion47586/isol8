@@ -1,0 +1,48 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.3.15/schema.json",
+  "extends": [
+    "ultracite/biome/core"
+  ],
+  "files": {
+    "includes": [
+      "src/**",
+      "tests/**",
+      "scripts/**"
+    ]
+  },
+  "formatter": {
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "javascript": {
+    "globals": [
+      "Bun"
+    ]
+  },
+  "linter": {
+    "rules": {
+      "style": {
+        "noNonNullAssertion": "off",
+        "noParameterProperties": "off",
+        "noNestedTernary": "off"
+      },
+      "performance": {
+        "noBarrelFile": "off",
+        "useTopLevelRegex": "off"
+      },
+      "suspicious": {
+        "useAwait": "off",
+        "noSkippedTests": "off",
+        "noEmptyBlockStatements": "off"
+      },
+      "complexity": {
+        "noExcessiveCognitiveComplexity": "off"
+      },
+      "correctness": {
+        "noUndeclaredVariables": "off",
+        "noUnusedFunctionParameters": "off"
+      }
+    }
+  }
+}

@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v1
+      with:
+        bun-version: latest
+
+    - name: Install dependencies
+      run: bun install
+
+    - name: Lint
+      run: bun run lint
+
+    - name: Build
+      run: bun run build
+
+    - name: Unit Tests
+      run: bun test tests/unit/
+    
+    # Integration tests require Docker, which is avail on ubuntu-latest runners
+    - name: Integration Tests
+      run: bun test tests/integration/
