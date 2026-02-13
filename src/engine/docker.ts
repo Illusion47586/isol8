@@ -180,38 +180,56 @@ export class DockerIsol8 implements Isol8Engine {
   private async executeEphemeral(req: ExecutionRequest): Promise<ExecutionResult> {
     const adapter = this.getAdapter(req.runtime);
     const timeoutMs = req.timeoutMs ?? this.defaultTimeoutMs;
-    const env = this.buildEnv(req.env);
 
-    // Write code to a file for longer scripts
-    const filePath = `${SANDBOX_WORKDIR}/main${adapter.getFileExtension()}`;
-    const cmd = adapter.getCommand(req.code, filePath);
-
+    // Create a container similar to persistent mode logic to support ReadonlyRootfs + Tmpfs
+    // We must start the container (activating tmpfs) before writing code to /sandbox
     const container = await this.docker.createContainer({
       Image: this.overrideImage ?? adapter.image,
-      Cmd: cmd,
+      Cmd: ["sleep", "infinity"], // Keep alive while we exec
       WorkingDir: SANDBOX_WORKDIR,
-      Env: env,
+      Env: this.buildEnv(), // Base env, user env added at exec time
       NetworkDisabled: this.network === "none",
       HostConfig: this.buildHostConfig(),
       StopTimeout: 2,
     });
 
     try {
-      // Put the code file into the container before starting
+      await container.start();
+
+      // Write code to the active tmpfs
+      const filePath = `${SANDBOX_WORKDIR}/main${adapter.getFileExtension()}`;
       const tar = createTarBuffer(filePath, req.code);
       await container.putArchive(tar, { path: "/" });
 
-      const start = performance.now();
-      await container.start();
+      // Execute the actual command
+      const cmd = adapter.getCommand(req.code, filePath);
+      // Re-build env to include user-provided env vars for this execution
+      const execEnv = this.buildEnv(req.env);
 
-      const { stdout, stderr, truncated } = await this.collectOutput(container, timeoutMs);
-      const info = await container.wait();
+      const exec = await container.exec({
+        Cmd: cmd,
+        Env: execEnv,
+        AttachStdout: true,
+        AttachStderr: true,
+        WorkingDir: SANDBOX_WORKDIR,
+      });
+
+      const start = performance.now();
+      const execStream = await exec.start({ hijack: true, stdin: false });
+
+      const { stdout, stderr, truncated } = await this.collectExecOutput(
+        execStream,
+        container,
+        timeoutMs
+      );
       const durationMs = Math.round(performance.now() - start);
+
+      const inspectResult = await exec.inspect();
 
       return {
         stdout: this.postProcessOutput(stdout, truncated),
         stderr: this.postProcessOutput(stderr, false),
-        exitCode: info.StatusCode,
+        exitCode: inspectResult.ExitCode ?? 1,
         durationMs,
         truncated,
       };
@@ -339,89 +357,6 @@ export class DockerIsol8 implements Isol8Engine {
     }
 
     return env;
-  }
-
-  private async collectOutput(
-    container: Docker.Container,
-    timeoutMs: number
-  ): Promise<{ stdout: string; stderr: string; truncated: boolean }> {
-    return new Promise((resolve, reject) => {
-      let stdout = "";
-      let stderr = "";
-      let truncated = false;
-      let settled = false;
-
-      const timer = setTimeout(async () => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        try {
-          await container.kill();
-        } catch {
-          // May already be dead
-        }
-        resolve({ stdout, stderr: `${stderr}\n--- EXECUTION TIMED OUT ---`, truncated });
-      }, timeoutMs);
-
-      container
-        .logs({
-          follow: true,
-          stdout: true,
-          stderr: true,
-          timestamps: false,
-        })
-        .then((stream) => {
-          const stdoutStream = new PassThrough();
-          const stderrStream = new PassThrough();
-
-          // Docker multiplexed stream demux
-          container.modem.demuxStream(stream, stdoutStream, stderrStream);
-
-          stdoutStream.on("data", (chunk: Buffer) => {
-            stdout += chunk.toString("utf-8");
-            if (stdout.length > this.maxOutputSize) {
-              const result = truncateOutput(stdout, this.maxOutputSize);
-              stdout = result.text;
-              truncated = true;
-            }
-          });
-
-          stderrStream.on("data", (chunk: Buffer) => {
-            stderr += chunk.toString("utf-8");
-            if (stderr.length > this.maxOutputSize) {
-              const result = truncateOutput(stderr, this.maxOutputSize);
-              stderr = result.text;
-              truncated = true;
-            }
-          });
-
-          stream.on("end", () => {
-            if (settled) {
-              return;
-            }
-            settled = true;
-            clearTimeout(timer);
-            resolve({ stdout, stderr, truncated });
-          });
-
-          stream.on("error", (err: Error) => {
-            if (settled) {
-              return;
-            }
-            settled = true;
-            clearTimeout(timer);
-            reject(err);
-          });
-        })
-        .catch((err) => {
-          if (!settled) {
-            settled = true;
-            clearTimeout(timer);
-            reject(err);
-          }
-        });
-    });
   }
 
   private async collectExecOutput(

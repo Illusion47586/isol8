@@ -131,11 +131,7 @@
     },
     "NetworkMode": {
       "description": "Network access mode for isol8 containers.\n\n- `\"none\"` — All network access blocked (default, most secure).\n- `\"host\"` — Full host network access (use with caution).\n- `\"filtered\"` — HTTP/HTTPS traffic routed through a proxy that enforces   whitelist/blacklist regex rules on hostnames.",
-      "enum": [
-        "none",
-        "host",
-        "filtered"
-      ],
+      "enum": ["none", "host", "filtered"],
       "type": "string"
     }
   }

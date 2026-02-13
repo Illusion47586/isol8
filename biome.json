@@ -1,14 +1,8 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.3.15/schema.json",
-  "extends": [
-    "ultracite/biome/core"
-  ],
+  "extends": ["ultracite/biome/core"],
   "files": {
-    "includes": [
-      "src/**",
-      "tests/**",
-      "scripts/**"
-    ]
+    "includes": ["src/**", "tests/**", "scripts/**"]
   },
   "formatter": {
     "indentStyle": "space",
@@ -16,9 +10,7 @@
     "lineWidth": 100
   },
   "javascript": {
-    "globals": [
-      "Bun"
-    ]
+    "globals": ["Bun"]
   },
   "linter": {
     "rules": {
