@@ -14,8 +14,8 @@
     "dev": "bun run src/cli.ts",
     "build": "bun run scripts/build.ts",
     "test": "bun test",
-    "lint": "ultracite",
-    "lint:fix": "ultracite --fix",
+    "lint:check": "ultracite check",
+    "lint:fix": "ultracite fix",
     "schema": "ts-json-schema-generator --path src/types.ts --type Isol8UserConfig --tsconfig tsconfig.json -o schema/isol8.config.schema.json",
     "release": "release-it",
     "prepare": "simple-git-hooks"
