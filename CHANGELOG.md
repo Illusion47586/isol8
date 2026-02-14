@@ -1,3 +1,10 @@
+## [0.5.1](https://github.com/Illusion47586/isol8/compare/v0.5.0...v0.5.1) (2026-02-14)
+
+
+### Bug Fixes
+
+* resolve docker directory path correctly in bundled CLI ([c80f475](https://github.com/Illusion47586/isol8/commit/c80f475a6ef2b8e81b7e569ca37c65929f27339c))
+
 # [0.5.0](https://github.com/Illusion47586/isol8/compare/v0.4.3...v0.5.0) (2026-02-14)
 
 
