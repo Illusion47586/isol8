@@ -153,6 +153,7 @@ program
     process.on("SIGTERM", cleanup);
 
     const spinner = ora("Starting execution...").start();
+    let exitCode = 0;
     try {
       await engine.start();
       spinner.text = "Running code...";
@@ -176,11 +177,11 @@ program
             process.stderr.write(event.data);
           } else if (event.type === "exit") {
             if (event.data !== "0") {
-              process.exit(Number.parseInt(event.data, 10));
+              exitCode = Number.parseInt(event.data, 10);
             }
           } else if (event.type === "error") {
             console.error(`[ERR] ${event.data}`);
-            process.exit(1);
+            exitCode = 1;
           }
         }
       } else {
@@ -204,16 +205,22 @@ program
         }
 
         if (result.exitCode !== 0) {
-          process.exit(result.exitCode);
+          exitCode = result.exitCode;
         }
       }
     } catch (err) {
       spinner.stop();
       throw err;
     } finally {
-      await engine.stop();
+      // Ensure cleanup happens, but don't hang forever
+      const cleanupPromise = engine.stop();
+      const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 5000));
+
+      await Promise.race([cleanupPromise, timeoutPromise]);
+
       process.off("SIGINT", cleanup);
       process.off("SIGTERM", cleanup);
+      process.exit(exitCode);
     }
   });
 
