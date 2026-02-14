@@ -35,7 +35,7 @@ Isol8 is a secure execution engine for running untrusted code inside Docker cont
 |:-----|:--------|:------------|
 | `-e, --eval <code>` | — | Execute inline code |
 | `-r, --runtime <name>` | auto-detect | Force: `python`, `node`, `bun`, `deno`, `bash` |
-| `--stream` | `false` | Stream output in real-time |
+| `--no-stream` | `false` | Disable real-time output streaming |
 | `--persistent` | `false` | Keep container alive between runs |
 | `--install <package>` | — | Install package before execution (repeatable) |
 | `--net <mode>` | `none` | Network: `none`, `host`, `filtered` |

@@ -101,7 +101,7 @@ isol8 run script.py --host http://server:3000 --key my-api-key
 | `--allow <regex>` | Whitelist regex (repeatable, for `filtered`) | — |
 | `--deny <regex>` | Blacklist regex (repeatable, for `filtered`) | — |
 | `--out <file>` | Write stdout to file | — |
-| `--stream` | Stream output in real-time | `false` |
+| `--no-stream` | Disable real-time output streaming | `false` |
 | `--persistent` | Keep container alive between runs | `false` |
 | `--timeout <ms>` | Execution timeout in milliseconds | `30000` |
 | `--memory <limit>` | Memory limit (e.g. `512m`, `1g`) | `512m` |

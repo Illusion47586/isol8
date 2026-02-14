@@ -140,9 +140,17 @@ program
   .option("--install <package>", "Install package for runtime (repeatable)", collect, [])
   .option("--host <url>", "Execute on remote server")
   .option("--key <key>", "API key for remote server")
-  .option("--stream", "Stream output in real-time")
+  .option("--no-stream", "Disable real-time output streaming") // Default is now streaming
   .action(async (file: string | undefined, opts) => {
     const { code, runtime, engineOptions, engine, stdinData } = await resolveRunInput(file, opts);
+
+    // cleanup on exit
+    const cleanup = async () => {
+      await engine.stop();
+      process.exit(0);
+    };
+    process.on("SIGINT", cleanup);
+    process.on("SIGTERM", cleanup);
 
     const spinner = ora("Starting execution...").start();
     try {
@@ -157,7 +165,8 @@ program
         ...(opts.install.length > 0 ? { installPackages: opts.install } : {}),
       };
 
-      if (opts.stream) {
+      // Stream by default unless --no-stream is passed
+      if (opts.stream !== false) {
         spinner.stop(); // Stop spinner for streaming output
         const stream = engine.executeStream(req);
         for await (const event of stream) {
@@ -203,6 +212,8 @@ program
       throw err;
     } finally {
       await engine.stop();
+      process.off("SIGINT", cleanup);
+      process.off("SIGTERM", cleanup);
     }
   });
 
