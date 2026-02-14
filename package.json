@@ -16,6 +16,9 @@
     "test": "bun test",
     "lint:check": "ultracite check",
     "lint:fix": "ultracite fix",
+    "bench": "bunx tsx benchmarks/spawn.ts",
+    "bench:pool": "bunx tsx benchmarks/spawn-pool.ts",
+    "bench:detailed": "bunx tsx benchmarks/spawn-detailed.ts",
     "schema": "ts-json-schema-generator --path src/types.ts --type Isol8UserConfig --tsconfig tsconfig.json -o schema/isol8.config.schema.json",
     "release": "release-it",
     "prepare": "simple-git-hooks"
