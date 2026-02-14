@@ -35,7 +35,8 @@ isol8/
 │   │       ├── python.ts     # Python runtime adapter
 │   │       ├── node.ts       # Node.js runtime adapter
 │   │       ├── bun.ts        # Bun runtime adapter
-│   │       └── deno.ts       # Deno runtime adapter
+│   │       ├── deno.ts       # Deno runtime adapter
+│   │       └── bash.ts       # Bash shell adapter
 │   ├── engine/
 │   │   ├── docker.ts         # DockerIsol8 — main sandbox engine
 │   │   ├── utils.ts          # Helpers: memory parsing, tar, truncation, masking
@@ -79,9 +80,12 @@ interface Isol8Engine {
 ```typescript
 interface ExecutionRequest {
   code: string;
-  runtime: "python" | "node" | "bun" | "deno";
+  runtime: "python" | "node" | "bun" | "deno" | "bash";
   timeoutMs?: number;
   env?: Record<string, string>;
+  stdin?: string;
+  files?: Record<string, string | Buffer>;
+  outputPaths?: string[];
 }
 
 interface ExecutionResult {
@@ -90,11 +94,16 @@ interface ExecutionResult {
   exitCode: number;
   durationMs: number;
   truncated: boolean;
+  executionId: string;
+  runtime: Runtime;
+  timestamp: string;
+  containerId?: string;
+  files?: Record<string, string>;
 }
 ```
 
 ### `RuntimeAdapter` (src/runtime/adapter.ts)
-Each runtime (Python, Node, Bun, Deno) implements this. Registered in `RuntimeRegistry`.
+Each runtime (Python, Node, Bun, Deno, Bash) implements this. Registered in `RuntimeRegistry`.
 ```typescript
 interface RuntimeAdapter {
   readonly name: Runtime;
