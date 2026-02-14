@@ -46,6 +46,6 @@ describe("RuntimeRegistry", () => {
     const adapter = RuntimeRegistry.get("node");
     expect(adapter.getCommand("console.log(1)")).toEqual(["node", "-e", "console.log(1)"]);
     expect(adapter.getCommand("", "/sandbox/app.js")).toEqual(["node", "/sandbox/app.js"]);
-    expect(adapter.getFileExtension()).toBe(".js");
+    expect(adapter.getFileExtension()).toBe(".mjs");
   });
 });
