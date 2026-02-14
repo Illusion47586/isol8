@@ -59,6 +59,10 @@ If the extension doesn't match any registered adapter, the CLI exits with an err
   Use a persistent container that preserves state between runs. Without this flag, each execution uses a fresh container from the warm pool. In persistent mode, the CLI creates a `RemoteIsol8` session (when `--host` is used) with a unique `sessionId`, or a local `DockerIsol8` in persistent mode.
 </ResponseField>
 
+<ResponseField name="--stream" type="boolean" default="false">
+  Stream output in real-time. Without this flag, output is buffered and displayed after execution finishes. Useful for long-running processes or watching progress.
+</ResponseField>
+
 <ResponseField name="--timeout" type="number" default="30000">
   Execution timeout in milliseconds. The process is killed with `SIGKILL` via the `timeout -s KILL` wrapper when the limit is reached. Falls back to `config.defaults.timeoutMs`.
 </ResponseField>
@@ -165,6 +169,16 @@ echo "console.log('hello')" | isol8 run --runtime node
 
 # Pipe code from a file via stdin
 cat script.py | isol8 run --runtime python
+```
+
+### Real-Time Streaming
+
+```bash
+# Watch output as it happens
+isol8 run long_task.py --stream
+
+# Stream inline code
+isol8 run -e "import time; print('start'); time.sleep(1); print('done')" --runtime python --stream
 ```
 
 ### Package Installation

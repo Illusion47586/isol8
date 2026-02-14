@@ -140,6 +140,7 @@ program
   .option("--install <package>", "Install package for runtime (repeatable)", collect, [])
   .option("--host <url>", "Execute on remote server")
   .option("--key <key>", "API key for remote server")
+  .option("--stream", "Stream output in real-time")
   .action(async (file: string | undefined, opts) => {
     const { code, runtime, engineOptions, engine, stdinData } = await resolveRunInput(file, opts);
 
@@ -156,27 +157,46 @@ program
         ...(opts.install.length > 0 ? { installPackages: opts.install } : {}),
       };
 
-      const result = await engine.execute(req);
-      spinner.stop(); // Stop spinner before printing output
+      if (opts.stream) {
+        spinner.stop(); // Stop spinner for streaming output
+        const stream = engine.executeStream(req);
+        for await (const event of stream) {
+          if (event.type === "stdout") {
+            process.stdout.write(event.data);
+          } else if (event.type === "stderr") {
+            process.stderr.write(event.data);
+          } else if (event.type === "exit") {
+            if (event.data !== "0") {
+              process.exit(Number.parseInt(event.data, 10));
+            }
+          } else if (event.type === "error") {
+            console.error(`[ERR] ${event.data}`);
+            process.exit(1);
+          }
+        }
+      } else {
+        const result = await engine.execute(req);
+        spinner.stop(); // Stop spinner before printing output
 
-      if (result.stdout) {
-        console.log(result.stdout);
-      }
-      if (result.stderr) {
-        console.error(result.stderr);
-      }
-      if (result.truncated) {
-        console.error("[WARN] Output was truncated");
-      }
+        if (result.stdout) {
+          console.log(result.stdout);
+        }
+        if (result.stderr) {
+          console.error(result.stderr);
+        }
+        if (result.truncated) {
+          console.error("[WARN] Output was truncated");
+        }
 
-      // Write output to file if requested
-      if (opts.out && result.stdout) {
-        writeFileSync(opts.out, result.stdout, "utf-8");
-        console.error(`[INFO] Output written to ${opts.out}`);
-      }
+        // Write output to file if requested
+        if (opts.out && result.stdout) {
+          writeFileSync(opts.out, result.stdout, "utf-8");
+          console.error(`[INFO] Output written to ${opts.out}`);
+        }
 
-      if (result.exitCode !== 0) {
-        process.exit(result.exitCode);
+        if (result.exitCode !== 0) {
+          process.exit(result.exitCode);
+        }
       }
     } catch (err) {
       spinner.stop();
