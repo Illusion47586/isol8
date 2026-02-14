@@ -1,3 +1,10 @@
+# [0.4.0](https://github.com/Illusion47586/isol8/compare/v0.3.1...v0.4.0) (2026-02-14)
+
+
+### Features
+
+* default to streaming, add --no-stream, improve cleanup and tests ([5583947](https://github.com/Illusion47586/isol8/commit/558394729babb93d70a87f136e73ddaf96cfa269))
+
 ## [0.3.1](https://github.com/Illusion47586/isol8/compare/v0.3.0...v0.3.1) (2026-02-14)
 
 
