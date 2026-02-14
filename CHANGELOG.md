@@ -1,3 +1,10 @@
+## [0.4.2](https://github.com/Illusion47586/isol8/compare/v0.4.1...v0.4.2) (2026-02-14)
+
+
+### Bug Fixes
+
+* **cli:** prevent indefinite hang by enforcing cleanup timeout and proper exit handling ([201f706](https://github.com/Illusion47586/isol8/commit/201f70668287b07a109f53b253047967d5ce1a98))
+
 ## [0.4.1](https://github.com/Illusion47586/isol8/compare/v0.4.0...v0.4.1) (2026-02-14)
 
 
