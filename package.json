@@ -77,9 +77,11 @@
     "ultracite": "^7.2.0"
   },
   "files": [
-    "dist",
+    "dist/cli.js",
+    "dist/index.js",
+    "dist/src",
+    "dist/docker",
     "schema",
-    "docker",
     "README.md",
     "LICENSE"
   ],
