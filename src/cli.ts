@@ -120,7 +120,7 @@ program
   .description("Execute code in isol8")
   .argument("[file]", "Script file to execute")
   .option("-e, --eval <code>", "Execute inline code string")
-  .option("-r, --runtime <name>", "Force runtime (python, node, bun, deno)")
+  .option("-r, --runtime <name>", "Force runtime (python, node, bun, deno, bash)")
   .option("--net <mode>", "Network mode: none, host, filtered", "none")
   .option("--allow <regex>", "Whitelist regex for filtered mode (repeatable)", collect, [])
   .option("--deny <regex>", "Blacklist regex for filtered mode (repeatable)", collect, [])
@@ -128,10 +128,18 @@ program
   .option("--persistent", "Use persistent container")
   .option("--timeout <ms>", "Execution timeout in milliseconds")
   .option("--memory <limit>", "Memory limit (e.g. 512m, 1g)")
+  .option("--cpu <limit>", "CPU limit as fraction (e.g. 0.5, 2.0)")
+  .option("--image <name>", "Override Docker image")
+  .option("--pids-limit <n>", "Maximum number of processes")
+  .option("--writable", "Disable read-only root filesystem")
+  .option("--max-output <bytes>", "Maximum output size in bytes")
+  .option("--secret <KEY=VALUE>", "Secret env var (repeatable, values masked)", collect, [])
+  .option("--sandbox-size <size>", "Sandbox tmpfs size (e.g. 128m)")
+  .option("--stdin <data>", "Data to pipe to stdin")
   .option("--host <url>", "Execute on remote server")
   .option("--key <key>", "API key for remote server")
   .action(async (file: string | undefined, opts) => {
-    const { code, runtime, engineOptions, engine } = await resolveRunInput(file, opts);
+    const { code, runtime, engineOptions, engine, stdinData } = await resolveRunInput(file, opts);
 
     const spinner = ora("Starting execution...").start();
     try {
@@ -142,6 +150,7 @@ program
         code,
         runtime,
         timeoutMs: engineOptions.timeoutMs,
+        ...(stdinData ? { stdin: stdinData } : {}),
       };
 
       const result = await engine.execute(req);
@@ -346,9 +355,29 @@ async function resolveRunInput(file: string | undefined, opts: any) {
       blacklist: opts.deny.length > 0 ? opts.deny : config.network.blacklist,
     },
     memoryLimit: opts.memory ?? config.defaults.memoryLimit,
-    cpuLimit: config.defaults.cpuLimit,
+    cpuLimit: opts.cpu ? Number.parseFloat(opts.cpu) : config.defaults.cpuLimit,
     timeoutMs: opts.timeout ? Number.parseInt(opts.timeout, 10) : config.defaults.timeoutMs,
+    ...(opts.image ? { image: opts.image } : {}),
+    ...(opts.pidsLimit ? { pidsLimit: Number.parseInt(opts.pidsLimit, 10) } : {}),
+    ...(opts.writable ? { readonlyRootFs: false } : {}),
+    ...(opts.maxOutput ? { maxOutputSize: Number.parseInt(opts.maxOutput, 10) } : {}),
+    ...(opts.sandboxSize ? { sandboxSize: opts.sandboxSize } : {}),
   };
+
+  // Parse --secret flags into secrets map
+  const secrets: Record<string, string> = {};
+  for (const s of opts.secret ?? []) {
+    const idx = s.indexOf("=");
+    if (idx > 0) {
+      secrets[s.slice(0, idx)] = s.slice(idx + 1);
+    }
+  }
+  if (Object.keys(secrets).length > 0) {
+    engineOptions.secrets = secrets;
+  }
+
+  // Resolve stdin data
+  const stdinData = opts.stdin ?? undefined;
 
   let engine: Isol8Engine;
   if (opts.host) {
@@ -365,7 +394,7 @@ async function resolveRunInput(file: string | undefined, opts: any) {
     engine = new DockerIsol8(engineOptions, config.maxConcurrent);
   }
 
-  return { code, runtime, engineOptions, engine };
+  return { code, runtime, engineOptions, engine, stdinData };
 }
 
 function collect(value: string, previous: string[]): string[] {
