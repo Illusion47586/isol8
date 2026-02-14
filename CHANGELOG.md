@@ -1,3 +1,11 @@
+## [0.4.1](https://github.com/Illusion47586/isol8/compare/v0.4.0...v0.4.1) (2026-02-14)
+
+
+### Bug Fixes
+
+* **engine:** configure bun install paths to writable locations ([159d3fb](https://github.com/Illusion47586/isol8/commit/159d3fb725d032e6165daa9c006834095f1cfb9c))
+* **engine:** install npm packages locally for correct resolution ([8fda0fc](https://github.com/Illusion47586/isol8/commit/8fda0fc663e30fb09b93c312a0355659dbb132af))
+
 # [0.4.0](https://github.com/Illusion47586/isol8/compare/v0.3.1...v0.4.0) (2026-02-14)
 
 
