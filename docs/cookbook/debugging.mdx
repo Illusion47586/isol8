@@ -193,6 +193,36 @@ except Exception as e:
 " --runtime python --net filtered --allow "^api\.github\.com$" --debug
 ```
 
+## Debugging the Server
+
+When running `isol8 serve`, use `--debug` to see detailed request and session logs:
+
+```bash
+isol8 serve --port 3000 --key my-secret-key --debug
+```
+
+This outputs `[DEBUG]` prefixed messages about:
+- Incoming requests (runtime, code length, session IDs)
+- Session management (creation, reuse, auto-pruning)
+- Engine lifecycle (ephemeral engine creation/cleanup)
+- Semaphore acquisition for concurrency control
+- Config loading and resolved settings
+
+Example server debug output:
+```
+[DEBUG] [Server] Config loaded
+[DEBUG] [Server] Max concurrent: 10
+[DEBUG] [Server] Auto-prune: true
+[DEBUG] [Server] POST /execute runtime=python sessionId=ephemeral
+[DEBUG] [Server] Code length: 42 chars
+[DEBUG] [Server] Creating ephemeral engine
+[DEBUG] [Server] Acquiring semaphore for /execute
+[DEBUG] [Server] Execution completed: exitCode=0 duration=85ms
+[DEBUG] [Server] Cleaning up ephemeral engine
+```
+
+The `--debug` flag is also accepted by the standalone server binary (`isol8-server --debug`), and is automatically forwarded when the CLI spawns the binary.
+
 ## Cleanup After Debugging
 
 After using `--persist`, clean up leftover containers:

@@ -240,6 +240,7 @@ describe("CLI help and version", () => {
     const { stdout } = await runCLI("serve --help");
     expect(stdout).toContain("--port");
     expect(stdout).toContain("--key");
+    expect(stdout).toContain("--debug");
   });
 
   test("config --help lists config flags", async () => {
@@ -550,6 +551,7 @@ describe("compiled server binary", () => {
     expect(stdout).toContain("isol8-server");
     expect(stdout).toContain("--port");
     expect(stdout).toContain("--key");
+    expect(stdout).toContain("--debug");
     expect(stdout).toContain("--version");
     expect(stdout).toContain("--help");
   });

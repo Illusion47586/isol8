@@ -220,6 +220,8 @@ All internal/debug logging uses the centralized `Logger` singleton in `src/utils
 
 Debug mode is activated by passing `debug: true` in `Isol8Options` (or `--debug` on the CLI). The `DockerIsol8` constructor calls `logger.setDebug(true)` when this option is set. All internal engine logs (pool operations, container lifecycle, persist decisions) use `logger.debug()` so they are silent by default and only visible when debugging.
 
+The server (`isol8 serve`) also supports `--debug`. When enabled, the server logs request details (runtime, code length, session IDs), engine lifecycle events (creation, cleanup), semaphore acquisition, and auto-pruning activity. The `--debug` flag is forwarded to the standalone server binary when running under Node.js. The `ServerOptions` interface includes an optional `debug` field for programmatic use.
+
 ### Persist vs Cleanup
 
 There are two distinct auto-cleanup mechanisms — do not confuse them:

@@ -428,7 +428,7 @@ Both `src/server/standalone.ts` and `src/server/index.ts` use dynamic `await imp
 ```typescript
 // src/server/standalone.ts — lazy-imports after arg parsing
 const { createServer } = await import("./index");
-const server = await createServer({ port, apiKey });
+const server = await createServer({ port, apiKey, debug });
 
 // src/server/index.ts — lazy-imports inside createServer()
 export async function createServer(options: ServerOptions) {

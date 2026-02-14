@@ -25,6 +25,10 @@ When installed via npm/bun, the CLI downloads a pre-compiled standalone server b
   Force re-download the server binary, even if a cached version exists at `~/.isol8/bin/isol8-server`. Useful when upgrading to a new version.
 </ResponseField>
 
+<ResponseField name="--debug" type="boolean" default="false">
+  Enable debug logging for internal server operations. When set, the server prints detailed logs about incoming requests, session management, engine lifecycle, semaphore acquisition, and auto-pruning. These logs use the `[DEBUG]` prefix and are suppressed by default. This flag is forwarded to the standalone server binary when running under Node.js.
+</ResponseField>
+
 ## Architecture
 
 ```mermaid
@@ -51,7 +55,7 @@ The `isol8 serve` command uses a pre-compiled standalone binary that embeds the 
 1. On first run (or when using `--update`), the CLI downloads the binary for your platform from GitHub Releases
 2. The binary is cached at `~/.isol8/bin/isol8-server`
 3. On subsequent runs, the CLI checks for version updates and prompts before downloading a new version
-4. The CLI spawns the binary as a child process, forwarding the `--port` and `--key` arguments
+4. The CLI spawns the binary as a child process, forwarding the `--port`, `--key`, and `--debug` arguments
 
 Binaries are available for:
 - `darwin-arm64` (macOS Apple Silicon)
@@ -106,6 +110,9 @@ isol8 serve --port 3000 --key my-secret-key
 
 # Or using an environment variable
 ISOL8_API_KEY=my-secret-key isol8 serve --port 3000
+
+# Start with debug logging to see request/session details
+isol8 serve --port 3000 --key my-secret-key --debug
 ```
 
 Execute code via curl:

@@ -11,6 +11,7 @@ import { loadConfig } from "../config";
 import { Semaphore } from "../engine/concurrency";
 import type { DockerIsol8 } from "../engine/docker";
 import type { ExecutionRequest, Isol8Options } from "../types";
+import { logger } from "../utils/logger";
 import { VERSION } from "../version";
 import { authMiddleware } from "./auth";
 
@@ -20,6 +21,8 @@ export interface ServerOptions {
   port: number;
   /** API key required for Bearer token authentication. */
   apiKey: string;
+  /** Enable debug logging for internal server operations. */
+  debug?: boolean;
 }
 
 /** Internal state for a persistent isol8 session. */
@@ -55,7 +58,15 @@ export async function createServer(options: ServerOptions) {
   const { DockerIsol8 } = await import("../engine/docker");
   await import("../runtime");
 
+  if (options.debug) {
+    logger.setDebug(true);
+  }
+
   const config = loadConfig();
+  logger.debug("[Server] Config loaded");
+  logger.debug(`[Server] Max concurrent: ${config.maxConcurrent}`);
+  logger.debug(`[Server] Auto-prune: ${config.cleanup.autoPrune}`);
+
   const app = new Hono();
   const globalSemaphore = new Semaphore(config.maxConcurrent);
 
@@ -72,6 +83,11 @@ export async function createServer(options: ServerOptions) {
       options?: Isol8Options;
       sessionId?: string;
     }>();
+
+    logger.debug(
+      `[Server] POST /execute runtime=${body.request.runtime} sessionId=${body.sessionId ?? "ephemeral"}`
+    );
+    logger.debug(`[Server] Code length: ${body.request.code.length} chars`);
 
     const engineOptions: Isol8Options = {
       network: config.defaults.network,
@@ -90,32 +106,41 @@ export async function createServer(options: ServerOptions) {
       // Reuse or create persistent session
       const session = sessions.get(body.sessionId);
       if (session) {
+        logger.debug(`[Server] Reusing existing session: ${body.sessionId}`);
         engine = session.engine;
         session.lastAccessedAt = Date.now();
       } else {
+        logger.debug(`[Server] Creating new session: ${body.sessionId}`);
         engine = new DockerIsol8(engineOptions, config.maxConcurrent);
         await engine.start();
         sessions.set(body.sessionId, { engine, lastAccessedAt: Date.now() });
       }
     } else {
+      logger.debug("[Server] Creating ephemeral engine");
       engine = new DockerIsol8(engineOptions, config.maxConcurrent);
       await engine.start();
     }
 
     try {
+      logger.debug("[Server] Acquiring semaphore for /execute");
       await globalSemaphore.acquire();
       try {
         const result = await engine.execute(body.request);
+        logger.debug(
+          `[Server] Execution completed: exitCode=${result.exitCode} duration=${result.durationMs}ms`
+        );
         return c.json(result);
       } finally {
         globalSemaphore.release();
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      logger.debug(`[Server] Execution error: ${message}`);
       return c.json({ error: message }, 500);
     } finally {
       // Cleanup ephemeral engine
       if (!body.sessionId) {
+        logger.debug("[Server] Cleaning up ephemeral engine");
         await engine.stop();
       }
     }
@@ -128,6 +153,9 @@ export async function createServer(options: ServerOptions) {
       options?: Isol8Options;
       sessionId?: string;
     }>();
+
+    logger.debug(`[Server] POST /execute/stream runtime=${body.request.runtime}`);
+    logger.debug(`[Server] Code length: ${body.request.code.length} chars`);
 
     const engineOptions: Isol8Options = {
       network: config.defaults.network,
@@ -147,20 +175,24 @@ export async function createServer(options: ServerOptions) {
     const stream = new ReadableStream({
       async start(controller) {
         try {
+          logger.debug("[Server] Acquiring semaphore for /execute/stream");
           await globalSemaphore.acquire();
           try {
             for await (const event of engine.executeStream(body.request)) {
               const line = `data: ${JSON.stringify(event)}\n\n`;
               controller.enqueue(encoder.encode(line));
             }
+            logger.debug("[Server] Stream completed");
           } finally {
             globalSemaphore.release();
           }
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
+          logger.debug(`[Server] Stream error: ${message}`);
           const errorEvent = `data: ${JSON.stringify({ type: "error", data: message })}\n\n`;
           controller.enqueue(encoder.encode(errorEvent));
         } finally {
+          logger.debug("[Server] Cleaning up stream engine");
           await engine.stop();
           controller.close();
         }
@@ -184,14 +216,18 @@ export async function createServer(options: ServerOptions) {
       content: string; // base64 encoded
     }>();
 
+    logger.debug(`[Server] POST /file sessionId=${body.sessionId} path=${body.path}`);
+
     const session = sessions.get(body.sessionId);
     if (!session) {
+      logger.debug(`[Server] Session not found: ${body.sessionId}`);
       return c.json({ error: "Session not found" }, 404);
     }
 
     session.lastAccessedAt = Date.now();
     const content = Buffer.from(body.content, "base64");
     await session.engine.putFile(body.path, content);
+    logger.debug(`[Server] File uploaded: ${body.path} (${content.length} bytes)`);
     return c.json({ ok: true });
   });
 
@@ -200,27 +236,35 @@ export async function createServer(options: ServerOptions) {
     const sessionId = c.req.query("sessionId");
     const path = c.req.query("path");
 
+    logger.debug(`[Server] GET /file sessionId=${sessionId} path=${path}`);
+
     if (!(sessionId && path)) {
       return c.json({ error: "Missing sessionId or path" }, 400);
     }
 
     const session = sessions.get(sessionId);
     if (!session) {
+      logger.debug(`[Server] Session not found: ${sessionId}`);
       return c.json({ error: "Session not found" }, 404);
     }
 
     session.lastAccessedAt = Date.now();
     const content = await session.engine.getFile(path);
+    logger.debug(`[Server] File downloaded: ${path} (${content.length} bytes)`);
     return c.json({ content: content.toString("base64") });
   });
 
   // ─── Session Cleanup ───
   app.delete("/session/:id", async (c) => {
     const id = c.req.param("id");
+    logger.debug(`[Server] DELETE /session/${id}`);
     const session = sessions.get(id);
     if (session) {
       await session.engine.stop();
       sessions.delete(id);
+      logger.debug(`[Server] Session destroyed: ${id}`);
+    } else {
+      logger.debug(`[Server] Session not found (already cleaned up): ${id}`);
     }
     return c.json({ ok: true });
   });
@@ -233,6 +277,7 @@ export async function createServer(options: ServerOptions) {
 
       for (const [id, session] of sessions) {
         if (now - session.lastAccessedAt > maxAge) {
+          logger.debug(`[Server] Auto-pruning stale session: ${id}`);
           await session.engine.stop();
           sessions.delete(id);
         }

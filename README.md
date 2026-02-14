@@ -147,6 +147,7 @@ isol8 serve --update  # Force re-download the server binary
 | `-p, --port <port>` | Port to listen on | `3000` |
 | `-k, --key <key>` | API key for Bearer token auth | `$ISOL8_API_KEY` |
 | `--update` | Force re-download the server binary | `false` |
+| `--debug` | Enable debug logging for server operations | `false` |
 
 ### `isol8 config`
 

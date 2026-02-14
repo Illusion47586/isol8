@@ -185,6 +185,7 @@ program
   .option("--host <url>", "Execute on remote server")
   .option("--key <key>", "API key for remote server")
   .option("--no-stream", "Disable real-time output streaming") // Default is now streaming
+  .option("--debug", "Enable debug logging")
   .option("--persist", "Keep container running after execution for inspection")
   .action(async (file: string | undefined, opts) => {
     const { code, runtime, engineOptions, engine, stdinData, fileExtension } =
@@ -303,6 +304,7 @@ program
   .option("-p, --port <port>", "Port to listen on", "3000")
   .option("-k, --key <key>", "API key for authentication")
   .option("--update", "Force re-download the server binary")
+  .option("--debug", "Enable debug logging")
   .action(async (opts) => {
     const apiKey = opts.key ?? process.env.ISOL8_API_KEY;
     if (!apiKey) {
@@ -320,7 +322,7 @@ program
     if (typeof globalThis.Bun !== "undefined") {
       logger.debug("[Serve] Running under Bun, starting server in-process");
       const { createServer } = await import("./server/index");
-      const server = await createServer({ port, apiKey });
+      const server = await createServer({ port, apiKey, debug: opts.debug ?? false });
       console.log(`[INFO] isol8 server v${VERSION} listening on http://localhost:${port}`);
       console.log("       Auth: Bearer token required");
       Bun.serve({ fetch: server.app.fetch, port });
@@ -333,7 +335,11 @@ program
 
     // Spawn the server binary
     const { spawn: spawnChild } = await import("node:child_process");
-    const child = spawnChild(binaryPath, ["--port", String(port), "--key", apiKey], {
+    const binaryArgs = ["--port", String(port), "--key", apiKey];
+    if (opts.debug) {
+      binaryArgs.push("--debug");
+    }
+    const child = spawnChild(binaryPath, binaryArgs, {
       stdio: "inherit",
     });
 

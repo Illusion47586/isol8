@@ -9,7 +9,7 @@ The isol8 server exposes a REST API for remote code execution. Start it with:
 isol8 serve --port 3000 --key my-secret-key
 ```
 
-The server runs as a standalone compiled binary that embeds the Bun runtime — no Bun installation is required. The first time you run `isol8 serve`, the CLI downloads the binary for your platform from GitHub Releases and caches it at `~/.isol8/bin/isol8-server`. Use `--update` to force a re-download.
+The server runs as a standalone compiled binary that embeds the Bun runtime — no Bun installation is required. The first time you run `isol8 serve`, the CLI downloads the binary for your platform from GitHub Releases and caches it at `~/.isol8/bin/isol8-server`. Use `--update` to force a re-download. Use `--debug` to enable verbose logging of requests, sessions, and engine lifecycle.
 
 ## Authentication
 

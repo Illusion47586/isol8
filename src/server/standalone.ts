@@ -21,7 +21,7 @@ const VERSION = process.env.ISOL8_VERSION ?? "0.0.0";
 
 // ─── Arg parsing ─────────────────────────────────────────────────────
 
-function parseArgs(argv: string[]): { port: number; apiKey: string } {
+function parseArgs(argv: string[]): { port: number; apiKey: string; debug: boolean } {
   const args = argv.slice(2); // skip binary path + script path
 
   // Handle --version
@@ -42,6 +42,7 @@ function parseArgs(argv: string[]): { port: number; apiKey: string } {
     console.log("Options:");
     console.log("  -p, --port <port>  Port to listen on (default: 3000, or PORT env)");
     console.log("  -k, --key <key>    API key for authentication (or ISOL8_API_KEY env)");
+    console.log("      --debug        Enable debug logging");
     console.log("  -V, --version      Print version and exit");
     console.log("  -h, --help         Show this help message");
     process.exit(0);
@@ -50,6 +51,7 @@ function parseArgs(argv: string[]): { port: number; apiKey: string } {
   // Parse flags
   let port = 3000;
   let apiKey: string | undefined;
+  let debug = false;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -65,6 +67,8 @@ function parseArgs(argv: string[]): { port: number; apiKey: string } {
     } else if ((arg === "--key" || arg === "-k") && next) {
       apiKey = next;
       i++;
+    } else if (arg === "--debug") {
+      debug = true;
     } else {
       console.error(`[ERR] Unknown argument: ${arg}`);
       process.exit(1);
@@ -86,17 +90,17 @@ function parseArgs(argv: string[]): { port: number; apiKey: string } {
     }
   }
 
-  return { port, apiKey };
+  return { port, apiKey, debug };
 }
 
 // ─── Main ────────────────────────────────────────────────────────────
 
-const { port, apiKey } = parseArgs(process.argv);
+const { port, apiKey, debug } = parseArgs(process.argv);
 
 // Lazy-import server code AFTER arg parsing to avoid eagerly loading
 // dockerode's transitive dependency chain which crashes on Linux.
 const { createServer } = await import("./index");
-const server = await createServer({ port, apiKey });
+const server = await createServer({ port, apiKey, debug });
 
 console.log(`[INFO] isol8 server v${VERSION} listening on http://localhost:${port}`);
 console.log("       Auth: Bearer token required");
