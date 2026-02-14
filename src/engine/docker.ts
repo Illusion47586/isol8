@@ -214,6 +214,10 @@ async function installPackages(
     env.push("NPM_CONFIG_PREFIX=/sandbox/.npm-global");
     env.push("NPM_CONFIG_CACHE=/sandbox/.npm-cache");
     env.push("npm_config_cache=/sandbox/.npm-cache");
+  } else if (runtime === "bun") {
+    env.push("BUN_INSTALL_GLOBAL_DIR=/sandbox/.bun-global");
+    env.push("BUN_INSTALL_CACHE_DIR=/sandbox/.bun-cache");
+    env.push("BUN_INSTALL_BIN=/sandbox/.bun-global/bin");
   } else if (runtime === "deno") {
     env.push("DENO_DIR=/sandbox/.deno");
   }
