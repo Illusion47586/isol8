@@ -90,11 +90,18 @@ isol8 cleanup --force
 
 ### Scheduled Cleanup
 
-Add to cron for periodic maintenance:
+You can manually configure cron to run cleanup periodically. isol8 does not automatically install or manage cron jobs — you need to set this up yourself.
+
+Example cron entry for daily cleanup at 2 AM:
 
 ```bash
 # Clean up isol8 containers daily at 2 AM
 0 2 * * * /usr/local/bin/isol8 cleanup --force
+```
+
+To edit your crontab:
+```bash
+crontab -e
 ```
 
 ### Before Running Tests
@@ -124,6 +131,10 @@ if (result.errors.length > 0) {
 ```
 
 See the [Library Overview](/library/overview#cleanup) for more details on the programmatic API.
+
+## Automatic Cleanup
+
+Note that the `isol8 serve` command includes automatic cleanup of stale persistent sessions when `cleanup.autoPrune` is enabled in the configuration. The server checks for idle sessions every 60 seconds and removes those that exceed `cleanup.maxContainerAgeMs`. This is different from the manual `isol8 cleanup` command, which removes ALL isol8 containers regardless of age or state.
 
 ## Safety
 
