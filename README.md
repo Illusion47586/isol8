@@ -1,14 +1,17 @@
 # isol8
 
-Secure code execution engine for AI agents. Run untrusted Python, Node.js, Bun, and Deno code inside locked-down Docker containers with network filtering, resource limits, and output controls.
+Secure code execution engine for AI agents. Run untrusted Python, Node.js, Bun, Deno, and Bash code inside locked-down Docker containers with network filtering, resource limits, and output controls.
 
 ## Features
 
-- **4 runtimes** — Python, Node.js, Bun, Deno
+- **5 runtimes** — Python, Node.js, Bun, Deno, Bash
 - **Ephemeral & persistent** — one-shot execution or stateful REPL-like sessions
+- **Streaming** — real-time output via `executeStream()` / SSE
+- **Fast** — warm container pool for sub-100ms execution latency
 - **Security first** — read-only rootfs, `no-new-privileges`, PID/memory/CPU limits
 - **Network control** — `none` (default), `host`, or `filtered` (HTTP/HTTPS proxy with regex whitelist/blacklist)
 - **File I/O** — upload files into and download files from sandboxes
+- **Runtime packages** — install pip/npm/bun packages on-the-fly via `installPackages`
 - **Secret masking** — environment variables are scrubbed from output
 - **Output truncation** — prevents runaway stdout (default 1MB cap)
 - **Remote mode** — run an HTTP server and execute from anywhere
@@ -59,6 +62,7 @@ isol8 setup --node lodash,axios
 | `--node <pkgs>` | Comma-separated npm packages to install globally |
 | `--bun <pkgs>` | Comma-separated bun packages |
 | `--deno <pkgs>` | Comma-separated Deno module URLs to cache |
+| `--bash <pkgs>` | Comma-separated Alpine apk packages |
 
 ### `isol8 run`
 
@@ -81,7 +85,7 @@ isol8 run script.py --host http://server:3000 --key my-api-key
 | Flag | Description | Default |
 |------|-------------|---------|
 | `-e, --eval <code>` | Execute inline code | — |
-| `-r, --runtime <rt>` | Force runtime: `python`, `node`, `bun`, `deno` | auto-detect |
+| `-r, --runtime <rt>` | Force runtime: `python`, `node`, `bun`, `deno`, `bash` | auto-detect |
 | `--net <mode>` | Network mode: `none`, `host`, `filtered` | `none` |
 | `--allow <regex>` | Whitelist regex (repeatable, for `filtered`) | — |
 | `--deny <regex>` | Blacklist regex (repeatable, for `filtered`) | — |
@@ -128,7 +132,7 @@ const result = await isol8.execute({
 
 console.log(result.stdout);  // "Hello from isol8!"
 console.log(result.exitCode); // 0
-console.log(result.durationMs); // ~150
+console.log(result.durationMs); // ~80 (warm pool)
 
 await isol8.stop();
 ```
@@ -177,6 +181,36 @@ const isol8 = new RemoteIsol8(
 await isol8.start();
 const result = await isol8.execute({ code: "print('remote!')", runtime: "python" });
 await isol8.stop();
+```
+
+### Streaming Output
+
+```typescript
+import { DockerIsol8 } from "isol8";
+
+const isol8 = new DockerIsol8({ network: "none" });
+await isol8.start();
+
+for await (const event of isol8.executeStream({
+  code: 'for i in range(5): print(i)',
+  runtime: "python",
+})) {
+  if (event.type === "stdout") process.stdout.write(event.data);
+  if (event.type === "stderr") process.stderr.write(event.data);
+  if (event.type === "exit") console.log(`\nExit: ${event.data}`);
+}
+
+await isol8.stop();
+```
+
+### Runtime Package Installation
+
+```typescript
+const result = await isol8.execute({
+  code: 'import numpy; print(numpy.__version__)',
+  runtime: "python",
+  installPackages: ["numpy"],
+});
 ```
 
 ### Network Filtering
@@ -253,6 +287,7 @@ When running `isol8 serve`, these endpoints are available:
 |--------|------|-------------|
 | `GET` | `/health` | Health check (no auth) |
 | `POST` | `/execute` | Execute code |
+| `POST` | `/execute/stream` | Execute code with SSE streaming |
 | `POST` | `/file` | Upload file (base64) |
 | `GET` | `/file?sessionId=&path=` | Download file (base64) |
 | `DELETE` | `/session/:id` | Destroy persistent session |

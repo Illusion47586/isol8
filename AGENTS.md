@@ -39,6 +39,7 @@ isol8/
 │   │       └── bash.ts       # Bash shell adapter
 │   ├── engine/
 │   │   ├── docker.ts         # DockerIsol8 — main sandbox engine
+│   │   ├── pool.ts           # Warm container pool for fast ephemeral execution
 │   │   ├── utils.ts          # Helpers: memory parsing, tar, truncation, masking
 │   │   ├── concurrency.ts    # Async Semaphore for limiting concurrent containers
 │   │   └── image-builder.ts  # Docker image build logic (base + custom)
@@ -71,6 +72,7 @@ interface Isol8Engine {
   start(): Promise<void>;
   stop(): Promise<void>;
   execute(req: ExecutionRequest): Promise<ExecutionResult>;
+  executeStream(req: ExecutionRequest): AsyncIterable<StreamEvent>;
   putFile(path: string, content: Buffer | string): Promise<void>;
   getFile(path: string): Promise<Buffer>;
 }
@@ -86,6 +88,7 @@ interface ExecutionRequest {
   stdin?: string;
   files?: Record<string, string | Buffer>;
   outputPaths?: string[];
+  installPackages?: string[];
 }
 
 interface ExecutionResult {
@@ -115,19 +118,25 @@ interface RuntimeAdapter {
 
 ## Execution Flow
 
-1. CLI parses args → builds `SandboxOptions` + `ExecutionRequest`
+1. CLI parses args → builds `Isol8Options` + `ExecutionRequest`
 2. Creates `DockerIsol8` (local) or `RemoteIsol8` (remote)
-3. Calls `sandbox.start()` → no-op for ephemeral, lazy for persistent
-4. Calls `sandbox.execute(request)`:
-   - **Ephemeral**: creates container → injects code via tar → starts → collects output → removes container
+3. Calls `engine.start()` → no-op (pool created lazily on first execute)
+4. Calls `engine.execute(request)`:
+   - **Ephemeral**: acquires warm container from pool → injects code via exec → runs → collects output → returns container to pool
    - **Persistent**: reuses container → `docker exec` → collects output
 5. Output pipeline: collect → truncate → mask secrets → trim
-6. Calls `sandbox.stop()` → kills/removes container
+6. Calls `engine.stop()` → kills container (persistent) or drains pool (ephemeral)
 
 ## Important Patterns
 
 ### Concurrency
 `Semaphore` in `engine/concurrency.ts` limits concurrent container executions. The limit is set by `maxConcurrent` in config (default: 10).
+
+### Container Pool
+`ContainerPool` in `engine/pool.ts` keeps pre-started containers warm for fast ephemeral execution. After use, containers have their `/sandbox` wiped and are returned to the pool. The pool auto-replenishes in the background. This reduces execution latency from ~300ms to ~80ms.
+
+### Streaming
+`executeStream()` returns an `AsyncIterable<StreamEvent>` that yields stdout/stderr chunks as they arrive. The server exposes this via `POST /execute/stream` as SSE (Server-Sent Events). Each event is `data: {"type":"stdout"|"stderr"|"exit"|"error", "data":"..."}\n\n`.
 
 ### Network Filtering
 When `network: "filtered"`, containers get bridge networking with `HTTP_PROXY`/`HTTPS_PROXY` env vars pointing to `docker/proxy.mjs`. The proxy checks hostnames against whitelist/blacklist regex patterns.

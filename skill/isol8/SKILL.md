@@ -5,21 +5,23 @@ description: Securely execute untrusted Python, Node.js, Bun, Deno, and Bash cod
 
 # Isol8 Skill
 
-Isol8 is a secure execution engine for running untrusted code. Use this skill when you need to execute code snippets, scripts, or system commands in a safe, isolated environment. It supports multiple runtimes, persistent state, file I/O, and network control.
+Isol8 is a secure execution engine for running untrusted code. Use this skill when you need to execute code snippets, scripts, or system commands in a safe, isolated environment. It supports multiple runtimes, persistent state, file I/O, streaming output, runtime package installation, and network control.
 
 ## Key Capabilities
 
 - **Runtimes**: Python (3.x), Node.js (LTS), Bun, Deno, Bash.
 - **Isolation**: Docker containers with no network access by default.
-- **Resources**: Configurable memory (default 512MB) and CPU limits.
+- **Resources**: Configurable memory (default 512MB), CPU, PID, and timeout limits.
 - **State**: Ephemeral (one-off) or Persistent (session-based) execution.
-- **Dependencies**: Pre-installed packages or custom dependency injection.
+- **Streaming**: Real-time stdout/stderr via `executeStream()`.
+- **Packages**: Install pip/npm/bun packages on-the-fly with `installPackages`.
+- **Performance**: Warm container pool delivers sub-100ms execution latency.
 
 ## CLI Usage
 
 The primary interface is the `isol8` CLI.
 
-### 1. Execute Code Structure
+### 1. Execute Code
 
 ```bash
 isol8 run [options] [file]
@@ -32,9 +34,16 @@ isol8 run [options] [file]
 | `--persistent` | Use a persistent container (preserves state) | `--persistent` |
 | `--net <mode>` | Network mode (`none`, `host`, `filtered`) | `--net filtered` |
 | `--allow <regex>` | Whitelist regex for `filtered` network mode | `--allow "google.com"` |
+| `--deny <regex>` | Blacklist regex for `filtered` network mode | `--deny ".*\.ru$"` |
 | `--out <file>` | Write stdout to a file | `--out result.txt` |
 | `--timeout <ms>` | Execution timeout in milliseconds | `--timeout 5000` |
 | `--memory <limit>` | Memory limit | `--memory 1g` |
+| `--cpu <cores>` | CPU limit (fractional cores) | `--cpu 0.5` |
+| `--pids <limit>` | Process ID limit | `--pids 32` |
+| `--sandbox-size <size>` | Sandbox tmpfs size | `--sandbox-size 128m` |
+| `--stdin <data>` | Data to pipe to stdin | `--stdin "hello"` |
+| `--host <url>` | Execute on remote server | `--host http://server:3000` |
+| `--key <key>` | API key for remote server | `--key my-key` |
 
 ### 2. Examples by Runtime
 
@@ -45,6 +54,9 @@ isol8 run -e "print('Hello')" --runtime python
 
 # Run a file
 isol8 run ./script.py
+
+# With packages
+isol8 run -e "import numpy; print(numpy.__version__)" --runtime python
 ```
 
 #### Bash (System Commands)
@@ -52,14 +64,14 @@ isol8 run ./script.py
 # Run a shell command
 isol8 run -e "grep -r 'TODO' ." --runtime bash
 
-# Install packages (requires custom image setup or persistent mode + apk)
-# Note: Default images are Alpine-based.
+# Default images are Alpine-based; use isol8 setup --bash for apk packages
 ```
 
 #### JavaScript / TypeScript
 ```bash
 isol8 run -e "console.log('JS')" --runtime node
 isol8 run -e "console.log('TS')" --runtime bun
+isol8 run -e "console.log('Deno')" --runtime deno
 ```
 
 ### 3. Persistent Sessions
@@ -92,6 +104,38 @@ By default, network is disabled. To allow specific access:
 isol8 run --net filtered --allow "^api\.openai\.com$" script.py
 ```
 
+## Library Usage
+
+```typescript
+import { DockerIsol8 } from "isol8";
+
+const isol8 = new DockerIsol8({ network: "none" });
+await isol8.start();
+
+// Basic execution
+const result = await isol8.execute({
+  code: 'print("hello")',
+  runtime: "python",
+});
+
+// Streaming output
+for await (const event of isol8.executeStream({
+  code: 'for i in range(5): print(i)',
+  runtime: "python",
+})) {
+  if (event.type === "stdout") process.stdout.write(event.data);
+}
+
+// With packages
+await isol8.execute({
+  code: 'import numpy; print(numpy.__version__)',
+  runtime: "python",
+  installPackages: ["numpy"],
+});
+
+await isol8.stop();
+```
+
 ## Setup & Dependencies
 
 To install custom dependencies, use `isol8 setup` or edit `isol8.config.json`.
@@ -114,3 +158,4 @@ This rebuilds the Docker images with your packages baked in.
 - **"Docker not running"**: Run `isol8 setup` to check status.
 - **Timeouts**: Increase `--timeout`.
 - **OOM Killed**: Increase `--memory`.
+- **Slow first run**: Expected — container pool warms up on first execution. Subsequent runs are ~80ms.
