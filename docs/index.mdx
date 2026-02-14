@@ -1,66 +1,130 @@
 ---
 title: "Introduction"
-description: "Secure code execution engine for AI agents and developers"
+description: "Secure code execution engine for running untrusted code inside Docker containers with strict resource limits, network controls, and output sanitization."
 ---
 
 # What is isol8?
 
-isol8 is a secure code execution engine that runs untrusted code inside Docker containers with strict resource limits, network controls, and output sanitization. It is designed for AI agents, chatbots, and any application that needs to safely execute user-provided code.
+isol8 is a secure code execution engine that runs untrusted code inside Docker containers with strict resource limits, network controls, and output sanitization. It is purpose-built for AI agents, chatbots, coding assistants, and any application that needs to safely execute user-provided code without risking the host system.
+
+isol8 ships as three interfaces — a **TypeScript library**, a **CLI tool**, and a **remote HTTP server** — all backed by the same battle-hardened Docker-based execution engine.
+
+## Architecture
+
+The following diagram shows the end-to-end flow from code submission to result delivery:
+
+```mermaid
+flowchart TB
+    subgraph Clients["Client Interfaces"]
+        CLI["`**CLI**
+isol8 run`"]
+        LIB["`**TypeScript Library**
+DockerIsol8`"]
+        HTTP["`**HTTP Server**
+isol8 serve`"]
+    end
+
+    subgraph Engine["isol8 Engine"]
+        RR["`**Runtime Resolver**
+Python · Node · Bun · Deno · Bash`"]
+        SEM["`**Concurrency Semaphore**
+Rate-limits parallel executions`"]
+        POOL["`**Container Pool**
+Pre-warmed containers per image`"]
+    end
+
+    subgraph Container["Docker Container"]
+        RL["`**Resource Limits**
+CPU · Memory · PIDs · Read-only FS`"]
+        NET["`**Network Controls**
+none · host · filtered proxy`"]
+        EXEC["`**Code Execution**
+Timeout-enforced sandbox`"]
+    end
+
+    subgraph Output["Output Pipeline"]
+        COLLECT["Collect stdout / stderr"]
+        MASK["Mask Secrets"]
+        TRUNC["Truncate if > maxOutputSize"]
+        RESULT["ExecutionResult"]
+    end
+
+    CLI --> RR
+    LIB --> RR
+    HTTP --> RR
+
+    RR --> SEM
+    SEM --> POOL
+    POOL -->|"Acquire warm container"| RL
+    RL --> NET
+    NET --> EXEC
+
+    EXEC --> COLLECT
+    COLLECT --> MASK
+    MASK --> TRUNC
+    TRUNC --> RESULT
+
+    RESULT -->|"Return to caller"| Clients
+    EXEC -->|"Release container back to pool"| POOL
+```
 
 ## Key Features
 
 <CardGroup cols={2}>
-  <Card title="Multi-Runtime" icon="code">
-    Run Python, Node.js, Bun, Deno, and Bash out of the box.
+  <Card title="Multi-Runtime Support" icon="code">
+    Execute Python, Node.js, Bun, Deno, and Bash out of the box. Each runtime has its own optimized Docker image with the correct toolchain and package manager pre-installed.
   </Card>
   <Card title="Container Isolation" icon="shield">
-    Every execution runs in a Docker container with read-only root filesystem, PID limits, memory/CPU caps, and no-new-privileges.
+    Every execution runs in a Docker container with a read-only root filesystem, PID limits, memory and CPU caps, and `no-new-privileges` security policy. Containers are fully disposable.
   </Card>
   <Card title="Network Control" icon="globe">
-    Choose between no network, full host network, or filtered mode with hostname-level allow/deny lists.
+    Choose between three network modes: `none` (all traffic blocked, default and most secure), `host` (full host network access), or `filtered` (HTTP/HTTPS traffic routed through a hostname-level allow/deny proxy).
   </Card>
   <Card title="Real-Time Streaming" icon="bolt">
-    Stream stdout/stderr as code executes via `executeStream()` or SSE.
+    Stream stdout and stderr as code executes via `executeStream()` in the library or Server-Sent Events (SSE) over HTTP. No need to wait for the process to finish.
   </Card>
   <Card title="File I/O" icon="file">
-    Inject input files before execution and retrieve output files after — even in ephemeral mode.
+    Inject input files into the container before execution and retrieve output files after — even in ephemeral mode. Files are transferred as tar archives via the Docker API.
   </Card>
   <Card title="Sub-100ms Latency" icon="gauge-high">
-    Warm container pool keeps pre-started containers ready for instant execution.
+    The warm container pool keeps pre-started containers ready for immediate use, reducing execution latency from ~200-400ms (cold start) to ~55-95ms (warm). Containers are cleaned and recycled after each run.
+  </Card>
+  <Card title="Secret Masking" icon="eye-slash">
+    Pass sensitive values via the `secrets` option. isol8 automatically replaces any occurrence of secret values in stdout and stderr with `***`, preventing accidental leakage.
+  </Card>
+  <Card title="Package Installation" icon="box">
+    Install runtime-specific packages on the fly with `installPackages`. Supports pip (Python), npm (Node.js), bun (Bun), deno cache (Deno), and apk (Bash/Alpine).
   </Card>
 </CardGroup>
-
-## How It Works
-
-1. You submit code with a runtime (Python, Node, etc.) and optional configuration
-2. isol8 runs it inside a locked-down Docker container
-3. Output is collected, secrets are masked, and results are returned
-4. The container is destroyed (ephemeral) or preserved (persistent)
 
 ## Three Ways to Use isol8
 
 <CardGroup cols={3}>
   <Card title="CLI" icon="terminal" href="/cli/run">
-    Run code from the command line with `isol8 run`.
+    Run code from the command line with `isol8 run`. Supports inline code (`-e`), file execution, stdin piping, persistent mode, secret injection, and package installation.
   </Card>
   <Card title="TypeScript Library" icon="brackets-curly" href="/library/overview">
-    Import `DockerIsol8` or `RemoteIsol8` into your application.
+    Import `DockerIsol8` for local execution or `RemoteIsol8` to connect to a remote server. Both implement the same `Isol8Engine` interface with `execute()`, `executeStream()`, `putFile()`, and `getFile()`.
   </Card>
   <Card title="HTTP Server" icon="server" href="/server/overview">
-    Deploy `isol8 serve` and execute code via REST API.
+    Deploy `isol8 serve` as a standalone execution service. Exposes REST endpoints for code execution, streaming via SSE, and file I/O — all protected by Bearer token authentication.
   </Card>
 </CardGroup>
 
 ## Supported Runtimes
 
-| Runtime | Image | File Extension | Package Manager |
-|:--------|:------|:---------------|:----------------|
-| Python 3.x | `isol8:python` | `.py` | pip |
-| Node.js LTS | `isol8:node` | `.js` | npm |
-| Bun | `isol8:bun` | `.ts` | bun |
-| Deno | `isol8:deno` | `.mts` | deno cache |
-| Bash (Alpine) | `isol8:bash` | `.sh` | apk |
+| Runtime | Image | File Extension | Package Manager | Inline Code |
+|:--------|:------|:---------------|:----------------|:------------|
+| Python 3.x | `isol8:python` | `.py` | pip | Yes |
+| Node.js LTS | `isol8:node` | `.js` | npm | Yes |
+| Bun | `isol8:bun` | `.ts` | bun | Yes |
+| Deno | `isol8:deno` | `.mts` | deno cache | No (file only) |
+| Bash | `isol8:bash` | `.sh` | apk | Yes |
 
 <Note>
   `.ts` files default to Bun. Use `--runtime deno` or the `.mts` extension for Deno.
 </Note>
+
+<Warning>
+  Deno does **not** support inline code execution (the `-e` flag). It requires a file path. The Deno adapter will throw an error if no file path is provided.
+</Warning>

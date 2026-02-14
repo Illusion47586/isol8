@@ -3,9 +3,9 @@ title: "isol8 setup"
 description: "Build Docker images and install custom dependencies"
 ---
 
-# isol8 setup
+# Build Images & Install Dependencies
 
-Check Docker connectivity and build all base `isol8:<runtime>` images. Optionally build custom images with baked-in dependencies.
+Verify Docker connectivity and build all base `isol8:<runtime>` images. Optionally build custom images with pre-installed dependencies.
 
 ```bash
 isol8 setup [options]
@@ -13,9 +13,26 @@ isol8 setup [options]
 
 ## What It Does
 
-1. Verifies Docker is running and accessible
-2. Builds base images for all 5 runtimes (`isol8:python`, `isol8:node`, `isol8:bun`, `isol8:deno`, `isol8:bash`)
-3. If package flags are provided, builds custom images with dependencies pre-installed
+```mermaid
+flowchart TD
+    A[isol8 setup] --> B{Docker running?}
+    B -->|No| C[Exit with error]
+    B -->|Yes| D[Build base images]
+    D --> D1[isol8:python]
+    D --> D2[isol8:node]
+    D --> D3[isol8:bun]
+    D --> D4[isol8:deno]
+    D --> D5[isol8:bash]
+    D1 & D2 & D3 & D4 & D5 --> E{Packages specified?}
+    E -->|No| F[Done]
+    E -->|Yes| G[Build custom images]
+    G --> H["isol8:{runtime}-custom"]
+    H --> F
+```
+
+1. **Verify Docker** — Pings the Docker daemon to confirm it's running and accessible.
+2. **Build base images** — Builds all 5 runtime images from the multi-stage `docker/Dockerfile`. Each runtime is a separate build target (`python`, `node`, `bun`, `deno`, `bash`).
+3. **Build custom images** — If package flags are provided (via CLI flags or `config.dependencies`), builds custom images with dependencies pre-installed.
 
 ## Options
 
@@ -44,7 +61,7 @@ isol8 setup [options]
 </ResponseField>
 
 <ResponseField name="--deno" type="string">
-  Comma-separated Deno module URLs to cache via deno cache.
+  Comma-separated Deno module URLs to pre-cache via `deno cache`.
 
   ```bash
   isol8 setup --deno https://deno.land/std/path/mod.ts
@@ -61,7 +78,7 @@ isol8 setup [options]
 
 ## Custom Images
 
-When you provide package flags, isol8 builds a custom image tagged `isol8:<runtime>-custom`. These custom images are **automatically preferred** over base images when they exist.
+When you provide package flags (or have `dependencies` in your config file), isol8 builds a custom image tagged `isol8:<runtime>-custom`. These custom images are **automatically preferred** over base images via the `resolveImage()` logic — if `isol8:python-custom` exists, all Python executions use it without any additional flags.
 
 For example, after running:
 
@@ -69,13 +86,42 @@ For example, after running:
 isol8 setup --python numpy,pandas
 ```
 
-The image `isol8:python-custom` is created. All subsequent Python executions automatically use this image, so `numpy` and `pandas` are available without `--install`.
+The image `isol8:python-custom` is created with numpy and pandas pre-installed. All subsequent Python executions automatically use this image.
+
+### How Custom Images Are Built
+
+Custom images extend the base image with runtime-specific install commands. The generated Dockerfile for each runtime:
+
+| Runtime | Generated Dockerfile |
+|:--------|:--------------------|
+| `python` | `FROM isol8:python`<br/>`RUN pip install --no-cache-dir numpy pandas` |
+| `node` | `FROM isol8:node`<br/>`RUN npm install -g lodash express` |
+| `bun` | `FROM isol8:bun`<br/>`RUN bun install -g zod hono` |
+| `deno` | `FROM isol8:deno`<br/>`RUN deno cache https://deno.land/std/path/mod.ts` |
+| `bash` | `FROM isol8:bash`<br/>`RUN apk add --no-cache jq curl` |
+
+CLI flags are merged with any packages already specified in `config.dependencies`, so both sources contribute to the custom image.
 
 ## Base Images
 
-All base images are built from a multi-stage `Dockerfile` in the `docker/` directory. Each image is Alpine-based and includes:
+All base images are built from a multi-stage `Dockerfile` in the `docker/` directory. The shared `base` stage is Alpine 3.21 and includes:
 
-- The runtime binary
-- A non-root `sandbox` user
-- A `/sandbox` working directory
-- The HTTP/HTTPS filtering proxy (`proxy.mjs`)
+- `tini` as the init process (PID 1 signal handling)
+- `curl` and `ca-certificates`
+- The HTTP/HTTPS filtering proxy (`proxy.mjs`) copied to `/usr/local/bin/`
+- `/sandbox` as the working directory
+- `tini` as the entrypoint
+
+Each runtime stage extends `base` with its specific runtime binary:
+
+| Stage | Base | Installs |
+|:------|:-----|:---------|
+| `python` | `base` | `python3`, `py3-pip` |
+| `node` | `base` | `nodejs`, `npm` |
+| `bun` | `base` | `bash`, `unzip`, `libstdc++`, `libgcc`, then downloads Bun via install script |
+| `deno` | `denoland/deno:alpine` | `tini`, `curl`, `ca-certificates`, `proxy.mjs` |
+| `bash` | `base` | `bash` |
+
+<Note>
+  The Deno stage uses `denoland/deno:alpine` as its base image instead of the shared `base` stage. It independently installs `tini`, `curl`, and `ca-certificates`, and copies `proxy.mjs` — mirroring the setup from `base` but starting from the official Deno Alpine image.
+</Note>

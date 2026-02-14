@@ -17,42 +17,51 @@
       }
     ]
   },
+  "contextual": {
+    "options": ["copy", "view", "chatgpt", "claude"]
+  },
   "navigation": {
     "tabs": [
       {
         "tab": "Documentation",
-        "href": "/"
-      },
-      {
-        "tab": "API Reference",
-        "href": "/server"
-      }
-    ],
-    "groups": [
-      {
-        "group": "Getting Started",
-        "pages": ["index", "quickstart"]
-      },
-      {
-        "group": "CLI",
-        "pages": ["cli/run", "cli/setup", "cli/serve", "cli/config"]
-      },
-      {
-        "group": "TypeScript Library",
-        "pages": [
-          "library/overview",
-          "library/execution",
-          "library/streaming",
-          "library/file-io"
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": ["index", "quickstart"]
+          },
+          {
+            "group": "CLI",
+            "pages": ["cli/run", "cli/setup", "cli/serve", "cli/config"]
+          },
+          {
+            "group": "TypeScript Library",
+            "pages": [
+              "library/overview",
+              "library/execution",
+              "library/streaming",
+              "library/file-io"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "configuration",
+              "runtimes",
+              "benchmarks",
+              "architecture",
+              "security"
+            ]
+          }
         ]
       },
       {
-        "group": "HTTP Server",
-        "pages": ["server/overview", "server/endpoints"]
-      },
-      {
-        "group": "Reference",
-        "pages": ["configuration", "security"]
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "HTTP Server",
+            "pages": ["server/overview", "server/endpoints"]
+          }
+        ]
       }
     ]
   },
