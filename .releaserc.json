@@ -17,6 +17,28 @@
         "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
       }
     ],
-    "@semantic-release/github"
+    [
+      "@semantic-release/github",
+      {
+        "assets": [
+          {
+            "path": "dist/isol8-server-linux-x64",
+            "label": "isol8-server-linux-x64"
+          },
+          {
+            "path": "dist/isol8-server-linux-arm64",
+            "label": "isol8-server-linux-arm64"
+          },
+          {
+            "path": "dist/isol8-server-darwin-x64",
+            "label": "isol8-server-darwin-x64"
+          },
+          {
+            "path": "dist/isol8-server-darwin-arm64",
+            "label": "isol8-server-darwin-arm64"
+          }
+        ]
+      }
+    ]
   ]
 }

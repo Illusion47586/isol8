@@ -10,7 +10,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { exec, spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -47,11 +47,11 @@ try {
 // ─── Build step ──────────────────────────────────────────────────────
 
 beforeAll(async () => {
-  const result = await execAsync("bun run build", { cwd: ROOT, timeout: 60_000 });
+  const result = await execAsync("bun run build", { cwd: ROOT, timeout: 120_000 });
   if (result.stderr?.includes("build failed")) {
     throw new Error(`Build failed: ${result.stderr}`);
   }
-}, 120_000);
+}, 180_000);
 
 // ─── Artifact integrity ─────────────────────────────────────────────
 
@@ -65,6 +65,7 @@ describe("artifact integrity", () => {
       "src/index.d.ts",
       "docker/Dockerfile",
       "docker/proxy.mjs",
+      "isol8-server",
     ];
     for (const file of required) {
       expect(existsSync(join(DIST, file))).toBe(true);
@@ -490,31 +491,546 @@ describe("CLI config command", () => {
 // ─── CLI: serve command ──────────────────────────────────────────────
 
 describe("CLI serve command", () => {
-  test("serve exits 1 when not running under Bun", async () => {
+  test("serve without --key or ISOL8_API_KEY exits 1", async () => {
     try {
-      await runCLI("serve --key test-key");
-      throw new Error("Should have failed");
-    } catch (err: any) {
-      // exec throws on non-zero exit
-      expect(err.code).toBe(1);
-      expect(err.stderr).toContain("Bun");
-    }
-  });
-
-  test("serve without --key or ISOL8_API_KEY exits 1 under Bun", async () => {
-    // This runs under bun, so it passes the Bun check but fails on missing key
-    try {
-      await execAsync(`bun run ${CLI} serve`, {
-        cwd: ROOT,
-        env: { ...process.env, ISOL8_API_KEY: "" },
-        timeout: 10_000,
-      });
+      await runCLI("serve", { env: { ISOL8_API_KEY: "" } });
       throw new Error("Should have failed");
     } catch (err: any) {
       expect(err.code).toBe(1);
       expect(err.stderr).toContain("API key required");
     }
   });
+
+  test("serve --help lists --update flag", async () => {
+    const { stdout } = await runCLI("serve --help");
+    expect(stdout).toContain("--update");
+  });
+
+  test("serve --help lists --port and --key flags", async () => {
+    const { stdout } = await runCLI("serve --help");
+    expect(stdout).toContain("--port");
+    expect(stdout).toContain("--key");
+  });
+});
+
+// ─── Compiled server binary ──────────────────────────────────────────
+
+describe("compiled server binary", () => {
+  const SERVER_BINARY = join(DIST, "isol8-server");
+  const packageVersion = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf-8")).version;
+
+  // ── Artifact properties ────────────────────────────────────────
+
+  test("isol8-server binary exists after build", () => {
+    expect(existsSync(SERVER_BINARY)).toBe(true);
+  });
+
+  test("binary has executable permissions", async () => {
+    // Check that the binary is executable by running --version (would fail if not executable)
+    const { stdout } = await execAsync(`${SERVER_BINARY} --version`, {
+      cwd: ROOT,
+      timeout: 10_000,
+    });
+    expect(stdout.trim()).toBe(packageVersion);
+  });
+
+  test("binary is a reasonable size (>10MB, self-contained)", () => {
+    const stat = statSync(SERVER_BINARY);
+    // Compiled Bun binary should be ~50-70MB; at minimum >10MB
+    expect(stat.size).toBeGreaterThan(10 * 1024 * 1024);
+  });
+
+  // ── --help flag ────────────────────────────────────────────────
+
+  test("--help prints usage info", async () => {
+    const { stdout } = await execAsync(`${SERVER_BINARY} --help`, {
+      cwd: ROOT,
+      timeout: 10_000,
+    });
+    expect(stdout).toContain("isol8-server");
+    expect(stdout).toContain("--port");
+    expect(stdout).toContain("--key");
+    expect(stdout).toContain("--version");
+    expect(stdout).toContain("--help");
+  });
+
+  test("-h short flag prints same help", async () => {
+    const { stdout } = await execAsync(`${SERVER_BINARY} -h`, {
+      cwd: ROOT,
+      timeout: 10_000,
+    });
+    expect(stdout).toContain("isol8-server");
+    expect(stdout).toContain("--port");
+  });
+
+  test("no arguments prints help (exits 0)", async () => {
+    const { stdout } = await execAsync(`${SERVER_BINARY}`, {
+      cwd: ROOT,
+      timeout: 10_000,
+      env: { ...process.env, ISOL8_API_KEY: "" },
+    });
+    expect(stdout).toContain("isol8-server");
+    expect(stdout).toContain("Usage:");
+  });
+
+  test("--help includes version in header", async () => {
+    const { stdout } = await execAsync(`${SERVER_BINARY} --help`, {
+      cwd: ROOT,
+      timeout: 10_000,
+    });
+    expect(stdout).toContain(`v${packageVersion}`);
+  });
+
+  // ── --version flag ─────────────────────────────────────────────
+
+  test("--version prints version matching package.json", async () => {
+    const { stdout } = await execAsync(`${SERVER_BINARY} --version`, {
+      cwd: ROOT,
+      timeout: 10_000,
+    });
+    expect(stdout.trim()).toBe(packageVersion);
+  });
+
+  test("-V short flag prints version", async () => {
+    const { stdout } = await execAsync(`${SERVER_BINARY} -V`, {
+      cwd: ROOT,
+      timeout: 10_000,
+    });
+    expect(stdout.trim()).toBe(packageVersion);
+  });
+
+  // ── API key validation ─────────────────────────────────────────
+
+  test("missing --key and no ISOL8_API_KEY exits with error", async () => {
+    try {
+      await execAsync(`${SERVER_BINARY} --port 0`, {
+        cwd: ROOT,
+        timeout: 10_000,
+        env: { ...process.env, ISOL8_API_KEY: "" },
+      });
+      throw new Error("Should have failed");
+    } catch (err: any) {
+      expect(err.code).not.toBe(0);
+      expect(err.stderr).toContain("API key required");
+    }
+  });
+
+  test("ISOL8_API_KEY env var is accepted instead of --key", async () => {
+    const port = 30_000 + Math.floor(Math.random() * 10_000);
+    const child = spawn(SERVER_BINARY, ["--port", String(port)], {
+      stdio: "pipe",
+      env: { ...process.env, ISOL8_API_KEY: "env-key-test" },
+    });
+
+    try {
+      let started = false;
+      for (let i = 0; i < 30; i++) {
+        try {
+          const res = await fetch(`http://localhost:${port}/health`);
+          if (res.ok) {
+            started = true;
+            break;
+          }
+        } catch {
+          // not ready
+        }
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      expect(started).toBe(true);
+    } finally {
+      child.kill("SIGTERM");
+      await new Promise<void>((resolve) => {
+        child.on("exit", () => resolve());
+        setTimeout(() => {
+          child.kill("SIGKILL");
+          resolve();
+        }, 3000);
+      });
+    }
+  }, 15_000);
+
+  // ── Port parsing ───────────────────────────────────────────────
+
+  test("invalid --port value exits with error", async () => {
+    try {
+      await execAsync(`${SERVER_BINARY} --port abc --key test`, {
+        cwd: ROOT,
+        timeout: 10_000,
+      });
+      throw new Error("Should have failed");
+    } catch (err: any) {
+      expect(err.code).not.toBe(0);
+      expect(err.stderr).toContain("Invalid port");
+    }
+  });
+
+  test("-p short flag sets port", async () => {
+    const port = 30_000 + Math.floor(Math.random() * 10_000);
+    const child = spawn(SERVER_BINARY, ["-p", String(port), "-k", "short-flag-key"], {
+      stdio: "pipe",
+      env: { ...process.env },
+    });
+
+    try {
+      let started = false;
+      for (let i = 0; i < 30; i++) {
+        try {
+          const res = await fetch(`http://localhost:${port}/health`);
+          if (res.ok) {
+            started = true;
+            break;
+          }
+        } catch {
+          // not ready
+        }
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      expect(started).toBe(true);
+    } finally {
+      child.kill("SIGTERM");
+      await new Promise<void>((resolve) => {
+        child.on("exit", () => resolve());
+        setTimeout(() => {
+          child.kill("SIGKILL");
+          resolve();
+        }, 3000);
+      });
+    }
+  }, 15_000);
+
+  test("PORT env var sets port when --port not specified", async () => {
+    const port = 30_000 + Math.floor(Math.random() * 10_000);
+    const child = spawn(SERVER_BINARY, ["--key", "env-port-key"], {
+      stdio: "pipe",
+      env: { ...process.env, PORT: String(port) },
+    });
+
+    try {
+      let started = false;
+      for (let i = 0; i < 30; i++) {
+        try {
+          const res = await fetch(`http://localhost:${port}/health`);
+          if (res.ok) {
+            started = true;
+            break;
+          }
+        } catch {
+          // not ready
+        }
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      expect(started).toBe(true);
+    } finally {
+      child.kill("SIGTERM");
+      await new Promise<void>((resolve) => {
+        child.on("exit", () => resolve());
+        setTimeout(() => {
+          child.kill("SIGKILL");
+          resolve();
+        }, 3000);
+      });
+    }
+  }, 15_000);
+
+  // ── Unknown arguments ──────────────────────────────────────────
+
+  test("unknown argument exits with error", async () => {
+    try {
+      await execAsync(`${SERVER_BINARY} --bogus`, {
+        cwd: ROOT,
+        timeout: 10_000,
+      });
+      throw new Error("Should have failed");
+    } catch (err: any) {
+      expect(err.code).not.toBe(0);
+      expect(err.stderr).toContain("Unknown argument");
+    }
+  });
+
+  // ── Server behavior ────────────────────────────────────────────
+
+  test("/health responds with status ok and correct version", async () => {
+    const port = 30_000 + Math.floor(Math.random() * 10_000);
+    const child = spawn(SERVER_BINARY, ["--port", String(port), "--key", "health-key"], {
+      stdio: "pipe",
+      env: { ...process.env },
+    });
+
+    try {
+      let body: any;
+      for (let i = 0; i < 30; i++) {
+        try {
+          const res = await fetch(`http://localhost:${port}/health`);
+          if (res.ok) {
+            body = await res.json();
+            break;
+          }
+        } catch {
+          // not ready
+        }
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      expect(body).toBeDefined();
+      expect(body.status).toBe("ok");
+      expect(body.version).toBe(packageVersion);
+    } finally {
+      child.kill("SIGTERM");
+      await new Promise<void>((resolve) => {
+        child.on("exit", () => resolve());
+        setTimeout(() => {
+          child.kill("SIGKILL");
+          resolve();
+        }, 3000);
+      });
+    }
+  }, 15_000);
+
+  test("/health does not require auth", async () => {
+    const port = 30_000 + Math.floor(Math.random() * 10_000);
+    const child = spawn(SERVER_BINARY, ["--port", String(port), "--key", "auth-test-key"], {
+      stdio: "pipe",
+      env: { ...process.env },
+    });
+
+    try {
+      let statusCode: number | undefined;
+      for (let i = 0; i < 30; i++) {
+        try {
+          const res = await fetch(`http://localhost:${port}/health`);
+          statusCode = res.status;
+          if (res.ok) {
+            break;
+          }
+        } catch {
+          // not ready
+        }
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      expect(statusCode).toBe(200);
+    } finally {
+      child.kill("SIGTERM");
+      await new Promise<void>((resolve) => {
+        child.on("exit", () => resolve());
+        setTimeout(() => {
+          child.kill("SIGKILL");
+          resolve();
+        }, 3000);
+      });
+    }
+  }, 15_000);
+
+  test("authenticated endpoints return 401 without bearer token", async () => {
+    const port = 30_000 + Math.floor(Math.random() * 10_000);
+    const child = spawn(SERVER_BINARY, ["--port", String(port), "--key", "secret-key"], {
+      stdio: "pipe",
+      env: { ...process.env },
+    });
+
+    try {
+      // Wait for server
+      for (let i = 0; i < 30; i++) {
+        try {
+          const res = await fetch(`http://localhost:${port}/health`);
+          if (res.ok) {
+            break;
+          }
+        } catch {
+          // not ready
+        }
+        await new Promise((r) => setTimeout(r, 200));
+      }
+
+      // POST /execute without auth should be 401
+      const res = await fetch(`http://localhost:${port}/execute`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ request: { code: "print(1)", runtime: "python" } }),
+      });
+      expect(res.status).toBe(401);
+    } finally {
+      child.kill("SIGTERM");
+      await new Promise<void>((resolve) => {
+        child.on("exit", () => resolve());
+        setTimeout(() => {
+          child.kill("SIGKILL");
+          resolve();
+        }, 3000);
+      });
+    }
+  }, 15_000);
+
+  test("authenticated endpoints accept valid bearer token", async () => {
+    const port = 30_000 + Math.floor(Math.random() * 10_000);
+    const apiKey = "valid-token-test";
+    const child = spawn(SERVER_BINARY, ["--port", String(port), "--key", apiKey], {
+      stdio: "pipe",
+      env: { ...process.env },
+    });
+
+    try {
+      // Wait for server
+      for (let i = 0; i < 30; i++) {
+        try {
+          const res = await fetch(`http://localhost:${port}/health`);
+          if (res.ok) {
+            break;
+          }
+        } catch {
+          // not ready
+        }
+        await new Promise((r) => setTimeout(r, 200));
+      }
+
+      // POST /execute with correct auth — should not be 401
+      // (may be 500 if Docker isn't available, but that's fine — not 401)
+      const res = await fetch(`http://localhost:${port}/execute`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({ request: { code: "print(1)", runtime: "python" } }),
+      });
+      expect(res.status).not.toBe(401);
+    } finally {
+      child.kill("SIGTERM");
+      await new Promise<void>((resolve) => {
+        child.on("exit", () => resolve());
+        setTimeout(() => {
+          child.kill("SIGKILL");
+          resolve();
+        }, 3000);
+      });
+    }
+  }, 15_000);
+
+  test("authenticated endpoints reject wrong bearer token with 403", async () => {
+    const port = 30_000 + Math.floor(Math.random() * 10_000);
+    const child = spawn(SERVER_BINARY, ["--port", String(port), "--key", "correct-key"], {
+      stdio: "pipe",
+      env: { ...process.env },
+    });
+
+    try {
+      // Wait for server
+      for (let i = 0; i < 30; i++) {
+        try {
+          const res = await fetch(`http://localhost:${port}/health`);
+          if (res.ok) {
+            break;
+          }
+        } catch {
+          // not ready
+        }
+        await new Promise((r) => setTimeout(r, 200));
+      }
+
+      const res = await fetch(`http://localhost:${port}/execute`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer wrong-key",
+        },
+        body: JSON.stringify({ request: { code: "print(1)", runtime: "python" } }),
+      });
+      expect(res.status).toBe(403);
+    } finally {
+      child.kill("SIGTERM");
+      await new Promise<void>((resolve) => {
+        child.on("exit", () => resolve());
+        setTimeout(() => {
+          child.kill("SIGKILL");
+          resolve();
+        }, 3000);
+      });
+    }
+  }, 15_000);
+
+  // ── Startup output ─────────────────────────────────────────────
+
+  test("binary prints startup info to stdout", async () => {
+    const port = 30_000 + Math.floor(Math.random() * 10_000);
+    const child = spawn(SERVER_BINARY, ["--port", String(port), "--key", "startup-key"], {
+      stdio: "pipe",
+      env: { ...process.env },
+    });
+
+    try {
+      let stdout = "";
+      child.stdout?.on("data", (chunk: Buffer) => {
+        stdout += chunk.toString();
+      });
+
+      // Wait for startup message
+      for (let i = 0; i < 30; i++) {
+        if (stdout.includes("listening")) {
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 200));
+      }
+
+      expect(stdout).toContain(`v${packageVersion}`);
+      expect(stdout).toContain("listening");
+      expect(stdout).toContain(String(port));
+      expect(stdout).toContain("Auth");
+    } finally {
+      child.kill("SIGTERM");
+      await new Promise<void>((resolve) => {
+        child.on("exit", () => resolve());
+        setTimeout(() => {
+          child.kill("SIGKILL");
+          resolve();
+        }, 3000);
+      });
+    }
+  }, 15_000);
+
+  // ── Signal handling ────────────────────────────────────────────
+
+  test("SIGTERM causes clean shutdown", async () => {
+    const port = 30_000 + Math.floor(Math.random() * 10_000);
+    const child = spawn(SERVER_BINARY, ["--port", String(port), "--key", "signal-key"], {
+      stdio: "pipe",
+      env: { ...process.env },
+    });
+
+    // Wait for server to be ready
+    for (let i = 0; i < 30; i++) {
+      try {
+        const res = await fetch(`http://localhost:${port}/health`);
+        if (res.ok) {
+          break;
+        }
+      } catch {
+        // not ready
+      }
+      await new Promise((r) => setTimeout(r, 200));
+    }
+
+    // Send SIGTERM and verify process terminates within a reasonable time
+    child.kill("SIGTERM");
+    const exited = await new Promise<boolean>((resolve) => {
+      const timeout = setTimeout(() => {
+        child.kill("SIGKILL");
+        resolve(false);
+      }, 5000);
+      child.on("exit", () => {
+        clearTimeout(timeout);
+        resolve(true);
+      });
+    });
+
+    // Verify the port is no longer bound (server stopped)
+    try {
+      await fetch(`http://localhost:${port}/health`);
+      // If we get here, server may still be running briefly — that's ok
+    } catch {
+      // Expected: connection refused means server shut down
+    }
+
+    // The process should have exited (SIGTERM or SIGKILL both count)
+    expect(exited).toBe(true);
+  }, 15_000);
 });
 
 // ─── CLI: run command (Docker-dependent) ─────────────────────────────

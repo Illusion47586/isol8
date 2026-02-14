@@ -11,11 +11,11 @@ describe("Integration: Server & Client", () => {
 
   const PORT = 4567;
   const API_KEY = "integration-test-key";
-  let server: ReturnType<typeof createServer>;
+  let server: Awaited<ReturnType<typeof createServer>>;
   let serverInstance: any;
 
-  beforeAll(() => {
-    server = createServer({ port: PORT, apiKey: API_KEY });
+  beforeAll(async () => {
+    server = await createServer({ port: PORT, apiKey: API_KEY });
     serverInstance = Bun.serve({
       fetch: server.app.fetch,
       port: PORT,

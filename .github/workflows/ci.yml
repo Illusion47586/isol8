@@ -39,6 +39,9 @@ jobs:
       - name: Build
         run: bun run build
 
+      - name: Setup Docker Images
+        run: node dist/cli.js setup
+
       - name: Unit Tests
         run: bun test tests/unit/
 

@@ -1,7 +1,15 @@
 #!/usr/bin/env node
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { arch, homedir, platform } from "node:os";
 import { join, resolve } from "node:path";
 import { Command } from "commander";
 import Docker from "dockerode";
@@ -13,10 +21,11 @@ import { buildBaseImages, buildCustomImages } from "./engine/image-builder";
 // Register all built-in runtime adapters
 import { RuntimeRegistry } from "./runtime";
 import type { ExecutionRequest, Isol8Engine, Isol8Options, NetworkMode, Runtime } from "./types";
+import { VERSION } from "./version";
 
 const program = new Command();
 
-program.name("isol8").description("Secure code execution engine").version("0.1.0");
+program.name("isol8").description("Secure code execution engine").version(VERSION);
 
 // ─── setup ────────────────────────────────────────────────────────────
 
@@ -235,16 +244,8 @@ program
   .description("Start the isol8 remote server")
   .option("-p, --port <port>", "Port to listen on", "3000")
   .option("-k, --key <key>", "API key for authentication")
+  .option("--update", "Force re-download the server binary")
   .action(async (opts) => {
-    // Check if running under Bun
-    const isBun = typeof globalThis.Bun !== "undefined";
-    if (!isBun) {
-      console.error("[ERR] The serve command requires Bun runtime.");
-      console.error("      Install Bun: https://bun.sh");
-      console.error("      Then run: bun run src/cli.ts serve");
-      process.exit(1);
-    }
-
     const apiKey = opts.key ?? process.env.ISOL8_API_KEY;
     if (!apiKey) {
       console.error("[ERR] API key required. Use --key or ISOL8_API_KEY env var.");
@@ -253,17 +254,184 @@ program
 
     const port = Number.parseInt(opts.port, 10);
 
-    const { createServer } = await import("./server/index");
-    const server = createServer({ port, apiKey });
+    // When running under Bun (e.g. `bun run dev -- serve`), start the server
+    // directly in-process. When running under Node.js (the built CLI), download
+    // and launch the compiled standalone binary.
+    if (typeof globalThis.Bun !== "undefined") {
+      const { createServer } = await import("./server/index");
+      const server = await createServer({ port, apiKey });
+      console.log(`[INFO] isol8 server v${VERSION} listening on http://localhost:${port}`);
+      console.log("       Auth: Bearer token required");
+      Bun.serve({ fetch: server.app.fetch, port });
+      return;
+    }
 
-    console.log(`[INFO] isol8 server listening on http://localhost:${port}`);
-    console.log("   Auth: Bearer token required");
+    const binaryPath = await ensureServerBinary(opts.update ?? false);
 
-    Bun.serve({
-      fetch: server.app.fetch,
-      port,
+    // Spawn the server binary
+    const { spawn: spawnChild } = await import("node:child_process");
+    const child = spawnChild(binaryPath, ["--port", String(port), "--key", apiKey], {
+      stdio: "inherit",
+    });
+
+    // Forward signals to child
+    const forwardSignal = (signal: NodeJS.Signals) => {
+      child.kill(signal);
+    };
+    process.on("SIGINT", () => forwardSignal("SIGINT"));
+    process.on("SIGTERM", () => forwardSignal("SIGTERM"));
+
+    child.on("exit", (code) => {
+      process.exit(code ?? 0);
     });
   });
+
+/** Resolve the platform/arch identifier for the server binary download. */
+function getServerBinaryName(): string {
+  const os = platform();
+  const cpu = arch();
+
+  const osMap: Record<string, string> = {
+    darwin: "darwin",
+    linux: "linux",
+    win32: "windows",
+  };
+
+  const archMap: Record<string, string> = {
+    arm64: "arm64",
+    aarch64: "arm64",
+    x64: "x64",
+    x86_64: "x64",
+  };
+
+  const resolvedOs = osMap[os];
+  const resolvedArch = archMap[cpu];
+
+  if (!(resolvedOs && resolvedArch)) {
+    console.error(`[ERR] Unsupported platform: ${os}-${cpu}`);
+    process.exit(1);
+  }
+
+  return `isol8-server-${resolvedOs}-${resolvedArch}`;
+}
+
+/** Get the version of an existing server binary, or null if it doesn't exist or fails. */
+async function getServerBinaryVersion(binaryPath: string): Promise<string | null> {
+  if (!existsSync(binaryPath)) {
+    return null;
+  }
+  try {
+    const { execFileSync } = await import("node:child_process");
+    const output = execFileSync(binaryPath, ["--version"], {
+      encoding: "utf-8",
+      timeout: 5000,
+    });
+    return output.trim();
+  } catch {
+    return null;
+  }
+}
+
+/** Download the server binary from GitHub Releases. */
+async function downloadServerBinary(binaryPath: string): Promise<void> {
+  const binaryName = getServerBinaryName();
+  const url = `https://github.com/Illusion47586/isol8/releases/download/v${VERSION}/${binaryName}`;
+
+  const spinner = ora(`Downloading isol8 server v${VERSION}...`).start();
+  try {
+    const response = await fetch(url, { redirect: "follow" });
+
+    if (!response.ok) {
+      spinner.fail(`Failed to download server binary (HTTP ${response.status})`);
+      if (response.status === 404) {
+        console.error(`[ERR] No server binary found for v${VERSION} (${binaryName}).`);
+        console.error("      Server binaries may not be available for this version yet.");
+        console.error(`      URL: ${url}`);
+      }
+      process.exit(1);
+    }
+
+    // Ensure directory exists
+    const binDir = join(homedir(), ".isol8", "bin");
+    mkdirSync(binDir, { recursive: true });
+
+    // Write to a temp file first, then rename (atomic)
+    const tmpPath = `${binaryPath}.tmp`;
+    const buffer = Buffer.from(await response.arrayBuffer());
+    writeFileSync(tmpPath, buffer);
+    chmodSync(tmpPath, 0o755);
+
+    // Rename into place
+    renameSync(tmpPath, binaryPath);
+
+    spinner.succeed(`Downloaded isol8 server v${VERSION}`);
+  } catch (err) {
+    spinner.fail("Failed to download server binary");
+    // Clean up temp file if it exists
+    const tmpPath = `${binaryPath}.tmp`;
+    if (existsSync(tmpPath)) {
+      unlinkSync(tmpPath);
+    }
+    throw err;
+  }
+}
+
+/** Prompt the user with a Y/n question. Returns true if they answer yes. */
+async function promptYesNo(question: string): Promise<boolean> {
+  const readline = await import("node:readline");
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  const answer = await new Promise<string>((resolve) => {
+    rl.question(question, resolve);
+  });
+  rl.close();
+  const normalized = answer.trim().toLowerCase();
+  return normalized === "" || normalized === "y" || normalized === "yes";
+}
+
+/**
+ * Ensure the server binary exists at ~/.isol8/bin/isol8-server with
+ * a version matching the CLI. Downloads or updates as needed.
+ */
+async function ensureServerBinary(forceUpdate: boolean): Promise<string> {
+  const binDir = join(homedir(), ".isol8", "bin");
+  const binaryPath = join(binDir, "isol8-server");
+
+  // Force re-download
+  if (forceUpdate) {
+    await downloadServerBinary(binaryPath);
+    return binaryPath;
+  }
+
+  // Check existing binary
+  const existingVersion = await getServerBinaryVersion(binaryPath);
+
+  if (existingVersion === null) {
+    // No binary found — download
+    await downloadServerBinary(binaryPath);
+    return binaryPath;
+  }
+
+  if (existingVersion === VERSION) {
+    // Version matches — use as-is
+    return binaryPath;
+  }
+
+  // Version mismatch — prompt user
+  console.log(`Server binary v${existingVersion} found, but CLI is v${VERSION}.`);
+  const shouldUpdate = await promptYesNo("Download updated binary? [Y/n] ");
+
+  if (shouldUpdate) {
+    await downloadServerBinary(binaryPath);
+  } else {
+    console.warn(`[WARN] Running server v${existingVersion} (CLI is v${VERSION})`);
+  }
+
+  return binaryPath;
+}
+
 // ─── config ───────────────────────────────────────────────────────────
 
 program
