@@ -18,7 +18,8 @@ describe("RuntimeRegistry", () => {
   test("detects runtime from filename", () => {
     expect(RuntimeRegistry.detect("script.py").name).toBe("python");
     expect(RuntimeRegistry.detect("app.js").name).toBe("node");
-    expect(RuntimeRegistry.detect("main.ts").name).toBe("deno"); // .ts maps to last registered (deno)
+    expect(RuntimeRegistry.detect("main.ts").name).toBe("bun"); // .ts maps to bun (registered before deno)
+    expect(RuntimeRegistry.detect("main.mts").name).toBe("deno"); // .mts maps to deno
   });
 
   test("throws on unknown extension", () => {
