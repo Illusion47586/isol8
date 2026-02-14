@@ -259,7 +259,7 @@ program
     // and launch the compiled standalone binary.
     if (typeof globalThis.Bun !== "undefined") {
       const { createServer } = await import("./server/index");
-      const server = createServer({ port, apiKey });
+      const server = await createServer({ port, apiKey });
       console.log(`[INFO] isol8 server v${VERSION} listening on http://localhost:${port}`);
       console.log("       Auth: Bearer token required");
       Bun.serve({ fetch: server.app.fetch, port });

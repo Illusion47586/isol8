@@ -79,7 +79,6 @@ const serverCompile = Bun.spawn(
     "build",
     "--compile",
     "--minify",
-    "--bytecode",
     join(root, "src/server/standalone.ts"),
     "--outfile",
     join(outDir, "isol8-server"),

@@ -5,13 +5,17 @@
  * Compiled with `bun build --compile` into a self-contained executable
  * that runs anywhere without requiring Bun or Node.js to be installed.
  *
+ * IMPORTANT: This module must NOT eagerly import the server code or anything
+ * that transitively imports `dockerode`. The import chain
+ * dockerode → ssh2 → protobufjs → long crashes on Linux when compiled with
+ * `bun build --compile --minify`. Server code is lazy-imported ONLY after
+ * arg parsing (so --version and --help always work).
+ *
  * Usage:
  *   isol8-server --port 3000 --key my-secret-key
  *   isol8-server --version
  *   isol8-server --help
  */
-
-import { createServer } from "./index";
 
 const VERSION = process.env.ISOL8_VERSION ?? "0.0.0";
 
@@ -88,7 +92,11 @@ function parseArgs(argv: string[]): { port: number; apiKey: string } {
 // ─── Main ────────────────────────────────────────────────────────────
 
 const { port, apiKey } = parseArgs(process.argv);
-const server = createServer({ port, apiKey });
+
+// Lazy-import server code AFTER arg parsing to avoid eagerly loading
+// dockerode's transitive dependency chain which crashes on Linux.
+const { createServer } = await import("./index");
+const server = await createServer({ port, apiKey });
 
 console.log(`[INFO] isol8 server v${VERSION} listening on http://localhost:${port}`);
 console.log("       Auth: Bearer token required");

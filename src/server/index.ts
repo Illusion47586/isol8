@@ -9,13 +9,10 @@
 import { Hono } from "hono";
 import { loadConfig } from "../config";
 import { Semaphore } from "../engine/concurrency";
-import { DockerIsol8 } from "../engine/docker";
+import type { DockerIsol8 } from "../engine/docker";
 import type { ExecutionRequest, Isol8Options } from "../types";
 import { VERSION } from "../version";
 import { authMiddleware } from "./auth";
-
-// Import runtime adapters (registers them in the registry)
-import "../runtime";
 
 /** Configuration for the isol8 HTTP server. */
 export interface ServerOptions {
@@ -37,6 +34,11 @@ const sessions = new Map<string, SessionState>();
 /**
  * Creates and configures the isol8 HTTP server.
  *
+ * Lazy-imports DockerIsol8 and runtime adapters to avoid eagerly loading
+ * dockerode and its transitive dependencies (ssh2/protobufjs/long) at
+ * module initialization time. This is critical for the compiled binary
+ * which crashes on Linux if these modules are loaded during bytecode init.
+ *
  * @param options - Server configuration (port, API key).
  * @returns Object containing the Hono `app`, `fetch` handler, and resolved `port`.
  *
@@ -46,7 +48,13 @@ const sessions = new Map<string, SessionState>();
  * Bun.serve({ fetch: server.app.fetch, port: server.port });
  * ```
  */
-export function createServer(options: ServerOptions) {
+export async function createServer(options: ServerOptions) {
+  // Lazy-import DockerIsol8 and runtime adapters to avoid eager dockerode loading.
+  // The import chain dockerode → ssh2 → protobufjs → long crashes on Linux
+  // when compiled with `bun build --compile --minify`.
+  const { DockerIsol8 } = await import("../engine/docker");
+  await import("../runtime");
+
   const config = loadConfig();
   const app = new Hono();
   const globalSemaphore = new Semaphore(config.maxConcurrent);
