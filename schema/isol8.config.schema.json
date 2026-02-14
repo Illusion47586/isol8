@@ -69,6 +69,11 @@
           },
           "type": "object"
         },
+        "debug": {
+          "default": false,
+          "description": "Enable debug logging.",
+          "type": "boolean"
+        },
         "defaults": {
           "additionalProperties": false,
           "description": "Default execution settings applied to all runs. (Partial override allowed).",

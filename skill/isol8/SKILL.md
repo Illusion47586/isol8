@@ -37,6 +37,8 @@ Isol8 is a secure execution engine for running untrusted code inside Docker cont
 | `-r, --runtime <name>` | auto-detect | Force: `python`, `node`, `bun`, `deno`, `bash` |
 | `--no-stream` | `false` | Disable real-time output streaming |
 | `--persistent` | `false` | Keep container alive between runs |
+| `--persist` | `false` | Keep container after execution for debugging |
+| `--debug` | `false` | Enable internal debug logging |
 | `--install <package>` | — | Install package before execution (repeatable) |
 | `--net <mode>` | `none` | Network: `none`, `host`, `filtered` |
 | `--timeout <ms>` | `30000` | Execution timeout |
@@ -88,6 +90,8 @@ const isol8 = new DockerIsol8({
   cpuLimit: 1.0,
   timeoutMs: 30000,
   secrets: {},           // values masked in output
+  persist: false,        // keep container after execution for debugging
+  debug: false,          // enable internal debug logging
 });
 
 await isol8.start();

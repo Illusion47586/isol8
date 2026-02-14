@@ -21,6 +21,7 @@ import type {
   NetworkMode,
   StreamEvent,
 } from "../types";
+import { logger } from "../utils/logger";
 import { Semaphore } from "./concurrency";
 import { ContainerPool } from "./pool";
 import {
@@ -200,7 +201,7 @@ async function installPackages(
 ): Promise<void> {
   const cmd = getInstallCommand(runtime, packages);
   // Debug log
-  console.error(`[DEBUG] Installing packages: ${JSON.stringify(cmd)}`);
+  logger.debug(`Installing packages: ${JSON.stringify(cmd)}`);
 
   // Set environment for writable install locations
   // Use /sandbox instead of /tmp because /tmp has noexec flag which prevents loading .so files
@@ -296,6 +297,7 @@ export class DockerIsol8 implements Isol8Engine {
   private readonly semaphore: Semaphore;
   private readonly sandboxSize: string;
   private readonly tmpSize: string;
+  private readonly persist: boolean;
 
   private container: Docker.Container | null = null;
   private persistentRuntime: RuntimeAdapter | null = null;
@@ -321,6 +323,11 @@ export class DockerIsol8 implements Isol8Engine {
     this.semaphore = new Semaphore(maxConcurrent);
     this.sandboxSize = options.sandboxSize ?? "512m";
     this.tmpSize = options.tmpSize ?? "256m";
+    this.persist = options.persist ?? false;
+
+    if (options.debug) {
+      logger.setDebug(true);
+    }
   }
 
   /**
@@ -493,10 +500,14 @@ export class DockerIsol8 implements Isol8Engine {
 
         yield* this.streamExecOutput(execStream, exec, container, timeoutMs);
       } finally {
-        try {
-          await container.remove({ force: true });
-        } catch {
-          // Best effort cleanup
+        if (this.persist) {
+          logger.debug(`[Persist] Leaving container running for inspection: ${container.id}`);
+        } else {
+          try {
+            await container.remove({ force: true });
+          } catch {
+            // Best effort cleanup
+          }
         }
       }
     } finally {
@@ -615,8 +626,12 @@ export class DockerIsol8 implements Isol8Engine {
         ...(req.outputPaths ? { files: await this.retrieveFiles(container, req.outputPaths) } : {}),
       };
     } finally {
-      // Return container to pool for reuse (pool will clean sandbox)
-      await this.pool!.release(container, image);
+      if (this.persist) {
+        logger.debug(`[Persist] Leaving container running for inspection: ${container.id}`);
+      } else {
+        // Return container to pool for reuse (pool will clean sandbox)
+        await this.pool!.release(container, image);
+      }
     }
   }
 

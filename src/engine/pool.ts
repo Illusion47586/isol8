@@ -10,6 +10,7 @@
  */
 
 import type Docker from "dockerode";
+import { logger } from "../utils/logger";
 
 /** Configuration for the container pool. */
 export interface PoolOptions {
@@ -145,20 +146,20 @@ export class ContainerPool {
       ...this.createOptions,
       Image: image,
     });
-    // console.log(`[Pool] Container ${container.id} created for image: ${image}`);
+    logger.debug(`[Pool] Container ${container.id} created for image: ${image}`);
     await container.start();
-    // console.log(`[Pool] Container ${container.id} started.`);
+    logger.debug(`[Pool] Container ${container.id} started`);
     return container;
   }
 
   /** Replenish the pool in the background (non-blocking). */
   private replenish(image: string): void {
     if (this.replenishing.has(image)) {
-      // console.log(`[Pool] Replenishment for ${image} already in progress.`);
+      logger.debug(`[Pool] Replenishment for ${image} already in progress`);
       return;
     }
     this.replenishing.add(image);
-    // console.log(`[Pool] Starting background replenishment for image: ${image}`);
+    logger.debug(`[Pool] Starting background replenishment for image: ${image}`);
 
     const promise = this.createContainer(image)
       .then((container) => {
@@ -166,15 +167,15 @@ export class ContainerPool {
         if (pool.length < this.poolSize) {
           pool.push({ container, createdAt: Date.now() });
           this.pools.set(image, pool);
-          // console.log(
-          //   `[Pool] Replenished container ${container.id} added to pool for ${image}. Current pool size: ${pool.length}`
-          // );
+          logger.debug(
+            `[Pool] Replenished container ${container.id} added to pool for ${image}. Pool size: ${pool.length}`
+          );
         } else {
-          // console.log(
-          //   `[Pool] Replenished container ${container.id} not needed (pool for ${image} is full), destroying.`
-          // );
+          logger.debug(
+            `[Pool] Replenished container ${container.id} not needed (pool for ${image} is full), destroying`
+          );
           container.remove({ force: true }).catch((err) => {
-            console.error(
+            logger.error(
               `[Pool] Error destroying unneeded replenished container ${container.id}:`,
               err
             );
@@ -182,7 +183,7 @@ export class ContainerPool {
         }
       })
       .catch((err) => {
-        console.error(`[Pool] Error during replenishment for ${image}:`, err);
+        logger.error(`[Pool] Error during replenishment for ${image}:`, err);
       })
       .finally(() => {
         this.replenishing.delete(image);

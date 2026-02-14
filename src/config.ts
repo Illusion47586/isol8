@@ -34,6 +34,7 @@ const DEFAULT_CONFIG: Isol8Config = {
     maxContainerAgeMs: 3_600_000,
   },
   dependencies: {},
+  debug: false,
 };
 
 /**
@@ -97,6 +98,7 @@ function mergeConfig(defaults: Isol8Config, overrides: Partial<Isol8Config>): Is
       ...defaults.dependencies,
       ...overrides.dependencies,
     },
+    debug: overrides.debug ?? defaults.debug,
   };
 }
 

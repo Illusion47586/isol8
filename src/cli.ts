@@ -141,6 +141,8 @@ program
   .option("--host <url>", "Execute on remote server")
   .option("--key <key>", "API key for remote server")
   .option("--no-stream", "Disable real-time output streaming") // Default is now streaming
+  .option("--debug", "Enable debug logging")
+  .option("--persist", "Keep container running after execution for inspection")
   .action(async (file: string | undefined, opts) => {
     const { code, runtime, engineOptions, engine, stdinData, fileExtension } =
       await resolveRunInput(file, opts);
@@ -487,7 +489,15 @@ async function resolveRunInput(file: string | undefined, opts: any) {
     ...(opts.writable ? { readonlyRootFs: false } : {}),
     ...(opts.maxOutput ? { maxOutputSize: Number.parseInt(opts.maxOutput, 10) } : {}),
     ...(opts.tmpSize ? { tmpSize: opts.tmpSize } : {}),
+    debug: opts.debug ?? config.debug,
+    persist: opts.persist ?? false,
   };
+
+  // Configure global logger if debug enabled
+  if (engineOptions.debug) {
+    const { logger } = await import("./utils/logger");
+    logger.setDebug(true);
+  }
 
   // Determine file extension from file argument if present
   let fileExtension: string | undefined;

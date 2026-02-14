@@ -59,6 +59,14 @@ If the extension doesn't match any registered adapter, the CLI exits with an err
   Use a persistent container that preserves state between runs. Without this flag, each execution uses a fresh container from the warm pool. In persistent mode, the CLI creates a `RemoteIsol8` session (when `--host` is used) with a unique `sessionId`, or a local `DockerIsol8` in persistent mode.
 </ResponseField>
 
+<ResponseField name="--persist" type="boolean" default="false">
+  Keep the container running after execution completes, instead of cleaning it up. Useful for debugging — you can inspect the container's filesystem, processes, and state after a run. Note: this is different from `--persistent`, which keeps a container alive *between* runs for stateful sessions.
+</ResponseField>
+
+<ResponseField name="--debug" type="boolean" default="false">
+  Enable debug logging for internal engine operations. When set, isol8 prints detailed logs about container lifecycle, pool operations, persist decisions, and other internal state. These logs use the `[DEBUG]` prefix and are suppressed by default.
+</ResponseField>
+
 <ResponseField name="--no-stream" type="boolean" default="false">
   Disable real-time output streaming. By default, output is streamed as it is generated. Use this flag to buffer output and display it only after execution completes.
 </ResponseField>
@@ -280,3 +288,32 @@ isol8 run --persistent -e "x = 42" --runtime python \
 <Note>
   The `--net` flag defaults to `"none"` at the Commander level, which means the config file's `defaults.network` value is effectively ignored when using the CLI. To use a different network mode, pass `--net` explicitly (e.g. `--net filtered` or `--net host`).
 </Note>
+
+## FAQ
+
+### What is the difference between `--persist` and `--persistent`?
+
+- **`--persistent`** keeps a container alive **between** runs so that state (files, environment) is preserved across multiple executions. This is for stateful workflows where you want to build up state incrementally.
+- **`--persist`** keeps the container running **after** execution completes, instead of cleaning it up. This is a debugging tool — it lets you inspect the container's filesystem, logs, and processes post-execution.
+
+You can use both together: `--persistent --persist` gives you a stateful session whose container is not cleaned up when `stop()` is called.
+
+### What does `--debug` do?
+
+`--debug` enables verbose internal logging from the isol8 engine. It prints messages about container pool operations, container lifecycle events, and cleanup decisions with a `[DEBUG]` prefix. It does **not** affect the executed code's output — only isol8's own internal logs.
+
+### What happens with different flag combinations?
+
+| `--persist` | `--debug` | Behavior |
+|:------------|:----------|:---------|
+| `false` | `false` | Default. Containers are cleaned up silently after execution. |
+| `false` | `true` | Containers are cleaned up after execution, but internal engine logs are printed. |
+| `true` | `false` | Containers are left running after execution for inspection. No debug logs. |
+| `true` | `true` | Containers are left running after execution, and internal engine logs are printed. |
+
+### How is `--persist` different from `cleanup.autoPrune` in the config?
+
+- **`--persist`** (engine-level): Controls per-execution container cleanup. When `true`, the container used for that execution is not destroyed.
+- **`cleanup.autoPrune`** (config-level): Controls whether the **server** (`isol8 serve`) automatically prunes idle sessions. This is a server-side periodic cleanup and has no effect on local CLI usage.
+
+These are independent settings that operate at different levels.

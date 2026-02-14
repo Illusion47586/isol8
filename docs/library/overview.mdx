@@ -38,6 +38,8 @@ const isol8 = new DockerIsol8({
   sandboxSize: "64m",
   tmpSize: "64m",
   secrets: {},              // Secret env vars (values masked in output)
+  persist: false,           // Keep container after execution for debugging
+  debug: false,             // Enable internal debug logging
 });
 
 await isol8.start();  // No-op — containers are created lazily
@@ -108,6 +110,14 @@ All options are optional with sensible defaults.
 
 <ResponseField name="secrets" type="Record<string, string>" default="{}">
   Secret environment variables. Values are injected into the container and automatically masked in output.
+</ResponseField>
+
+<ResponseField name="persist" type="boolean" default="false">
+  Keep the container running after execution completes instead of cleaning it up. Useful for debugging — inspect the container's filesystem and state post-execution. This is different from `mode: "persistent"`, which keeps a container alive between runs for stateful sessions.
+</ResponseField>
+
+<ResponseField name="debug" type="boolean" default="false">
+  Enable debug logging for internal engine operations. When `true`, the engine prints detailed logs about container lifecycle, pool operations, and cleanup decisions with a `[DEBUG]` prefix. Does not affect the executed code's output.
 </ResponseField>
 
 ## RemoteIsol8

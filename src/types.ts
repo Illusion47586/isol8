@@ -188,6 +188,16 @@ export interface Isol8Options {
 
   /** Size of the `/tmp` tmpfs mount (e.g. `"64m"`, `"128m"`). @default "256m" */
   tmpSize?: string;
+
+  /** Enable debug logging. @default false */
+  debug?: boolean;
+
+  /**
+   * Keep the container running after execution for inspection/debugging.
+   * When true, the container is not cleaned up or returned to the pool.
+   * @default false
+   */
+  persist?: boolean;
 }
 
 /**
@@ -317,6 +327,9 @@ export interface Isol8Config {
 
   /** Runtime-specific packages to bake into custom Docker images. */
   dependencies: Isol8Dependencies;
+
+  /** Enable debug logging. @default false */
+  debug: boolean;
 }
 
 /**
@@ -326,6 +339,9 @@ export interface Isol8Config {
 export interface Isol8UserConfig {
   /** JSON Schema URI for editor validation/completion. */
   $schema?: string;
+
+  /** Enable debug logging. @default false */
+  debug?: boolean;
 
   /** Maximum number of containers that can run concurrently. @default 10 */
   maxConcurrent?: number;

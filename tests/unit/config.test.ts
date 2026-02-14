@@ -35,6 +35,54 @@ describe("loadConfig", () => {
     rmSync(tmpDir, { recursive: true });
   });
 
+  test("cleanup.autoPrune defaults to true", () => {
+    const config = loadConfig("/nonexistent/path");
+    expect(config.cleanup.autoPrune).toBe(true);
+  });
+
+  test("debug defaults to false", () => {
+    const config = loadConfig("/nonexistent/path");
+    expect(config.debug).toBe(false);
+  });
+
+  test("merging preserves cleanup.autoPrune and debug when not overridden", () => {
+    mkdirSync(tmpDir, { recursive: true });
+    writeFileSync(join(tmpDir, "isol8.config.json"), JSON.stringify({ maxConcurrent: 3 }));
+
+    const config = loadConfig(tmpDir);
+    expect(config.maxConcurrent).toBe(3);
+    // These should retain their defaults
+    expect(config.cleanup.autoPrune).toBe(true);
+    expect(config.debug).toBe(false);
+
+    rmSync(tmpDir, { recursive: true });
+  });
+
+  test("cleanup.autoPrune can be overridden to false", () => {
+    mkdirSync(tmpDir, { recursive: true });
+    writeFileSync(
+      join(tmpDir, "isol8.config.json"),
+      JSON.stringify({ cleanup: { autoPrune: false } })
+    );
+
+    const config = loadConfig(tmpDir);
+    expect(config.cleanup.autoPrune).toBe(false);
+    // maxContainerAgeMs should retain its default
+    expect(config.cleanup.maxContainerAgeMs).toBe(3_600_000);
+
+    rmSync(tmpDir, { recursive: true });
+  });
+
+  test("debug can be overridden to true", () => {
+    mkdirSync(tmpDir, { recursive: true });
+    writeFileSync(join(tmpDir, "isol8.config.json"), JSON.stringify({ debug: true }));
+
+    const config = loadConfig(tmpDir);
+    expect(config.debug).toBe(true);
+
+    rmSync(tmpDir, { recursive: true });
+  });
+
   test("merges dependencies from config", () => {
     mkdirSync(tmpDir, { recursive: true });
     writeFileSync(

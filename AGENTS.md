@@ -122,10 +122,10 @@ interface RuntimeAdapter {
 2. Creates `DockerIsol8` (local) or `RemoteIsol8` (remote)
 3. Calls `engine.start()` → no-op (pool created lazily on first execute)
 4. Calls `engine.execute(request)`:
-   - **Ephemeral**: acquires warm container from pool → injects code via exec → runs → collects output → returns container to pool
+   - **Ephemeral**: acquires warm container from pool → injects code via exec → runs → collects output → returns container to pool (unless `persist: true`)
    - **Persistent**: reuses container → `docker exec` → collects output
 5. Output pipeline: collect → truncate → mask secrets → trim
-6. Calls `engine.stop()` → kills container (persistent) or drains pool (ephemeral)
+6. Calls `engine.stop()` → kills container (persistent) or drains pool (ephemeral). If `persist: true`, ephemeral containers are **not** cleaned up after execution — they remain running for inspection/debugging.
 
 ## Important Patterns
 
@@ -172,6 +172,25 @@ Containers use two tmpfs mounts for security and performance:
    - Used for pip/npm caches during installation
 
 Both sizes can be configured via CLI flags (`--sandbox-size`, `--tmp-size`) or in `isol8.config.json`.
+
+### Logging
+
+All internal/debug logging uses the centralized `Logger` singleton in `src/utils/logger.ts`. The logger has four levels:
+
+- `logger.debug(...)` — Only prints when debug mode is enabled (gated by `logger.setDebug(true)`)
+- `logger.info(...)` — Always prints (informational messages)
+- `logger.warn(...)` — Always prints with `[WARN]` prefix
+- `logger.error(...)` — Always prints with `[ERROR]` prefix
+
+Debug mode is activated by passing `debug: true` in `Isol8Options` (or `--debug` on the CLI). The `DockerIsol8` constructor calls `logger.setDebug(true)` when this option is set. All internal engine logs (pool operations, container lifecycle, persist decisions) use `logger.debug()` so they are silent by default and only visible when debugging.
+
+### Persist vs Cleanup
+
+There are two distinct auto-cleanup mechanisms — do not confuse them:
+
+1. **`Isol8Options.persist`** (engine-level, default `false`): Controls whether containers are cleaned up after each execution. When `false` (default), ephemeral containers are returned to the pool and persistent containers are stopped normally. When `true`, containers are left running after execution for inspection/debugging.
+
+2. **`Isol8Config.cleanup.autoPrune`** (config-level, default `true`): Controls whether the **server** (`isol8 serve`) periodically prunes idle sessions. This is a server-side concern and has no effect on local CLI usage.
 
 ### Config Resolution
 Config is loaded from (first found wins):
