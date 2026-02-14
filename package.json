@@ -38,6 +38,8 @@
   "scripts": {
     "dev": "bun run src/cli.ts",
     "build": "bun run scripts/build.ts",
+    "build:server": "bun run scripts/build-server.ts",
+    "build:server:all": "bun run scripts/build-server.ts --all",
     "test": "bun test",
     "lint:check": "ultracite check",
     "lint:fix": "ultracite fix",

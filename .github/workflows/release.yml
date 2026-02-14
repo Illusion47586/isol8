@@ -40,6 +40,9 @@ jobs:
       - name: Build
         run: bun run build
 
+      - name: Cross-compile server binaries
+        run: bun run build:server:all
+
       - name: Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

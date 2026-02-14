@@ -27,7 +27,7 @@ isol8/
 │   ├── types.ts              # All type definitions (Sandbox, ExecutionRequest/Result, Config)
 │   ├── config.ts             # Config file discovery + loading + defaults
 │   ├── index.ts              # Public library API (re-exports)
-│   ├── cli.ts                # CLI entry point (setup, run, serve, config, cleanup commands)
+│   ├── cli.ts                # CLI entry point (setup, run, serve, config, cleanup commands; serve downloads + launches compiled binary)
 │   ├── runtime/
 │   │   ├── adapter.ts        # RuntimeAdapter interface + RuntimeRegistry
 │   │   ├── index.ts          # Barrel file, registers all built-in adapters

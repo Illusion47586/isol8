@@ -18,7 +18,7 @@ Isol8 is a secure execution engine for running untrusted code inside Docker cont
 | `isol8 run [file]` | Execute code in an isolated container | [CLI: run](https://bingo-ccc81346.mintlify.app/cli/run) |
 | `isol8 setup` | Build Docker images, optionally bake in packages | [CLI: setup](https://bingo-ccc81346.mintlify.app/cli/setup) |
 | `isol8 cleanup` | Remove orphaned isol8 containers | [CLI: cleanup](https://bingo-ccc81346.mintlify.app/cli/cleanup) |
-| `isol8 serve` | Start HTTP server for remote execution (requires Bun) | [CLI: serve](https://bingo-ccc81346.mintlify.app/cli/serve) |
+| `isol8 serve` | Start HTTP server for remote execution (auto-downloads binary) | [CLI: serve](https://bingo-ccc81346.mintlify.app/cli/serve) |
 | `isol8 config` | Display resolved configuration | [CLI: config](https://bingo-ccc81346.mintlify.app/cli/config) |
 
 ### Input Resolution (`isol8 run`)
@@ -190,4 +190,4 @@ Full security model: [Security](https://bingo-ccc81346.mintlify.app/security)
 - **"No space left on device"**: Increase `--sandbox-size` (default 512MB) or `--tmp-size` (default 256MB).
 - **"Operation not permitted" with numpy/packages**: Packages need `--sandbox-size` large enough for installation (512MB+ recommended).
 - **`.ts` files running with Bun instead of Deno**: `.ts` defaults to Bun. Use `--runtime deno` or `.mts` extension.
-- **Serve command failing**: Requires Bun runtime. Run with `bun run src/cli.ts serve`.
+- **Serve command failing**: Ensure the server binary can be downloaded from GitHub Releases. Use `isol8 serve --update` to force a fresh download.

@@ -1,10 +1,14 @@
-import { cpSync, mkdirSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 const root = dirname(import.meta.dir);
 const outDir = join(root, "dist");
 const dockerSrc = join(root, "docker");
 const dockerDst = join(outDir, "docker");
+
+// Read version from package.json
+const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf-8"));
+const version: string = packageJson.version;
 
 // Clean previous build
 rmSync(outDir, { recursive: true, force: true });
@@ -66,8 +70,38 @@ if (tscExit !== 0) {
 mkdirSync(dockerDst, { recursive: true });
 cpSync(dockerSrc, dockerDst, { recursive: true });
 
+// 5. Compile standalone server binary
+console.log("🔨 Compiling standalone server binary...");
+
+const serverCompile = Bun.spawn(
+  [
+    "bun",
+    "build",
+    "--compile",
+    "--minify",
+    "--bytecode",
+    join(root, "src/server/standalone.ts"),
+    "--outfile",
+    join(outDir, "isol8-server"),
+    "--define",
+    `process.env.ISOL8_VERSION=${JSON.stringify(version)}`,
+  ],
+  {
+    cwd: root,
+    stdout: "inherit",
+    stderr: "inherit",
+  }
+);
+
+const serverCompileExit = await serverCompile.exited;
+if (serverCompileExit !== 0) {
+  console.error("❌ Server binary compilation failed");
+  process.exit(1);
+}
+
 console.log("✅ Build complete → dist/");
 console.log("   CLI:     dist/cli.js");
 console.log("   Library: dist/index.js");
 console.log("   Types:   dist/index.d.ts");
 console.log("   Docker:  dist/docker/");
+console.log(`   Server:  dist/isol8-server (v${version})`);

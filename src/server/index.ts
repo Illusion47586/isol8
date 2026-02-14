@@ -11,6 +11,7 @@ import { loadConfig } from "../config";
 import { Semaphore } from "../engine/concurrency";
 import { DockerIsol8 } from "../engine/docker";
 import type { ExecutionRequest, Isol8Options } from "../types";
+import { VERSION } from "../version";
 import { authMiddleware } from "./auth";
 
 // Import runtime adapters (registers them in the registry)
@@ -54,7 +55,7 @@ export function createServer(options: ServerOptions) {
   app.use("*", authMiddleware(options.apiKey));
 
   // ─── Health ───
-  app.get("/health", (c) => c.json({ status: "ok", version: "0.1.0" }));
+  app.get("/health", (c) => c.json({ status: "ok", version: VERSION }));
 
   // ─── Execute ───
   app.post("/execute", async (c) => {
