@@ -114,6 +114,18 @@ export interface ExecutionResult {
   files?: Record<string, string>;
 }
 
+/**
+ * A chunk of streaming output from an execution.
+ *
+ * Yielded by {@link Isol8Engine.executeStream} as output arrives in real-time.
+ */
+export interface StreamEvent {
+  /** Event type: output chunk, process exit, or error. */
+  type: "stdout" | "stderr" | "exit" | "error";
+  /** Text content for stdout/stderr, exit code string for exit, error message for error. */
+  data: string;
+}
+
 // ─── Isol8 ───
 
 /**
@@ -203,6 +215,14 @@ export interface Isol8Engine {
    * @returns File contents as a Buffer.
    */
   getFile(path: string): Promise<Buffer>;
+
+  /**
+   * Execute code and stream output chunks as they arrive.
+   *
+   * @param req - Execution request.
+   * @returns An async iterable of {@link StreamEvent} objects.
+   */
+  executeStream(req: ExecutionRequest): AsyncIterable<StreamEvent>;
 }
 
 // ─── Network ───

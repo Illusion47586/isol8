@@ -112,6 +112,61 @@ export function createServer(options: ServerOptions) {
     }
   });
 
+  // ─── Execute Stream (SSE) ───
+  app.post("/execute/stream", async (c) => {
+    const body = await c.req.json<{
+      request: ExecutionRequest;
+      options?: Isol8Options;
+      sessionId?: string;
+    }>();
+
+    const engineOptions: Isol8Options = {
+      network: config.defaults.network,
+      memoryLimit: config.defaults.memoryLimit,
+      cpuLimit: config.defaults.cpuLimit,
+      timeoutMs: config.defaults.timeoutMs,
+      sandboxSize: config.defaults.sandboxSize,
+      tmpSize: config.defaults.tmpSize,
+      ...body.options,
+      mode: "ephemeral",
+    };
+
+    const engine = new DockerIsol8(engineOptions, config.maxConcurrent);
+    await engine.start();
+
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          await globalSemaphore.acquire();
+          try {
+            for await (const event of engine.executeStream(body.request)) {
+              const line = `data: ${JSON.stringify(event)}\n\n`;
+              controller.enqueue(encoder.encode(line));
+            }
+          } finally {
+            globalSemaphore.release();
+          }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          const errorEvent = `data: ${JSON.stringify({ type: "error", data: message })}\n\n`;
+          controller.enqueue(encoder.encode(errorEvent));
+        } finally {
+          await engine.stop();
+          controller.close();
+        }
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    });
+  });
+
   // ─── File Upload ───
   app.post("/file", async (c) => {
     const body = await c.req.json<{

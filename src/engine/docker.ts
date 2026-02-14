@@ -19,6 +19,7 @@ import type {
   Isol8Options,
   NetworkFilterConfig,
   NetworkMode,
+  StreamEvent,
 } from "../types";
 import { Semaphore } from "./concurrency";
 import {
@@ -365,6 +366,92 @@ export class DockerIsol8 implements Isol8Engine {
     return this.container?.id ?? null;
   }
 
+  /**
+   * Execute code and stream output chunks as they arrive.
+   * Yields {@link StreamEvent} objects for stdout, stderr, exit, and error events.
+   */
+  async *executeStream(req: ExecutionRequest): AsyncIterable<StreamEvent> {
+    await this.semaphore.acquire();
+    try {
+      const adapter = this.getAdapter(req.runtime);
+      const timeoutMs = req.timeoutMs ?? this.defaultTimeoutMs;
+      const image = await this.resolveImage(adapter);
+
+      // Create container (always ephemeral-style for streaming)
+      const container = await this.docker.createContainer({
+        Image: image,
+        Cmd: ["sleep", "infinity"],
+        WorkingDir: SANDBOX_WORKDIR,
+        Env: this.buildEnv(),
+        NetworkDisabled: this.network === "none",
+        HostConfig: this.buildHostConfig(),
+        StopTimeout: 2,
+      });
+
+      try {
+        await container.start();
+
+        if (this.network === "filtered") {
+          await startProxy(container, this.networkFilter);
+        }
+
+        // Write code
+        const filePath = `${SANDBOX_WORKDIR}/main${adapter.getFileExtension()}`;
+        if (this.readonlyRootFs) {
+          await writeFileViaExec(container, filePath, req.code);
+        } else {
+          const tar = createTarBuffer(filePath, req.code);
+          await container.putArchive(tar, { path: "/" });
+        }
+
+        // Install packages if requested
+        if (req.installPackages?.length) {
+          await installPackages(container, req.runtime, req.installPackages);
+        }
+
+        // Inject input files
+        if (req.files) {
+          for (const [fPath, fContent] of Object.entries(req.files)) {
+            await writeFileViaExec(container, fPath, fContent);
+          }
+        }
+
+        // Build command
+        const rawCmd = adapter.getCommand(req.code, filePath);
+        const timeoutSec = Math.ceil(timeoutMs / 1000);
+        let cmd: string[];
+        if (req.stdin) {
+          const stdinPath = `${SANDBOX_WORKDIR}/_stdin`;
+          await writeFileViaExec(container, stdinPath, req.stdin);
+          const cmdStr = rawCmd.map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(" ");
+          cmd = wrapWithTimeout(["sh", "-c", `cat ${stdinPath} | ${cmdStr}`], timeoutSec);
+        } else {
+          cmd = wrapWithTimeout(rawCmd, timeoutSec);
+        }
+
+        const exec = await container.exec({
+          Cmd: cmd,
+          Env: this.buildEnv(req.env),
+          AttachStdout: true,
+          AttachStderr: true,
+          WorkingDir: SANDBOX_WORKDIR,
+        });
+
+        const execStream = await exec.start({ Tty: false });
+
+        yield* this.streamExecOutput(execStream, container, timeoutMs);
+      } finally {
+        try {
+          await container.remove({ force: true });
+        } catch {
+          // Best effort cleanup
+        }
+      }
+    } finally {
+      this.semaphore.release();
+    }
+  }
+
   // ─── Private methods ───
 
   private async resolveImage(adapter: RuntimeAdapter): Promise<string> {
@@ -678,6 +765,78 @@ export class DockerIsol8 implements Isol8Engine {
     }
 
     return env;
+  }
+
+  private async *streamExecOutput(
+    stream: NodeJS.ReadableStream,
+    container: Docker.Container,
+    timeoutMs: number
+  ): AsyncGenerator<StreamEvent> {
+    // Bridge event-based stream to async generator via a queue
+    const queue: StreamEvent[] = [];
+    let resolve: (() => void) | null = null;
+    let done = false;
+
+    const push = (event: StreamEvent) => {
+      queue.push(event);
+      if (resolve) {
+        resolve();
+        resolve = null;
+      }
+    };
+
+    const timer = setTimeout(() => {
+      push({ type: "error", data: "EXECUTION TIMED OUT" });
+      push({ type: "exit", data: "137" });
+      done = true;
+    }, timeoutMs);
+
+    const stdoutStream = new PassThrough();
+    const stderrStream = new PassThrough();
+
+    container.modem.demuxStream(stream, stdoutStream, stderrStream);
+
+    stdoutStream.on("data", (chunk: Buffer) => {
+      let text = chunk.toString("utf-8");
+      if (Object.keys(this.secrets).length > 0) {
+        text = maskSecrets(text, this.secrets);
+      }
+      push({ type: "stdout", data: text });
+    });
+
+    stderrStream.on("data", (chunk: Buffer) => {
+      let text = chunk.toString("utf-8");
+      if (Object.keys(this.secrets).length > 0) {
+        text = maskSecrets(text, this.secrets);
+      }
+      push({ type: "stderr", data: text });
+    });
+
+    stream.on("end", () => {
+      clearTimeout(timer);
+      // Inspect exec for exit code (fire-and-forget, yield exit event)
+      push({ type: "exit", data: "0" });
+      done = true;
+    });
+
+    stream.on("error", (err: Error) => {
+      clearTimeout(timer);
+      push({ type: "error", data: err.message });
+      push({ type: "exit", data: "1" });
+      done = true;
+    });
+
+    // Drain the queue as events arrive
+    while (!done || queue.length > 0) {
+      if (queue.length > 0) {
+        yield queue.shift()!;
+      } else {
+        // Wait for next event
+        await new Promise<void>((r) => {
+          resolve = r;
+        });
+      }
+    }
   }
 
   private async collectExecOutput(

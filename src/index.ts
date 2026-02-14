@@ -37,4 +37,5 @@ export type {
   NetworkFilterConfig,
   NetworkMode,
   Runtime,
+  StreamEvent,
 } from "./types";

@@ -6,7 +6,13 @@
  * {@link DockerIsol8} for local-vs-remote execution.
  */
 
-import type { ExecutionRequest, ExecutionResult, Isol8Engine, Isol8Options } from "../types";
+import type {
+  ExecutionRequest,
+  ExecutionResult,
+  Isol8Engine,
+  Isol8Options,
+  StreamEvent,
+} from "../types";
 
 /** Connection options for the remote isol8 client. */
 export interface RemoteIsol8Options {
@@ -83,6 +89,68 @@ export class RemoteIsol8 implements Isol8Engine {
     }
 
     return res.json() as Promise<ExecutionResult>;
+  }
+
+  /**
+   * Execute code on the remote server and stream output chunks via SSE.
+   * Yields {@link StreamEvent} objects as they arrive from the server.
+   */
+  async *executeStream(req: ExecutionRequest): AsyncIterable<StreamEvent> {
+    const res = await this.fetch("/execute/stream", {
+      method: "POST",
+      body: JSON.stringify({
+        request: req,
+        options: this.isol8Options,
+        sessionId: this.sessionId,
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(`Stream failed: ${(body as { error?: string }).error ?? res.statusText}`);
+    }
+
+    if (!res.body) {
+      throw new Error("No response body for streaming");
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // Parse SSE lines
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const json = line.slice(6).trim();
+            if (json) {
+              yield JSON.parse(json) as StreamEvent;
+            }
+          }
+        }
+      }
+
+      // Process remaining buffer
+      if (buffer.startsWith("data: ")) {
+        const json = buffer.slice(6).trim();
+        if (json) {
+          yield JSON.parse(json) as StreamEvent;
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
   }
 
   /**
