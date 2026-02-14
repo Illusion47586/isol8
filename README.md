@@ -96,6 +96,14 @@ isol8 run script.py --host http://server:3000 --key my-api-key
 | `--persistent` | Keep container alive between runs | `false` |
 | `--timeout <ms>` | Execution timeout in milliseconds | `30000` |
 | `--memory <limit>` | Memory limit (e.g. `512m`, `1g`) | `512m` |
+| `--cpu <limit>` | CPU limit as fraction (e.g. `0.5`, `2.0`) | `1.0` |
+| `--image <name>` | Override Docker image | — |
+| `--pids-limit <n>` | Maximum number of processes | `64` |
+| `--writable` | Disable read-only root filesystem | `false` |
+| `--max-output <bytes>` | Maximum output size in bytes | `1048576` |
+| `--secret <KEY=VALUE>` | Secret env var (repeatable, values masked) | — |
+| `--sandbox-size <size>` | Sandbox tmpfs size (e.g. `128m`) | `64m` |
+| `--stdin <data>` | Data to pipe to stdin | — |
 | `--install <pkg>` | Install package for runtime (repeatable) | — |
 | `--host <url>` | Remote server URL | — |
 | `--key <key>` | API key for remote server | `$ISOL8_API_KEY` |
@@ -125,7 +133,7 @@ isol8 config --json
 ```typescript
 import { DockerIsol8, loadConfig } from "isol8";
 
-const isol8 = new DockerIsol8({ runtime: "python", network: "none" });
+const isol8 = new DockerIsol8({ network: "none" });
 await isol8.start();
 
 const result = await isol8.execute({
@@ -136,7 +144,7 @@ const result = await isol8.execute({
 
 console.log(result.stdout);  // "Hello from isol8!"
 console.log(result.exitCode); // 0
-console.log(result.durationMs); // ~80 (warm pool)
+console.log(result.durationMs); // ~55-95ms (warm pool)
 
 await isol8.stop();
 ```
@@ -144,7 +152,7 @@ await isol8.stop();
 ### Persistent Sessions
 
 ```typescript
-const isol8 = new DockerIsol8({ mode: "persistent", runtime: "python" });
+const isol8 = new DockerIsol8({ mode: "persistent" });
 await isol8.start();
 
 await isol8.execute({ code: "x = 42", runtime: "python" });
@@ -179,7 +187,7 @@ import { RemoteIsol8 } from "isol8";
 
 const isol8 = new RemoteIsol8(
   { host: "http://localhost:3000", apiKey: "my-key" },
-  { runtime: "python", network: "none" }
+  { network: "none" }
 );
 
 await isol8.start();
@@ -272,11 +280,58 @@ Add the `$schema` property to get autocompletion, validation, and inline documen
 
 Full schema: [`schema/isol8.config.schema.json`](./schema/isol8.config.schema.json)
 
+## Benchmarks
+
+Execution latency for a "hello world" script per runtime. Measured on Apple Silicon (Docker Desktop), averaged across multiple runs. Results will vary by machine.
+
+### Cold Start (fresh engine per run)
+
+Each run creates a new `DockerIsol8` instance, executes, and tears down.
+
+| Runtime | Min | Median | Max | Avg |
+|---------|-----|--------|-----|-----|
+| Python | 148ms | 155ms | 414ms | 239ms |
+| Node.js | 152ms | 155ms | 186ms | 165ms |
+| Bun | 124ms | 145ms | 260ms | 176ms |
+| Deno | 339ms | 372ms | 626ms | 446ms |
+| Bash | 115ms | 123ms | 148ms | 128ms |
+
+### Warm Pool (reused engine)
+
+A single `DockerIsol8` instance reused across 5 runs. The first run is cold (pool empty); subsequent runs hit the warm container pool.
+
+| Runtime | Cold | Warm Avg | Warm Min | Speedup |
+|---------|------|----------|----------|---------|
+| Python | 285ms | 95ms | 89ms | 3.2x |
+| Node.js | 177ms | 91ms | 76ms | 2.3x |
+| Bun | 157ms | 72ms | 66ms | 2.4x |
+| Deno | 330ms | 264ms | 231ms | 1.4x |
+| Bash | 222ms | 68ms | 55ms | 4.0x |
+
+### Execution Phase Breakdown
+
+Where time is spent in the container lifecycle (raw Docker API, no pool):
+
+| Runtime | Create | Start | Write | Exec Setup | Run | Cleanup | Total |
+|---------|--------|-------|-------|------------|-----|---------|-------|
+| Python | 41ms | 49ms | 17ms | 1ms | 40ms | 43ms | 190ms |
+| Node.js | 32ms | 63ms | 34ms | 1ms | 39ms | 43ms | 212ms |
+| Bun | 32ms | 56ms | 26ms | 1ms | 27ms | 44ms | 186ms |
+| Bash | 35ms | 69ms | 23ms | 1ms | 20ms | 48ms | 196ms |
+
+Run benchmarks yourself:
+
+```bash
+bun run bench            # Cold start benchmark
+bun run bench:pool       # Warm pool benchmark
+bun run bench:detailed   # Phase breakdown
+```
+
 ## Security Model
 
 | Layer | Protection |
 |-------|-----------|
-| **Filesystem** | Read-only root, writable `/tmp` (tmpfs, noexec, 64MB) |
+| **Filesystem** | Read-only root, writable `/sandbox` (tmpfs, 64MB), writable `/tmp` (tmpfs, noexec, 64MB) |
 | **Processes** | PID limit (default 64), `no-new-privileges` |
 | **Resources** | CPU (1 core), memory (512MB), execution timeout (30s) |
 | **Network** | Disabled by default; optional proxy-based filtering |
@@ -312,6 +367,11 @@ bunx tsc --noEmit
 
 # Lint
 bun run lint
+
+# Benchmarks
+bun run bench            # Cold start
+bun run bench:pool       # Warm pool
+bun run bench:detailed   # Phase breakdown
 ```
 
 ## License
