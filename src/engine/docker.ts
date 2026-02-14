@@ -600,9 +600,12 @@ export class DockerIsol8 implements Isol8Engine {
     const timeoutMs = req.timeoutMs ?? this.defaultTimeoutMs;
 
     // Lazily create the persistent container
-    if (!this.container || this.persistentRuntime?.name !== adapter.name) {
-      await this.stop();
+    if (!this.container) {
       await this.startPersistentContainer(adapter);
+    } else if (this.persistentRuntime?.name !== adapter.name) {
+      throw new Error(
+        `Cannot switch runtime from "${this.persistentRuntime?.name}" to "${adapter.name}". Each persistent container supports a single runtime. Create a new Isol8 instance for a different runtime.`
+      );
     }
 
     const filePath = `${SANDBOX_WORKDIR}/exec_${Date.now()}${adapter.getFileExtension()}`;
