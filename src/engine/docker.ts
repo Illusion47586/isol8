@@ -173,7 +173,7 @@ function wrapWithTimeout(cmd: string[], timeoutSec: number): string[] {
 function getInstallCommand(runtime: string, packages: string[]): string[] {
   switch (runtime) {
     case "python":
-      return ["pip", "install", "--no-cache-dir", ...packages];
+      return ["pip", "install", "--no-cache-dir", "--break-system-packages", ...packages];
     case "node":
       return ["npm", "install", "-g", ...packages];
     case "bun":
@@ -197,18 +197,43 @@ async function installPackages(
   packages: string[]
 ): Promise<void> {
   const cmd = getInstallCommand(runtime, packages);
-  const exec = await container.exec({ Cmd: cmd });
-  await exec.start({ Detach: true });
+  // Debug log
+  console.error(`[DEBUG] Installing packages: ${JSON.stringify(cmd)}`);
 
-  let info = await exec.inspect();
-  while (info.Running) {
-    await new Promise((r) => setTimeout(r, 200));
-    info = await exec.inspect();
-  }
+  const exec = await container.exec({
+    Cmd: cmd,
+    AttachStdout: true,
+    AttachStderr: true,
+  });
 
-  if (info.ExitCode !== 0) {
-    throw new Error(`Package install failed (exit code ${info.ExitCode})`);
-  }
+  const stream = await exec.start({ Detach: false, Tty: false });
+
+  return new Promise<void>((resolve, reject) => {
+    let stderr = "";
+    const stdoutStream = new PassThrough();
+    const stderrStream = new PassThrough();
+
+    container.modem.demuxStream(stream, stdoutStream, stderrStream);
+
+    stderrStream.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    stream.on("end", async () => {
+      try {
+        const info = await exec.inspect();
+        if (info.ExitCode !== 0) {
+          reject(new Error(`Package install failed (exit code ${info.ExitCode}): ${stderr}`));
+        } else {
+          resolve();
+        }
+      } catch (err) {
+        reject(err);
+      }
+    });
+
+    stream.on("error", reject);
+  });
 }
 
 /** Options for constructing a {@link DockerIsol8} instance. Extends {@link Isol8Options} with Docker-specific settings. */
@@ -405,12 +430,7 @@ export class DockerIsol8 implements Isol8Engine {
 
         // Write code
         const filePath = `${SANDBOX_WORKDIR}/main${adapter.getFileExtension()}`;
-        if (this.readonlyRootFs) {
-          await writeFileViaExec(container, filePath, req.code);
-        } else {
-          const tar = createTarBuffer(filePath, req.code);
-          await container.putArchive(tar, { path: "/" });
-        }
+        await writeFileViaExec(container, filePath, req.code);
 
         // Install packages if requested
         if (req.installPackages?.length) {
@@ -447,7 +467,7 @@ export class DockerIsol8 implements Isol8Engine {
 
         const execStream = await exec.start({ Tty: false });
 
-        yield* this.streamExecOutput(execStream, container, timeoutMs);
+        yield* this.streamExecOutput(execStream, exec, container, timeoutMs);
       } finally {
         try {
           await container.remove({ force: true });
@@ -508,12 +528,7 @@ export class DockerIsol8 implements Isol8Engine {
 
       // Write code to the active tmpfs via exec (putArchive fails with ReadonlyRootfs)
       const filePath = `${SANDBOX_WORKDIR}/main${adapter.getFileExtension()}`;
-      if (this.readonlyRootFs) {
-        await writeFileViaExec(container, filePath, req.code);
-      } else {
-        const tar = createTarBuffer(filePath, req.code);
-        await container.putArchive(tar, { path: "/" });
-      }
+      await writeFileViaExec(container, filePath, req.code);
 
       // Install packages if requested
       if (req.installPackages?.length) {
@@ -750,7 +765,10 @@ export class DockerIsol8 implements Isol8Engine {
   }
 
   private buildEnv(extra?: Record<string, string>): string[] {
-    const env: string[] = [];
+    const env: string[] = [
+      "PYTHONUNBUFFERED=1",
+      "NODE_PATH=/usr/local/lib/node_modules:/sandbox/node_modules",
+    ];
 
     // Add secrets as env vars
     for (const [key, value] of Object.entries(this.secrets)) {
@@ -779,6 +797,7 @@ export class DockerIsol8 implements Isol8Engine {
 
   private async *streamExecOutput(
     stream: NodeJS.ReadableStream,
+    exec: Docker.Exec,
     container: Docker.Container,
     timeoutMs: number
   ): AsyncGenerator<StreamEvent> {
@@ -822,10 +841,14 @@ export class DockerIsol8 implements Isol8Engine {
       push({ type: "stderr", data: text });
     });
 
-    stream.on("end", () => {
+    stream.on("end", async () => {
       clearTimeout(timer);
-      // Inspect exec for exit code (fire-and-forget, yield exit event)
-      push({ type: "exit", data: "0" });
+      try {
+        const info = await exec.inspect();
+        push({ type: "exit", data: (info.ExitCode ?? 0).toString() });
+      } catch {
+        push({ type: "exit", data: "1" });
+      }
       done = true;
     });
 
@@ -840,11 +863,12 @@ export class DockerIsol8 implements Isol8Engine {
     while (!done || queue.length > 0) {
       if (queue.length > 0) {
         yield queue.shift()!;
-      } else {
-        // Wait for next event
+      } else if (resolve) {
         await new Promise<void>((r) => {
           resolve = r;
         });
+      } else {
+        await new Promise((r) => setTimeout(r, 10));
       }
     }
   }
