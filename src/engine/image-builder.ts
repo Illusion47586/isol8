@@ -6,11 +6,27 @@
  * packages on top of the base images.
  */
 
+import { existsSync } from "node:fs";
 import type Docker from "dockerode";
 import { RuntimeRegistry } from "../runtime";
 import type { Isol8Config } from "../types";
 
-const DOCKERFILE_DIR = new URL("../../docker", import.meta.url).pathname;
+/**
+ * Resolve the `docker/` directory containing the Dockerfile and proxy.
+ *
+ * When running from source (`src/engine/image-builder.ts`), the path is
+ * `../../docker` relative to this file. When running from the bundled CLI
+ * (`dist/cli.js`), it is `../docker`. We try both and use whichever exists.
+ */
+function resolveDockerDir(): string {
+  const fromBundled = new URL("../docker", import.meta.url).pathname;
+  if (existsSync(fromBundled)) {
+    return fromBundled;
+  }
+  return new URL("../../docker", import.meta.url).pathname;
+}
+
+const DOCKERFILE_DIR = resolveDockerDir();
 
 /** Progress update emitted during image builds. */
 interface BuildProgress {
