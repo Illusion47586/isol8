@@ -44,6 +44,14 @@ npm install isol8
 - [Docker](https://docs.docker.com/get-docker/) running locally
 - [Bun](https://bun.sh) (recommended) or Node.js 20+
 
+### Agent Skill
+
+AI agents can install isol8 as a skill for automatic discovery and usage:
+
+```bash
+npx skills add Illusion47586/isol8/skill/isol8
+```
+
 ## CLI
 
 ### `isol8 setup`
