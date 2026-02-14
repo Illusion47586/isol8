@@ -452,7 +452,8 @@ export class DockerIsol8 implements Isol8Engine {
         }
 
         // Write code
-        const filePath = `${SANDBOX_WORKDIR}/main${adapter.getFileExtension()}`;
+        const ext = req.fileExtension ?? adapter.getFileExtension();
+        const filePath = `${SANDBOX_WORKDIR}/main${ext}`;
         await writeFileViaExec(container, filePath, req.code);
 
         // Install packages if requested
@@ -550,7 +551,8 @@ export class DockerIsol8 implements Isol8Engine {
       }
 
       // Write code to the active tmpfs via exec (putArchive fails with ReadonlyRootfs)
-      const filePath = `${SANDBOX_WORKDIR}/main${adapter.getFileExtension()}`;
+      const ext = req.fileExtension ?? adapter.getFileExtension();
+      const filePath = `${SANDBOX_WORKDIR}/main${ext}`;
       await writeFileViaExec(container, filePath, req.code);
 
       // Install packages if requested
@@ -631,7 +633,8 @@ export class DockerIsol8 implements Isol8Engine {
       );
     }
 
-    const filePath = `${SANDBOX_WORKDIR}/exec_${Date.now()}${adapter.getFileExtension()}`;
+    const ext = req.fileExtension ?? adapter.getFileExtension();
+    const filePath = `${SANDBOX_WORKDIR}/exec_${Date.now()}${ext}`;
 
     // Write code to the container
     if (this.readonlyRootFs) {

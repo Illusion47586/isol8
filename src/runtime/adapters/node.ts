@@ -13,6 +13,6 @@ export const NodeAdapter: RuntimeAdapter = {
   },
 
   getFileExtension(): string {
-    return ".js";
+    return ".mjs";
   },
 };

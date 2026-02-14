@@ -51,6 +51,12 @@ export interface ExecutionRequest {
   env?: Record<string, string>;
 
   /**
+   * Optional file extension to use for the script file (e.g. ".cjs", ".mjs").
+   * If not provided, defaults to the runtime adapter's default extension.
+   */
+  fileExtension?: string;
+
+  /**
    * Data to pipe to the process via stdin.
    * Written to a temporary file and piped into the command.
    */

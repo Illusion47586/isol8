@@ -143,6 +143,68 @@ describe("Integration: CLI", () => {
     }
   });
 
+  test("executes .cjs file as CommonJS", async () => {
+    const filePath = join(tmpdir(), `test-${Date.now()}.cjs`);
+    try {
+      writeFileSync(filePath, "const fs = require('fs'); console.log('CJS works');");
+      const proc = spawn("bun", ["run", CLI_PATH, "run", filePath, "--runtime", "node"]);
+
+      let stdout = "";
+      let stderr = "";
+
+      if (proc.stdout) {
+        for await (const chunk of proc.stdout) {
+          stdout += chunk.toString();
+        }
+      }
+      if (proc.stderr) {
+        for await (const chunk of proc.stderr) {
+          stderr += chunk.toString();
+        }
+      }
+
+      const exitCode = await new Promise((resolve) => {
+        proc.on("exit", resolve);
+      });
+
+      if (exitCode !== 0) {
+        console.error("CJS Test Stderr:", stderr);
+      }
+
+      expect(exitCode).toBe(0);
+      expect(stdout).toContain("CJS works");
+    } finally {
+      rmSync(filePath, { force: true });
+    }
+  });
+
+  test("does not show ESM warning for Node.js", async () => {
+    // Run simple ESM code
+    const proc = spawn("bun", [
+      "run",
+      CLI_PATH,
+      "run",
+      "-e",
+      "console.log('ESM works')",
+      "--runtime",
+      "node",
+    ]);
+
+    let stderr = "";
+    if (proc.stderr) {
+      for await (const chunk of proc.stderr) {
+        stderr += chunk.toString();
+      }
+    }
+
+    const exitCode = await new Promise((resolve) => {
+      proc.on("exit", resolve);
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stderr).not.toContain("MODULE_TYPELESS_PACKAGE_JSON");
+  });
+
   // ─── Streaming ───
 
   test("streams output by default", async () => {

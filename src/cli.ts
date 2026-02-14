@@ -142,7 +142,8 @@ program
   .option("--key <key>", "API key for remote server")
   .option("--no-stream", "Disable real-time output streaming") // Default is now streaming
   .action(async (file: string | undefined, opts) => {
-    const { code, runtime, engineOptions, engine, stdinData } = await resolveRunInput(file, opts);
+    const { code, runtime, engineOptions, engine, stdinData, fileExtension } =
+      await resolveRunInput(file, opts);
 
     // cleanup on exit
     const cleanup = async () => {
@@ -164,6 +165,7 @@ program
         timeoutMs: engineOptions.timeoutMs,
         ...(stdinData ? { stdin: stdinData } : {}),
         ...(opts.install.length > 0 ? { installPackages: opts.install } : {}),
+        fileExtension,
       };
 
       // Stream by default unless --no-stream is passed
@@ -484,9 +486,17 @@ async function resolveRunInput(file: string | undefined, opts: any) {
     ...(opts.pidsLimit ? { pidsLimit: Number.parseInt(opts.pidsLimit, 10) } : {}),
     ...(opts.writable ? { readonlyRootFs: false } : {}),
     ...(opts.maxOutput ? { maxOutputSize: Number.parseInt(opts.maxOutput, 10) } : {}),
-    ...(opts.sandboxSize ? { sandboxSize: opts.sandboxSize } : {}),
     ...(opts.tmpSize ? { tmpSize: opts.tmpSize } : {}),
   };
+
+  // Determine file extension from file argument if present
+  let fileExtension: string | undefined;
+  if (file) {
+    const ext = file.substring(file.lastIndexOf("."));
+    if (ext) {
+      fileExtension = ext;
+    }
+  }
 
   // Parse --secret flags into secrets map
   const secrets: Record<string, string> = {};
@@ -518,7 +528,7 @@ async function resolveRunInput(file: string | undefined, opts: any) {
     engine = new DockerIsol8(engineOptions, config.maxConcurrent);
   }
 
-  return { code, runtime, engineOptions, engine, stdinData };
+  return { code, runtime, engineOptions, engine, stdinData, fileExtension };
 }
 
 function collect(value: string, previous: string[]): string[] {

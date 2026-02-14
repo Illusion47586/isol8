@@ -48,10 +48,16 @@ export const RuntimeRegistry = {
   /**
    * Register a runtime adapter. Overwrites any existing adapter with the same
    * name or file extension.
+   *
+   * @param adapter - The adapter to register.
+   * @param aliases - Additional file extensions to map to this adapter (e.g. `[".mjs", ".cjs"]`).
    */
-  register(adapter: RuntimeAdapter): void {
+  register(adapter: RuntimeAdapter, aliases: string[] = []): void {
     adapters.set(adapter.name, adapter);
     extensionMap.set(adapter.getFileExtension(), adapter);
+    for (const ext of aliases) {
+      extensionMap.set(ext, adapter);
+    }
   },
 
   /**
