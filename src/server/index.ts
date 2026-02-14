@@ -8,6 +8,7 @@
 
 import { Hono } from "hono";
 import { loadConfig } from "../config";
+import { Semaphore } from "../engine/concurrency";
 import { DockerIsol8 } from "../engine/docker";
 import type { ExecutionRequest, Isol8Options } from "../types";
 import { authMiddleware } from "./auth";
@@ -47,6 +48,7 @@ const sessions = new Map<string, SessionState>();
 export function createServer(options: ServerOptions) {
   const config = loadConfig();
   const app = new Hono();
+  const globalSemaphore = new Semaphore(config.maxConcurrent);
 
   // Auth middleware
   app.use("*", authMiddleware(options.apiKey));
@@ -63,6 +65,12 @@ export function createServer(options: ServerOptions) {
     }>();
 
     const engineOptions: Isol8Options = {
+      network: config.defaults.network,
+      memoryLimit: config.defaults.memoryLimit,
+      cpuLimit: config.defaults.cpuLimit,
+      timeoutMs: config.defaults.timeoutMs,
+      sandboxSize: config.defaults.sandboxSize,
+      tmpSize: config.defaults.tmpSize,
       ...body.options,
       mode: body.sessionId ? "persistent" : "ephemeral",
     };
@@ -86,20 +94,21 @@ export function createServer(options: ServerOptions) {
     }
 
     try {
-      const result = await engine.execute(body.request);
-
+      await globalSemaphore.acquire();
+      try {
+        const result = await engine.execute(body.request);
+        return c.json(result);
+      } finally {
+        globalSemaphore.release();
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return c.json({ error: message }, 500);
+    } finally {
       // Cleanup ephemeral engine
       if (!body.sessionId) {
         await engine.stop();
       }
-
-      return c.json(result);
-    } catch (err) {
-      if (!body.sessionId) {
-        await engine.stop();
-      }
-      const message = err instanceof Error ? err.message : String(err);
-      return c.json({ error: message }, 500);
     }
   });
 
@@ -153,17 +162,19 @@ export function createServer(options: ServerOptions) {
   });
 
   // Periodic cleanup of stale sessions
-  setInterval(async () => {
-    const maxAge = config.cleanup.maxContainerAgeMs;
-    const now = Date.now();
+  if (config.cleanup.autoPrune) {
+    setInterval(async () => {
+      const maxAge = config.cleanup.maxContainerAgeMs;
+      const now = Date.now();
 
-    for (const [id, session] of sessions) {
-      if (now - session.lastAccessedAt > maxAge) {
-        await session.engine.stop();
-        sessions.delete(id);
+      for (const [id, session] of sessions) {
+        if (now - session.lastAccessedAt > maxAge) {
+          await session.engine.stop();
+          sessions.delete(id);
+        }
       }
-    }
-  }, 60_000);
+    }, 60_000);
+  }
 
   return {
     app,
