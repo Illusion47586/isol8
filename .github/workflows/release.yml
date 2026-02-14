@@ -1,12 +1,18 @@
 name: Publish
 
 on:
+  workflow_run:
+    workflows: ["CI"]
+    branches: [main]
+    types: [completed]
   push:
     tags:
       - 'v*'
 
 jobs:
   publish:
+    # Only run if CI passed or if manually triggered by tag
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'push' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read

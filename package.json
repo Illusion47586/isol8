@@ -49,7 +49,6 @@
     "docs:broken-links": "cd docs && mint broken-links",
     "schema": "ts-json-schema-generator --path src/types.ts --type Isol8UserConfig --tsconfig tsconfig.json -o schema/isol8.config.schema.json && ultracite fix schema/isol8.config.schema.json",
     "publish:alpha": "bun run build && bun publish --tag alpha --access public --ignore-scripts",
-    "release": "release-it",
     "prepare": "simple-git-hooks"
   },
   "dependencies": {
@@ -60,13 +59,11 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.15",
-    "@release-it/conventional-changelog": "^10.0.5",
     "@types/bun": "latest",
     "@types/dockerode": "^4.0.1",
     "@types/node": "^25.2.3",
     "lint-staged": "^16.2.7",
     "mint": "^4.2.348",
-    "release-it": "^19.2.4",
     "simple-git-hooks": "^2.13.1",
     "ts-json-schema-generator": "^2.5.0",
     "typescript": "^5.9.3",
