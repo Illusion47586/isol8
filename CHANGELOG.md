@@ -1,3 +1,10 @@
+## [0.3.1](https://github.com/Illusion47586/isol8/compare/v0.3.0...v0.3.1) (2026-02-14)
+
+
+### Bug Fixes
+
+* **engine:** ensure pool replenishment promises settle for clean exit ([a859e82](https://github.com/Illusion47586/isol8/commit/a859e82410d631541052539a6a147cac6e31a25e))
+
 # [0.3.0](https://github.com/Illusion47586/isol8/compare/v0.2.0...v0.3.0) (2026-02-14)
 
 
