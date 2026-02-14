@@ -1,0 +1,66 @@
+---
+title: "Introduction"
+description: "Secure code execution engine for AI agents and developers"
+---
+
+# What is isol8?
+
+isol8 is a secure code execution engine that runs untrusted code inside Docker containers with strict resource limits, network controls, and output sanitization. It is designed for AI agents, chatbots, and any application that needs to safely execute user-provided code.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Multi-Runtime" icon="code">
+    Run Python, Node.js, Bun, Deno, and Bash out of the box.
+  </Card>
+  <Card title="Container Isolation" icon="shield">
+    Every execution runs in a Docker container with read-only root filesystem, PID limits, memory/CPU caps, and no-new-privileges.
+  </Card>
+  <Card title="Network Control" icon="globe">
+    Choose between no network, full host network, or filtered mode with hostname-level allow/deny lists.
+  </Card>
+  <Card title="Real-Time Streaming" icon="bolt">
+    Stream stdout/stderr as code executes via `executeStream()` or SSE.
+  </Card>
+  <Card title="File I/O" icon="file">
+    Inject input files before execution and retrieve output files after — even in ephemeral mode.
+  </Card>
+  <Card title="Sub-100ms Latency" icon="gauge-high">
+    Warm container pool keeps pre-started containers ready for instant execution.
+  </Card>
+</CardGroup>
+
+## How It Works
+
+1. You submit code with a runtime (Python, Node, etc.) and optional configuration
+2. isol8 runs it inside a locked-down Docker container
+3. Output is collected, secrets are masked, and results are returned
+4. The container is destroyed (ephemeral) or preserved (persistent)
+
+## Three Ways to Use isol8
+
+<CardGroup cols={3}>
+  <Card title="CLI" icon="terminal" href="/cli/run">
+    Run code from the command line with `isol8 run`.
+  </Card>
+  <Card title="TypeScript Library" icon="brackets-curly" href="/library/overview">
+    Import `DockerIsol8` or `RemoteIsol8` into your application.
+  </Card>
+  <Card title="HTTP Server" icon="server" href="/server/overview">
+    Deploy `isol8 serve` and execute code via REST API.
+  </Card>
+</CardGroup>
+
+## Supported Runtimes
+
+| Runtime | Image | File Extension | Package Manager |
+|:--------|:------|:---------------|:----------------|
+| Python 3.x | `isol8:python` | `.py` | pip |
+| Node.js LTS | `isol8:node` | `.js` | npm |
+| Bun | `isol8:bun` | `.ts` | bun |
+| Deno | `isol8:deno` | `.mts` | deno cache |
+| Bash (Alpine) | `isol8:bash` | `.sh` | apk |
+
+<Note>
+  `.ts` files default to Bun. Use `--runtime deno` or the `.mts` extension for Deno.
+</Note>

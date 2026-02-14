@@ -1,0 +1,199 @@
+---
+title: "isol8 run"
+description: "Execute code in an isolated container"
+---
+
+# isol8 run
+
+Execute code in an isolated Docker container. Code can come from a file argument, `--eval`, or stdin (piped input).
+
+```bash
+isol8 run [file] [options]
+```
+
+## Input Resolution
+
+Code is resolved in this order:
+
+1. `--eval` flag (inline code)
+2. File argument (runtime auto-detected from extension)
+3. Stdin (piped input)
+
+**Extension to runtime mapping:**
+
+| Extension | Runtime |
+|:----------|:--------|
+| `.py` | python |
+| `.js` | node |
+| `.ts` | bun |
+| `.mts` | deno |
+| `.sh` | bash |
+
+## Options
+
+### Code Input
+
+<ResponseField name="--eval, -e" type="string">
+  Execute inline code string. Defaults to `python` runtime if `--runtime` is not specified.
+</ResponseField>
+
+<ResponseField name="--runtime, -r" type="string">
+  Force runtime: `python`, `node`, `bun`, `deno`, or `bash`. Overrides auto-detection from file extension.
+</ResponseField>
+
+<ResponseField name="--stdin" type="string">
+  Data to pipe to the process via stdin. This is input *to* the running program, not the source code.
+</ResponseField>
+
+<ResponseField name="--install" type="string">
+  Install a package before execution via the runtime's package manager. Repeatable.
+
+  | Runtime | Package Manager | Example |
+  |:--------|:---------------|:--------|
+  | python | pip install | `--install numpy` |
+  | node | npm install -g | `--install lodash` |
+  | bun | bun install -g | `--install zod` |
+  | deno | deno cache | `--install https://deno.land/std/path/mod.ts` |
+  | bash | apk add | `--install jq` |
+</ResponseField>
+
+### Execution
+
+<ResponseField name="--persistent" type="boolean" default="false">
+  Use a persistent container that preserves state between runs. Without this flag, each execution uses a fresh container from the warm pool.
+</ResponseField>
+
+<ResponseField name="--timeout" type="number" default="30000">
+  Execution timeout in milliseconds. The process is killed when the timeout is reached.
+</ResponseField>
+
+### Resource Limits
+
+<ResponseField name="--memory" type="string" default="512m">
+  Memory limit. Accepts Docker memory format: `256m`, `512m`, `1g`, `2g`.
+</ResponseField>
+
+<ResponseField name="--cpu" type="number" default="1.0">
+  CPU limit as a fraction of one core. `0.5` = half a core, `2.0` = two cores.
+</ResponseField>
+
+<ResponseField name="--pids-limit" type="number" default="64">
+  Maximum number of processes in the container.
+</ResponseField>
+
+<ResponseField name="--sandbox-size" type="string" default="64m">
+  Size of the `/sandbox` tmpfs mount. Increase for data-intensive workloads.
+</ResponseField>
+
+<ResponseField name="--max-output" type="number" default="1048576">
+  Maximum output size in bytes before truncation (default 1MB).
+</ResponseField>
+
+### Security
+
+<ResponseField name="--net" type="string" default="none">
+  Network mode:
+  - `none` — No network access (default, most secure)
+  - `host` — Full host network access
+  - `filtered` — Bridge network with HTTP/HTTPS proxy filtering
+</ResponseField>
+
+<ResponseField name="--allow" type="string">
+  Whitelist regex for `filtered` network mode. Only matching hostnames are allowed. Repeatable.
+</ResponseField>
+
+<ResponseField name="--deny" type="string">
+  Blacklist regex for `filtered` network mode. Matching hostnames are blocked. Repeatable.
+</ResponseField>
+
+<ResponseField name="--image" type="string">
+  Override the Docker image. Ignores runtime adapter's default image.
+</ResponseField>
+
+<ResponseField name="--writable" type="boolean" default="false">
+  Disable read-only root filesystem. Required for some package installations.
+</ResponseField>
+
+<ResponseField name="--secret" type="string">
+  Secret environment variable in `KEY=VALUE` format. The value is injected into the container as an env var and automatically masked (`***`) in all output. Repeatable.
+</ResponseField>
+
+### Output
+
+<ResponseField name="--out" type="string">
+  Write stdout to a local file instead of printing to the terminal.
+</ResponseField>
+
+### Remote Execution
+
+<ResponseField name="--host" type="string">
+  Execute on a remote isol8 server instead of local Docker. Provide the server URL.
+</ResponseField>
+
+<ResponseField name="--key" type="string">
+  API key for remote server authentication. Falls back to `$ISOL8_API_KEY` environment variable.
+</ResponseField>
+
+## Examples
+
+### Basic Execution
+
+```bash
+# Inline Python
+isol8 run -e "print(2 ** 10)" --runtime python
+
+# Run a file
+isol8 run script.py
+
+# Pipe code via stdin
+echo "console.log('hello')" | isol8 run --runtime node
+```
+
+### Package Installation
+
+```bash
+# Python with numpy
+isol8 run -e "import numpy; print(numpy.array([1,2,3]))" --runtime python --install numpy
+
+# Multiple packages
+isol8 run -e "import pandas; import numpy" --runtime python --install numpy --install pandas
+```
+
+### Resource Configuration
+
+```bash
+# High memory for data processing
+isol8 run script.py --memory 2g --sandbox-size 256m --timeout 60000
+
+# Limited CPU
+isol8 run -e "while True: pass" --runtime python --cpu 0.5 --timeout 5000
+```
+
+### Secrets
+
+```bash
+# Secret is injected as env var, masked in output
+isol8 run -e "import os; print(os.environ['API_KEY'])" \
+  --runtime python --secret API_KEY=sk-1234
+# stdout: ***
+```
+
+### Network Filtering
+
+```bash
+# Allow only OpenAI API
+isol8 run script.py --net filtered --allow "^api\.openai\.com$"
+
+# Block Russian domains
+isol8 run script.py --net filtered --deny ".*\.ru$"
+```
+
+### Persistent Sessions
+
+```bash
+# Step 1: Install and create data
+isol8 run --persistent -e "import json; json.dump({'count': 42}, open('/sandbox/data.json', 'w'))" --runtime python
+
+# Step 2: Read it back (same container)
+isol8 run --persistent -e "import json; print(json.load(open('/sandbox/data.json')))" --runtime python
+```

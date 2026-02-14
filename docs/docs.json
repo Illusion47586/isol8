@@ -1,0 +1,64 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "isol8",
+  "description": "Secure code execution engine for AI agents. Run untrusted code in Docker containers with strict resource limits, network controls, and output sanitization.",
+  "colors": {
+    "primary": "#0E7C6B",
+    "light": "#55D3B9",
+    "dark": "#0A5C50"
+  },
+  "favicon": "/favicon.png",
+  "navbar": {
+    "links": [
+      {
+        "label": "GitHub",
+        "href": "https://github.com/Illusion47586/isol8"
+      }
+    ]
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "href": "/"
+      },
+      {
+        "tab": "API Reference",
+        "href": "/server"
+      }
+    ],
+    "groups": [
+      {
+        "group": "Getting Started",
+        "pages": ["introduction", "quickstart"]
+      },
+      {
+        "group": "CLI",
+        "pages": ["cli/run", "cli/setup", "cli/serve", "cli/config"]
+      },
+      {
+        "group": "TypeScript Library",
+        "pages": [
+          "library/overview",
+          "library/execution",
+          "library/streaming",
+          "library/file-io"
+        ]
+      },
+      {
+        "group": "HTTP Server",
+        "pages": ["server/overview", "server/endpoints"]
+      },
+      {
+        "group": "Reference",
+        "pages": ["configuration", "security"]
+      }
+    ]
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/Illusion47586/isol8"
+    }
+  }
+}

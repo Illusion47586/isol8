@@ -1,0 +1,45 @@
+---
+title: "isol8 serve"
+description: "Start the HTTP server for remote code execution"
+---
+
+# isol8 serve
+
+Start the HTTP server for remote code execution. The server exposes REST endpoints for executing code, managing sessions, and transferring files.
+
+```bash
+isol8 serve [options]
+```
+
+<Warning>
+  The `isol8 serve` command requires [Bun](https://bun.sh) runtime. Run with `bun run src/cli.ts serve` if using from source.
+</Warning>
+
+## Options
+
+<ResponseField name="--port, -p" type="number" default="3000">
+  Port to listen on.
+</ResponseField>
+
+<ResponseField name="--key, -k" type="string" required>
+  API key for authentication. All requests (except `GET /health`) must include `Authorization: Bearer <key>`. Falls back to `$ISOL8_API_KEY` environment variable.
+</ResponseField>
+
+## Example
+
+```bash
+# Start server
+isol8 serve --port 3000 --key my-secret-key
+
+# Or using env var
+ISOL8_API_KEY=my-secret-key isol8 serve --port 3000
+```
+
+The server is now accessible at `http://localhost:3000`. See the [HTTP Server](/server/overview) documentation for endpoint details.
+
+## Server Features
+
+- **Global concurrency control** — A server-wide semaphore limits concurrent container executions (configurable via `maxConcurrent` in config, default 10)
+- **Config defaults** — Server merges `config.defaults` into every request, so you can set default network mode, memory limits, etc. in your config file
+- **Auto-pruning** — When `cleanup.autoPrune` is enabled in config, the server periodically removes stale containers
+- **Session management** — Persistent sessions are tracked in-memory and can be explicitly destroyed via `DELETE /session/:id`

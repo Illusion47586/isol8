@@ -1,0 +1,222 @@
+---
+title: "API Endpoints"
+description: "Complete HTTP API reference for the isol8 server"
+---
+
+# API Endpoints
+
+All endpoints except `GET /health` require `Authorization: Bearer <apiKey>`.
+
+## GET /health
+
+Health check endpoint. No authentication required.
+
+**Response:**
+
+```json
+{
+  "status": "ok",
+  "version": "0.1.0"
+}
+```
+
+---
+
+## POST /execute
+
+Execute code and return the full result.
+
+**Request body:**
+
+```json
+{
+  "request": {
+    "code": "print('hello')",
+    "runtime": "python",
+    "timeoutMs": 5000,
+    "env": { "MY_VAR": "value" },
+    "stdin": "input data",
+    "files": { "/sandbox/data.csv": "a,b\n1,2" },
+    "outputPaths": ["/sandbox/out.txt"],
+    "installPackages": ["numpy"]
+  },
+  "options": {
+    "network": "none",
+    "memoryLimit": "512m",
+    "cpuLimit": 1.0,
+    "timeoutMs": 30000,
+    "sandboxSize": "64m",
+    "tmpSize": "64m"
+  },
+  "sessionId": "optional-session-id"
+}
+```
+
+<ResponseField name="request" type="ExecutionRequest" required>
+  The code execution request. See [ExecutionRequest](/library/execution#executionrequest) for all fields.
+</ResponseField>
+
+<ResponseField name="options" type="Isol8Options">
+  Engine options for this execution. Merged with server config defaults.
+</ResponseField>
+
+<ResponseField name="sessionId" type="string">
+  Optional session ID for persistent mode. When provided, the server creates or reuses a persistent `DockerIsol8` instance.
+</ResponseField>
+
+**Success response (200):**
+
+```json
+{
+  "stdout": "hello\n",
+  "stderr": "",
+  "exitCode": 0,
+  "durationMs": 82,
+  "truncated": false,
+  "executionId": "550e8400-e29b-41d4-a716-446655440000",
+  "runtime": "python",
+  "timestamp": "2026-02-14T12:00:00.000Z",
+  "containerId": "abc123"
+}
+```
+
+**Error response (500):**
+
+```json
+{
+  "error": "Execution failed: container OOM killed"
+}
+```
+
+---
+
+## POST /execute/stream
+
+Execute code and stream output via Server-Sent Events. Always uses ephemeral mode (ignores `sessionId`).
+
+**Request body:** Same as `POST /execute`.
+
+**Response:** SSE stream with `Content-Type: text/event-stream`.
+
+```
+data: {"type":"stdout","data":"Hello\n"}
+
+data: {"type":"stderr","data":"Warning: deprecated\n"}
+
+data: {"type":"exit","data":"0"}
+```
+
+### Event Types
+
+| Type | Description |
+|:-----|:------------|
+| `stdout` | A chunk of standard output |
+| `stderr` | A chunk of standard error |
+| `exit` | Exit code as a string |
+| `error` | Error message (container failure, timeout) |
+
+### Example with curl
+
+```bash
+curl -N -X POST http://localhost:3000/execute/stream \
+  -H "Authorization: Bearer my-key" \
+  -H "Content-Type: application/json" \
+  -d '{"request": {"code": "for i in range(3): print(i)", "runtime": "python"}}'
+```
+
+---
+
+## POST /file
+
+Upload a file to a persistent session container.
+
+**Request body:**
+
+```json
+{
+  "sessionId": "my-session",
+  "path": "/sandbox/data.csv",
+  "content": "Y29sMSxjb2wyCjEsMg=="
+}
+```
+
+<ResponseField name="sessionId" type="string" required>
+  The session ID of the persistent container.
+</ResponseField>
+
+<ResponseField name="path" type="string" required>
+  Absolute file path inside the container.
+</ResponseField>
+
+<ResponseField name="content" type="string" required>
+  Base64-encoded file content.
+</ResponseField>
+
+**Success response (200):**
+
+```json
+{ "ok": true }
+```
+
+**Error response (404):**
+
+```json
+{ "error": "Session not found" }
+```
+
+---
+
+## GET /file
+
+Download a file from a persistent session container.
+
+**Query parameters:**
+
+<ResponseField name="sessionId" type="string" required>
+  The session ID.
+</ResponseField>
+
+<ResponseField name="path" type="string" required>
+  Absolute file path inside the container.
+</ResponseField>
+
+**Example:**
+
+```bash
+curl "http://localhost:3000/file?sessionId=my-session&path=/sandbox/output.json" \
+  -H "Authorization: Bearer my-key"
+```
+
+**Success response (200):**
+
+```json
+{
+  "content": "eyJyZXN1bHQiOiAxfQ=="
+}
+```
+
+**Error responses:**
+
+- `400` — Missing `sessionId` or `path` parameter
+- `404` — Session not found
+
+---
+
+## DELETE /session/:id
+
+Stop and remove a persistent session. Destroys the container and frees resources.
+
+**Example:**
+
+```bash
+curl -X DELETE http://localhost:3000/session/my-session \
+  -H "Authorization: Bearer my-key"
+```
+
+**Response (200):**
+
+```json
+{ "ok": true }
+```
+
+Returns `{ "ok": true }` even if the session didn't exist (idempotent).

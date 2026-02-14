@@ -1,0 +1,152 @@
+---
+title: "Configuration"
+description: "Configure defaults, network filtering, and resource limits"
+---
+
+# Configuration
+
+isol8 loads configuration from a JSON file. The config sets defaults for all executions and controls server behavior.
+
+## Config File Location
+
+isol8 looks for config in this order (first found wins):
+
+1. `./isol8.config.json` (current working directory)
+2. `~/.isol8/config.json` (home directory)
+
+If no config file is found, built-in defaults are used. Partial configs are deep-merged with defaults.
+
+## Full Schema
+
+```json
+{
+  "$schema": "./schema/isol8.config.schema.json",
+  "maxConcurrent": 10,
+  "defaults": {
+    "timeoutMs": 30000,
+    "memoryLimit": "512m",
+    "cpuLimit": 1.0,
+    "network": "none",
+    "sandboxSize": "64m",
+    "tmpSize": "64m"
+  },
+  "network": {
+    "whitelist": [],
+    "blacklist": []
+  },
+  "cleanup": {
+    "autoPrune": true,
+    "maxContainerAgeMs": 3600000
+  },
+  "dependencies": {
+    "python": ["numpy", "pandas"],
+    "node": ["lodash"],
+    "bun": [],
+    "deno": [],
+    "bash": ["jq", "curl"]
+  }
+}
+```
+
+## Fields
+
+### Top-Level
+
+<ResponseField name="maxConcurrent" type="number" default="10">
+  Maximum number of concurrent container executions. Enforced by a global semaphore in the server.
+</ResponseField>
+
+### defaults
+
+Default values for execution options. These are used when a request doesn't specify its own values.
+
+<ResponseField name="defaults.timeoutMs" type="number" default="30000">
+  Default execution timeout in milliseconds.
+</ResponseField>
+
+<ResponseField name="defaults.memoryLimit" type="string" default="512m">
+  Default memory limit. Accepts Docker format: `256m`, `512m`, `1g`.
+</ResponseField>
+
+<ResponseField name="defaults.cpuLimit" type="number" default="1.0">
+  Default CPU limit as fraction of one core.
+</ResponseField>
+
+<ResponseField name="defaults.network" type="string" default="none">
+  Default network mode: `none`, `host`, or `filtered`.
+</ResponseField>
+
+<ResponseField name="defaults.sandboxSize" type="string" default="64m">
+  Default size of the `/sandbox` tmpfs mount.
+</ResponseField>
+
+<ResponseField name="defaults.tmpSize" type="string" default="64m">
+  Default size of the `/tmp` tmpfs mount.
+</ResponseField>
+
+### network
+
+Network filtering rules for `filtered` network mode.
+
+<ResponseField name="network.whitelist" type="string[]" default="[]">
+  Regex patterns for allowed hostnames. When non-empty, only matching hostnames can be accessed.
+</ResponseField>
+
+<ResponseField name="network.blacklist" type="string[]" default="[]">
+  Regex patterns for blocked hostnames. Matching hostnames are denied.
+</ResponseField>
+
+### cleanup
+
+Server cleanup behavior for stale containers.
+
+<ResponseField name="cleanup.autoPrune" type="boolean" default="true">
+  Whether the server should periodically clean up old containers.
+</ResponseField>
+
+<ResponseField name="cleanup.maxContainerAgeMs" type="number" default="3600000">
+  Maximum age of a container in milliseconds before it's eligible for auto-pruning (default: 1 hour).
+</ResponseField>
+
+### dependencies
+
+Packages to bake into custom Docker images when running `isol8 setup`.
+
+<ResponseField name="dependencies.python" type="string[]" default="[]">
+  Python packages (pip install).
+</ResponseField>
+
+<ResponseField name="dependencies.node" type="string[]" default="[]">
+  Node.js packages (npm install -g).
+</ResponseField>
+
+<ResponseField name="dependencies.bun" type="string[]" default="[]">
+  Bun packages (bun install -g).
+</ResponseField>
+
+<ResponseField name="dependencies.deno" type="string[]" default="[]">
+  Deno module URLs (deno cache).
+</ResponseField>
+
+<ResponseField name="dependencies.bash" type="string[]" default="[]">
+  Alpine apk packages.
+</ResponseField>
+
+## JSON Schema
+
+A JSON Schema file is available at `schema/isol8.config.schema.json`. Reference it in your config file for editor autocompletion:
+
+```json
+{
+  "$schema": "./schema/isol8.config.schema.json"
+}
+```
+
+## Viewing Resolved Config
+
+Use the CLI to see the fully resolved configuration:
+
+```bash
+isol8 config
+isol8 config --json
+```

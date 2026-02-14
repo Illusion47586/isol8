@@ -1,0 +1,39 @@
+---
+title: "isol8 config"
+description: "Display the resolved configuration"
+---
+
+# isol8 config
+
+Display the fully resolved configuration, showing defaults merged with any config file values.
+
+```bash
+isol8 config [options]
+```
+
+## Options
+
+<ResponseField name="--json" type="boolean" default="false">
+  Output raw JSON instead of formatted display.
+</ResponseField>
+
+## Example
+
+```bash
+# Pretty-printed
+isol8 config
+
+# Raw JSON (useful for piping)
+isol8 config --json | jq '.defaults.memoryLimit'
+```
+
+## Config File Resolution
+
+isol8 loads configuration from the first file found:
+
+1. `./isol8.config.json` (current working directory)
+2. `~/.isol8/config.json` (home directory)
+
+If no config file is found, built-in defaults are used. Partial configs are deep-merged with defaults.
+
+See the [Configuration](/configuration) page for the full schema reference.

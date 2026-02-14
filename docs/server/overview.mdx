@@ -1,0 +1,79 @@
+---
+title: "Server Overview"
+description: "Deploy isol8 as a remote execution service"
+---
+
+# HTTP Server
+
+The isol8 server exposes a REST API for remote code execution. Start it with:
+
+```bash
+isol8 serve --port 3000 --key my-secret-key
+```
+
+## Authentication
+
+All endpoints except `GET /health` require a Bearer token:
+
+```
+Authorization: Bearer <your-api-key>
+```
+
+The API key is set via `--key` flag or `$ISOL8_API_KEY` environment variable.
+
+## Architecture
+
+```
+Client → HTTP Request → isol8 Server → Docker Engine → Container
+                                     ↓
+                              Global Semaphore
+                           (limits concurrency)
+```
+
+Key behaviors:
+
+- **Ephemeral requests** create a new `DockerIsol8` engine per request, using the warm container pool
+- **Session-based requests** (with `sessionId`) reuse a persistent `DockerIsol8` instance stored in memory
+- **Config defaults** from `isol8.config.json` are merged into every request
+- **Global semaphore** limits concurrent container executions (default: 10, configurable via `maxConcurrent`)
+- **Auto-pruning** periodically removes stale containers when enabled
+
+## Endpoints Overview
+
+| Method | Path | Description |
+|:-------|:-----|:------------|
+| `GET` | `/health` | Health check (no auth) |
+| `POST` | `/execute` | Execute code, return full result |
+| `POST` | `/execute/stream` | Execute code, stream output via SSE |
+| `POST` | `/file` | Upload a file to a session container |
+| `GET` | `/file` | Download a file from a session container |
+| `DELETE` | `/session/:id` | Destroy a persistent session |
+
+See [Endpoints](/server/endpoints) for full request/response schemas.
+
+## Remote Client
+
+Use `RemoteIsol8` to connect to a server from your TypeScript application:
+
+```typescript
+import { RemoteIsol8 } from "isol8";
+
+const isol8 = new RemoteIsol8(
+  {
+    host: "http://localhost:3000",
+    apiKey: "my-secret-key",
+    sessionId: "optional-session-id",
+  },
+  { network: "none", memoryLimit: "512m" }
+);
+
+await isol8.start();
+const result = await isol8.execute({
+  code: 'print("remote execution")',
+  runtime: "python",
+});
+console.log(result.stdout);
+await isol8.stop();
+```
+
+`RemoteIsol8` implements the same `Isol8Engine` interface as `DockerIsol8`, so you can swap between local and remote execution without changing your application code.

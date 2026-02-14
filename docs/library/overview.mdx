@@ -1,0 +1,150 @@
+---
+title: "Library Overview"
+description: "Use isol8 programmatically in your TypeScript/JavaScript application"
+---
+
+# TypeScript Library
+
+isol8 exposes two main classes: `DockerIsol8` for local execution and `RemoteIsol8` for connecting to a remote isol8 server. Both implement the `Isol8Engine` interface.
+
+## Installation
+
+<CodeGroup>
+```bash npm
+npm install isol8
+```
+
+```bash bun
+bun add isol8
+```
+</CodeGroup>
+
+## DockerIsol8
+
+Executes code locally using Docker. This is the primary engine.
+
+```typescript
+import { DockerIsol8 } from "isol8";
+
+const isol8 = new DockerIsol8({
+  mode: "ephemeral",        // "ephemeral" | "persistent"
+  network: "none",          // "none" | "host" | "filtered"
+  memoryLimit: "512m",
+  cpuLimit: 1.0,
+  pidsLimit: 64,
+  readonlyRootFs: true,
+  maxOutputSize: 1048576,   // 1MB
+  timeoutMs: 30000,
+  sandboxSize: "64m",
+  tmpSize: "64m",
+  secrets: {},              // Secret env vars (values masked in output)
+});
+
+await isol8.start();  // No-op — containers are created lazily
+// ... execute code ...
+await isol8.stop();   // Kills container (persistent) or drains pool (ephemeral)
+```
+
+### Constructor Options
+
+All options are optional with sensible defaults.
+
+<ResponseField name="mode" type="'ephemeral' | 'persistent'" default="ephemeral">
+  Execution mode. Ephemeral uses the warm container pool. Persistent keeps a single container alive.
+</ResponseField>
+
+<ResponseField name="network" type="'none' | 'host' | 'filtered'" default="none">
+  Container network mode.
+</ResponseField>
+
+<ResponseField name="networkFilter" type="object">
+  Network filtering rules (only used when `network` is `"filtered"`).
+
+  <Expandable title="Properties">
+    <ResponseField name="whitelist" type="string[]" default="[]">
+      Regex patterns for allowed hostnames.
+    </ResponseField>
+    <ResponseField name="blacklist" type="string[]" default="[]">
+      Regex patterns for blocked hostnames.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="memoryLimit" type="string" default="512m">
+  Docker memory limit string.
+</ResponseField>
+
+<ResponseField name="cpuLimit" type="number" default="1.0">
+  CPU cores (fractional).
+</ResponseField>
+
+<ResponseField name="pidsLimit" type="number" default="64">
+  Maximum number of processes.
+</ResponseField>
+
+<ResponseField name="readonlyRootFs" type="boolean" default="true">
+  Mount root filesystem as read-only.
+</ResponseField>
+
+<ResponseField name="maxOutputSize" type="number" default="1048576">
+  Maximum output size in bytes before truncation.
+</ResponseField>
+
+<ResponseField name="timeoutMs" type="number" default="30000">
+  Default execution timeout in milliseconds.
+</ResponseField>
+
+<ResponseField name="sandboxSize" type="string" default="64m">
+  Size of the `/sandbox` tmpfs mount.
+</ResponseField>
+
+<ResponseField name="tmpSize" type="string" default="64m">
+  Size of the `/tmp` tmpfs mount.
+</ResponseField>
+
+<ResponseField name="image" type="string">
+  Override Docker image. Ignores runtime adapter's default image.
+</ResponseField>
+
+<ResponseField name="secrets" type="Record<string, string>" default="{}">
+  Secret environment variables. Values are injected into the container and automatically masked in output.
+</ResponseField>
+
+## RemoteIsol8
+
+Connects to a remote isol8 server via HTTP.
+
+```typescript
+import { RemoteIsol8 } from "isol8";
+
+const isol8 = new RemoteIsol8(
+  {
+    host: "http://localhost:3000",
+    apiKey: "my-secret-key",
+    sessionId: "my-session",  // Optional: enables persistent mode
+  },
+  {
+    network: "none",
+    memoryLimit: "256m",
+  }
+);
+
+await isol8.start();   // Verifies server health via GET /health
+const result = await isol8.execute({ code: "print(1)", runtime: "python" });
+await isol8.stop();    // Sends DELETE /session/:id if sessionId was set
+```
+
+## Isol8Engine Interface
+
+Both `DockerIsol8` and `RemoteIsol8` implement this interface:
+
+```typescript
+interface Isol8Engine {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+  execute(req: ExecutionRequest): Promise<ExecutionResult>;
+  executeStream(req: ExecutionRequest): AsyncIterable<StreamEvent>;
+  putFile(path: string, content: Buffer | string): Promise<void>;
+  getFile(path: string): Promise<Buffer>;
+}
+```

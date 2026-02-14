@@ -1,0 +1,81 @@
+---
+title: "isol8 setup"
+description: "Build Docker images and install custom dependencies"
+---
+
+# isol8 setup
+
+Check Docker connectivity and build all base `isol8:<runtime>` images. Optionally build custom images with baked-in dependencies.
+
+```bash
+isol8 setup [options]
+```
+
+## What It Does
+
+1. Verifies Docker is running and accessible
+2. Builds base images for all 5 runtimes (`isol8:python`, `isol8:node`, `isol8:bun`, `isol8:deno`, `isol8:bash`)
+3. If package flags are provided, builds custom images with dependencies pre-installed
+
+## Options
+
+<ResponseField name="--python" type="string">
+  Comma-separated Python packages to install via pip.
+
+  ```bash
+  isol8 setup --python numpy,pandas,scipy
+  ```
+</ResponseField>
+
+<ResponseField name="--node" type="string">
+  Comma-separated Node.js packages to install via npm.
+
+  ```bash
+  isol8 setup --node lodash,express,axios
+  ```
+</ResponseField>
+
+<ResponseField name="--bun" type="string">
+  Comma-separated Bun packages to install via bun.
+
+  ```bash
+  isol8 setup --bun zod,hono,drizzle-orm
+  ```
+</ResponseField>
+
+<ResponseField name="--deno" type="string">
+  Comma-separated Deno module URLs to cache via deno cache.
+
+  ```bash
+  isol8 setup --deno https://deno.land/std/path/mod.ts
+  ```
+</ResponseField>
+
+<ResponseField name="--bash" type="string">
+  Comma-separated Alpine apk packages to install.
+
+  ```bash
+  isol8 setup --bash curl,git,jq,wget
+  ```
+</ResponseField>
+
+## Custom Images
+
+When you provide package flags, isol8 builds a custom image tagged `isol8:<runtime>-custom`. These custom images are **automatically preferred** over base images when they exist.
+
+For example, after running:
+
+```bash
+isol8 setup --python numpy,pandas
+```
+
+The image `isol8:python-custom` is created. All subsequent Python executions automatically use this image, so `numpy` and `pandas` are available without `--install`.
+
+## Base Images
+
+All base images are built from a multi-stage `Dockerfile` in the `docker/` directory. Each image is Alpine-based and includes:
+
+- The runtime binary
+- A non-root `sandbox` user
+- A `/sandbox` working directory
+- The HTTP/HTTPS filtering proxy (`proxy.mjs`)

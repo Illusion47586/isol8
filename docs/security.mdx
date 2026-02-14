@@ -1,0 +1,116 @@
+---
+title: "Security"
+description: "How isol8 isolates untrusted code"
+---
+
+# Security Model
+
+isol8 is designed to run untrusted code safely. Every execution is isolated in a Docker container with multiple layers of defense.
+
+## Container Isolation
+
+Each execution runs inside a Docker container with the following security constraints:
+
+| Control | Default | Configurable |
+|:--------|:--------|:-------------|
+| Read-only root filesystem | Enabled | `--writable` / `readonlyRootFs: false` |
+| No network access | `none` | `--net host\|filtered` / `network` |
+| Memory limit | 512 MB | `--memory` / `memoryLimit` |
+| CPU limit | 1 core | `--cpu` / `cpuLimit` |
+| PID limit | 64 | `--pids-limit` / `pidsLimit` |
+| Sandbox tmpfs | 64 MB | `--sandbox-size` / `sandboxSize` |
+| Tmp tmpfs | 64 MB | `tmpSize` |
+| `no-new-privileges` | Enabled | Not configurable |
+| Non-root user (`sandbox`) | Enabled | Not configurable |
+| Execution timeout | 30 seconds | `--timeout` / `timeoutMs` |
+
+## Network Control
+
+### `none` (Default)
+
+The container has no network access. No DNS, no HTTP, no TCP — nothing leaves the container.
+
+### `host`
+
+Full host network access. Use only when you trust the code or need unrestricted connectivity.
+
+### `filtered`
+
+Bridge network with an HTTP/HTTPS proxy (`proxy.mjs`) that filters requests by hostname:
+
+- **Whitelist** — Only matching hostnames are allowed (regex patterns)
+- **Blacklist** — Matching hostnames are blocked (regex patterns)
+
+```bash
+# Allow only OpenAI and GitHub APIs
+isol8 run script.py --net filtered \
+  --allow "^api\.openai\.com$" \
+  --allow "^api\.github\.com$"
+```
+
+The proxy intercepts HTTP and HTTPS traffic via `HTTP_PROXY`/`HTTPS_PROXY` environment variables. The container can only reach external hosts through the proxy.
+
+## Secret Masking
+
+Secrets passed via `--secret KEY=VALUE` (CLI) or `secrets: { KEY: "VALUE" }` (library) are:
+
+1. Injected into the container as environment variables
+2. Automatically masked in all output (stdout and stderr)
+
+Any occurrence of the secret value in the output is replaced with `***`.
+
+```bash
+isol8 run -e "import os; print(os.environ['API_KEY'])" \
+  --runtime python --secret API_KEY=sk-1234
+# stdout: ***
+```
+
+This prevents accidental leakage of credentials in logs, AI agent responses, or user-facing output.
+
+## Output Truncation
+
+Output is truncated to `maxOutputSize` (default 1 MB) to prevent memory exhaustion from programs that produce excessive output. When truncation occurs, `ExecutionResult.truncated` is set to `true`.
+
+## Timeout Enforcement
+
+When a timeout is reached:
+
+1. The process inside the container is killed (via `timeout` shell wrapper)
+2. `"EXECUTION TIMED OUT"` is appended to stderr
+3. The container is cleaned up (ephemeral) or preserved minus the killed process (persistent)
+
+This prevents runaway code from consuming resources indefinitely.
+
+## Docker Image Security
+
+Base images are built from a multi-stage Dockerfile with:
+
+- Alpine Linux base (minimal attack surface)
+- Non-root `sandbox` user
+- Only the runtime binary and essential dependencies
+- Proxy script for filtered networking
+
+Custom images (`isol8 setup --python numpy`) extend the base image with additional packages but maintain the same security posture.
+
+## Best Practices
+
+<Steps>
+  <Step title="Use network: none by default">
+    Only enable network access when the code genuinely needs it. Most code execution tasks don't require network.
+  </Step>
+  <Step title="Use filtered mode with tight allowlists">
+    When network is needed, prefer `filtered` with explicit `--allow` patterns rather than `host` mode.
+  </Step>
+  <Step title="Set appropriate resource limits">
+    Lower memory, CPU, and PID limits to the minimum your workload needs.
+  </Step>
+  <Step title="Use secrets for credentials">
+    Never embed API keys in code strings. Use `--secret` to inject them as masked env vars.
+  </Step>
+  <Step title="Use ephemeral mode">
+    Prefer ephemeral execution for one-off tasks. Persistent mode should only be used when state preservation is genuinely needed.
+  </Step>
+  <Step title="Keep timeout low">
+    Set timeouts appropriate to your workload. 30 seconds is generous for most tasks.
+  </Step>
+</Steps>

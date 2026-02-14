@@ -1,0 +1,161 @@
+---
+title: "Execution"
+description: "Execute code and handle results"
+---
+
+# Execution
+
+The core of isol8 is the `execute()` method, which runs code in an isolated container and returns structured results.
+
+## ExecutionRequest
+
+```typescript
+const result = await isol8.execute({
+  code: 'print("hello")',           // Source code (required)
+  runtime: "python",                // Runtime (required)
+  timeoutMs: 5000,                  // Override default timeout
+  env: { MY_VAR: "value" },        // Additional env vars
+  stdin: "input data",             // Data piped to process stdin
+  files: {                          // Files injected before execution
+    "/sandbox/data.csv": "a,b\n1,2",
+    "/sandbox/config.json": Buffer.from('{"key":"val"}'),
+  },
+  outputPaths: ["/sandbox/out.txt"], // Files to retrieve after execution
+  installPackages: ["numpy"],        // Packages to install before execution
+});
+```
+
+### Fields
+
+<ResponseField name="code" type="string" required>
+  The source code to execute.
+</ResponseField>
+
+<ResponseField name="runtime" type="'python' | 'node' | 'bun' | 'deno' | 'bash'" required>
+  The runtime to use for execution.
+</ResponseField>
+
+<ResponseField name="timeoutMs" type="number">
+  Execution timeout in milliseconds. Overrides the engine's default. The process is killed when the timeout is reached.
+</ResponseField>
+
+<ResponseField name="env" type="Record<string, string>">
+  Additional environment variables to inject into the container.
+</ResponseField>
+
+<ResponseField name="stdin" type="string">
+  Data piped to the process via stdin. Useful for programs that read from `sys.stdin` (Python), `process.stdin` (Node), etc.
+</ResponseField>
+
+<ResponseField name="files" type="Record<string, string | Buffer>">
+  Files to inject into the container before execution. Keys are absolute paths, values are file contents.
+</ResponseField>
+
+<ResponseField name="outputPaths" type="string[]">
+  File paths to retrieve from the container after execution. The files are returned base64-encoded in `ExecutionResult.files`.
+</ResponseField>
+
+<ResponseField name="installPackages" type="string[]">
+  Packages to install before execution using the runtime's package manager. The container's root filesystem is temporarily made writable and network is enabled for installation.
+</ResponseField>
+
+## ExecutionResult
+
+```typescript
+interface ExecutionResult {
+  stdout: string;           // Captured stdout (may be truncated)
+  stderr: string;           // Captured stderr
+  exitCode: number;         // 0 = success
+  durationMs: number;       // Wall-clock execution time
+  truncated: boolean;       // Whether output was truncated
+  executionId: string;      // UUID for this execution
+  runtime: Runtime;         // Runtime that was used
+  timestamp: string;        // ISO 8601 timestamp
+  containerId?: string;     // Docker container ID
+  files?: Record<string, string>; // Retrieved files (base64-encoded)
+}
+```
+
+### Handling Results
+
+```typescript
+const result = await isol8.execute({
+  code: 'print("hello")',
+  runtime: "python",
+});
+
+if (result.exitCode !== 0) {
+  console.error("Execution failed:", result.stderr);
+} else {
+  console.log("Output:", result.stdout);
+}
+
+if (result.truncated) {
+  console.warn("Output was truncated to", result.stdout.length, "bytes");
+}
+
+console.log("Took", result.durationMs, "ms");
+console.log("Execution ID:", result.executionId);
+```
+
+### Retrieving Output Files
+
+```typescript
+const result = await isol8.execute({
+  code: `
+import json
+data = {"result": [1, 2, 3]}
+with open("/sandbox/output.json", "w") as f:
+    json.dump(data, f)
+  `,
+  runtime: "python",
+  outputPaths: ["/sandbox/output.json"],
+});
+
+if (result.files) {
+  const content = Buffer.from(result.files["/sandbox/output.json"], "base64");
+  console.log(JSON.parse(content.toString()));
+}
+```
+
+### Injecting Input Files
+
+```typescript
+const csvData = "name,age\nAlice,30\nBob,25";
+
+const result = await isol8.execute({
+  code: `
+import csv, sys
+with open("/sandbox/data.csv") as f:
+    reader = csv.DictReader(f)
+    for row in reader:
+        print(f"{row['name']} is {row['age']}")
+  `,
+  runtime: "python",
+  files: {
+    "/sandbox/data.csv": csvData,
+  },
+});
+
+console.log(result.stdout);
+// Alice is 30
+// Bob is 25
+```
+
+### Runtime Package Installation
+
+```typescript
+const result = await isol8.execute({
+  code: `
+import numpy as np
+arr = np.array([1, 2, 3, 4, 5])
+print(f"Mean: {arr.mean()}, Std: {arr.std():.2f}")
+  `,
+  runtime: "python",
+  installPackages: ["numpy"],
+});
+```
+
+<Note>
+  For faster execution, bake frequently-used packages into custom images with `isol8 setup --python numpy,pandas` instead of installing them on every run.
+</Note>
