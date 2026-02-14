@@ -49,6 +49,30 @@ export interface ExecutionRequest {
    * Keys matching secret names will be masked in output.
    */
   env?: Record<string, string>;
+
+  /**
+   * Data to pipe to the process via stdin.
+   * Written to a temporary file and piped into the command.
+   */
+  stdin?: string;
+
+  /**
+   * Files to inject into the container before execution.
+   * Keys are absolute paths inside the container, values are file contents.
+   */
+  files?: Record<string, string | Buffer>;
+
+  /**
+   * Absolute paths of files to retrieve from the container after execution.
+   * Retrieved files are included in {@link ExecutionResult.files} as base64 strings.
+   */
+  outputPaths?: string[];
+
+  /**
+   * Packages to install before execution via the runtime's package manager.
+   * e.g. `["numpy", "pandas"]` for Python or `["lodash"]` for Node.
+   */
+  installPackages?: string[];
 }
 
 /**
@@ -69,6 +93,25 @@ export interface ExecutionResult {
 
   /** `true` if stdout was truncated due to exceeding {@link Isol8Options.maxOutputSize}. */
   truncated: boolean;
+
+  /** Unique identifier for this execution. */
+  executionId: string;
+
+  /** Runtime used for this execution. */
+  runtime: Runtime;
+
+  /** ISO 8601 timestamp of when execution started. */
+  timestamp: string;
+
+  /** Docker container ID (if available). */
+  containerId?: string;
+
+  /**
+   * Files retrieved from the container after execution.
+   * Keys are paths, values are base64-encoded file contents.
+   * Only populated when {@link ExecutionRequest.outputPaths} is specified.
+   */
+  files?: Record<string, string>;
 }
 
 // ─── Isol8 ───
@@ -88,9 +131,6 @@ export type Isol8Mode = "ephemeral" | "persistent";
 export interface Isol8Options {
   /** Lifecycle mode. @default "ephemeral" */
   mode?: Isol8Mode;
-
-  /** Default runtime for executions. Can be overridden per-request. */
-  runtime?: Runtime;
 
   /** Network access mode. @default "none" */
   network?: NetworkMode;
@@ -124,6 +164,12 @@ export interface Isol8Options {
 
   /** Override the Docker image (ignores runtime adapter image). */
   image?: string;
+
+  /** Size of the `/sandbox` tmpfs mount (e.g. `"64m"`, `"256m"`). @default "64m" */
+  sandboxSize?: string;
+
+  /** Size of the `/tmp` tmpfs mount (e.g. `"64m"`, `"128m"`). @default "64m" */
+  tmpSize?: string;
 }
 
 /**
@@ -190,6 +236,10 @@ export interface Isol8Defaults {
   cpuLimit: number;
   /** Default network mode. @default "none" */
   network: NetworkMode;
+  /** Default size of the `/sandbox` tmpfs mount. @default "64m" */
+  sandboxSize: string;
+  /** Default size of the `/tmp` tmpfs mount. @default "64m" */
+  tmpSize: string;
 }
 
 /** Configuration for container cleanup and lifecycle. */
