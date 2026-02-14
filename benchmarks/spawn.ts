@@ -2,6 +2,8 @@
  * Benchmark: Container spawn-up performance for each runtime.
  * Measures: create → start → exec(hello world) → collect output → destroy
  *
+ * Each iteration creates a fresh DockerIsol8 engine (cold start, no pool reuse).
+ *
  * Usage: bunx tsx benchmarks/spawn.ts
  */
 import { DockerIsol8 } from "../src/engine/docker";
@@ -63,4 +65,6 @@ function fmt(ms: number): string {
   return `${ms.toFixed(0)}ms`.padStart(8);
 }
 
-main().catch(console.error);
+main()
+  .catch(console.error)
+  .finally(() => process.exit(0));
