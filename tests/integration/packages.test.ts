@@ -59,4 +59,38 @@ describe("Integration: Package Installation", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout.trim()).toBe("1");
   }, 120_000);
+
+  test("Bun: installs zod (ESM)", async () => {
+    const result = await engine.execute({
+      code: `import { z } from 'zod'; console.log(z.string().parse('hello bun'))`,
+      runtime: "bun",
+      installPackages: ["zod"],
+      timeoutMs: 60_000,
+    });
+
+    if (result.exitCode !== 0) {
+      console.log("Bun Stdout:", result.stdout);
+      console.log("Bun Stderr:", result.stderr);
+    }
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("hello bun");
+  }, 60_000);
+
+  test("Node: installs zod (ESM)", async () => {
+    const result = await engine.execute({
+      code: `import { z } from 'zod'; console.log(z.string().parse('hello node'))`,
+      runtime: "node",
+      installPackages: ["zod"],
+      timeoutMs: 60_000,
+    });
+
+    if (result.exitCode !== 0) {
+      console.log("Node ESM Stdout:", result.stdout);
+      console.log("Node ESM Stderr:", result.stderr);
+    }
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("hello node");
+  }, 60_000);
 });
