@@ -205,3 +205,4 @@ bun run schema              # Regenerate JSON schema from types
 5. **No external requests in unit tests** — Docker-dependent tests go in `tests/integration/`
 6. **Secrets never in output** — use `maskSecrets()` from `engine/utils.ts`
 7. **Error handling** — throw descriptive `Error` objects; the CLI catches and prints with emoji prefixes
+8. **Documentation always up-to-date** — before committing, verify and update `README.md`, `skill/isol8/SKILL.md`, and `docs/` to reflect code changes.

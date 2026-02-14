@@ -11,8 +11,9 @@ Secure code execution engine for AI agents. Run untrusted Python, Node.js, Bun, 
 - **Security first** — read-only rootfs, `no-new-privileges`, PID/memory/CPU limits
 - **Network control** — `none` (default), `host`, or `filtered` (HTTP/HTTPS proxy with regex whitelist/blacklist)
 - **File I/O** — upload files into and download files from sandboxes
-- **Runtime packages** — install pip/npm/bun packages on-the-fly via `installPackages`
-- **Secret masking** — environment variables are scrubbed from output
+-   **Runtime packages** — install pip/npm/bun packages on-the-fly (`--install`)
+-   **Modern Node.js** — defaults to ESM (`.mjs`), supports CommonJS (`.cjs`)
+-   **Secret masking** — environment variables are scrubbed from output
 - **Output truncation** — prevents runaway stdout (default 1MB cap)
 - **Remote mode** — run an HTTP server and execute from anywhere
 - **Embeddable** — use as a TypeScript library in your own project

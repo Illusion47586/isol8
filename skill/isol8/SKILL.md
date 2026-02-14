@@ -27,7 +27,7 @@ Isol8 is a secure execution engine for running untrusted code inside Docker cont
 2. File argument (runtime auto-detected from extension, or forced with `--runtime`)
 3. Stdin (defaults to `python` runtime)
 
-**Extension mapping:** `.py` → python, `.js` → node, `.ts` → bun, `.mts` → deno, `.sh` → bash
+**Extension mapping:** `.py` → python, `.js`/`.mjs`/`.cjs` → node, `.ts` → bun, `.mts` → deno, `.sh` → bash
 
 ### Most-Used Flags (`isol8 run`)
 
