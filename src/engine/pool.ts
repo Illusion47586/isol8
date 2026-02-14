@@ -36,6 +36,7 @@ export class ContainerPool {
   private readonly createOptions: Omit<Docker.ContainerCreateOptions, "Image">;
   private readonly pools = new Map<string, PoolEntry[]>();
   private readonly replenishing = new Set<string>();
+  private readonly pendingReplenishments = new Set<Promise<void>>();
 
   constructor(options: PoolOptions) {
     this.docker = options.docker;
@@ -124,6 +125,9 @@ export class ContainerPool {
    * Destroy all pooled containers and clear the pool.
    */
   async drain(): Promise<void> {
+    // First wait for any pending replenishments to finish
+    await Promise.all(this.pendingReplenishments);
+
     const promises: Promise<void>[] = [];
 
     for (const [, pool] of this.pools) {
@@ -141,34 +145,34 @@ export class ContainerPool {
       ...this.createOptions,
       Image: image,
     });
-    console.log(`[Pool] Container ${container.id} created for image: ${image}`);
+    // console.log(`[Pool] Container ${container.id} created for image: ${image}`);
     await container.start();
-    console.log(`[Pool] Container ${container.id} started.`);
+    // console.log(`[Pool] Container ${container.id} started.`);
     return container;
   }
 
   /** Replenish the pool in the background (non-blocking). */
   private replenish(image: string): void {
     if (this.replenishing.has(image)) {
-      console.log(`[Pool] Replenishment for ${image} already in progress.`);
+      // console.log(`[Pool] Replenishment for ${image} already in progress.`);
       return;
     }
     this.replenishing.add(image);
-    console.log(`[Pool] Starting background replenishment for image: ${image}`);
+    // console.log(`[Pool] Starting background replenishment for image: ${image}`);
 
-    this.createContainer(image)
+    const promise = this.createContainer(image)
       .then((container) => {
         const pool = this.pools.get(image) ?? [];
         if (pool.length < this.poolSize) {
           pool.push({ container, createdAt: Date.now() });
           this.pools.set(image, pool);
-          console.log(
-            `[Pool] Replenished container ${container.id} added to pool for ${image}. Current pool size: ${pool.length}`
-          );
+          // console.log(
+          //   `[Pool] Replenished container ${container.id} added to pool for ${image}. Current pool size: ${pool.length}`
+          // );
         } else {
-          console.log(
-            `[Pool] Replenished container ${container.id} not needed (pool for ${image} is full), destroying.`
-          );
+          // console.log(
+          //   `[Pool] Replenished container ${container.id} not needed (pool for ${image} is full), destroying.`
+          // );
           container.remove({ force: true }).catch((err) => {
             console.error(
               `[Pool] Error destroying unneeded replenished container ${container.id}:`,
@@ -182,6 +186,9 @@ export class ContainerPool {
       })
       .finally(() => {
         this.replenishing.delete(image);
+        this.pendingReplenishments.delete(promise);
       });
+
+    this.pendingReplenishments.add(promise);
   }
 }
