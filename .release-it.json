@@ -13,7 +13,7 @@
     "publish": false
   },
   "hooks": {
-    "before:init": ["bun run lint", "bun test tests/unit"],
+    "before:init": ["bun run lint:check", "bun test tests/unit"],
     "after:bump": "bun run build"
   },
   "plugins": {
