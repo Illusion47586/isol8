@@ -39,3 +39,5 @@ export type {
   Runtime,
   StreamEvent,
 } from "./types";
+// ─── Version ───
+export { VERSION } from "./version";
