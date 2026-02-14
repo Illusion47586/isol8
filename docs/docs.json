@@ -55,7 +55,26 @@
               "runtimes",
               "benchmarks",
               "architecture",
-              "security"
+              "security",
+              "faq"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Cookbook",
+        "groups": [
+          {
+            "group": "Use Cases",
+            "pages": [
+              "cookbook/ai-agents",
+              "cookbook/education",
+              "cookbook/data-processing",
+              "cookbook/ci-testing",
+              "cookbook/web-scraping",
+              "cookbook/multi-runtime",
+              "cookbook/remote-execution",
+              "cookbook/debugging"
             ]
           }
         ]
