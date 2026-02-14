@@ -261,7 +261,7 @@ describe("Library: Persistent Mode Lifecycle", () => {
     return;
   }
 
-  test("Switching runtimes in persistent mode creates a new container", async () => {
+  test("Switching runtimes in persistent mode throws an error", async () => {
     const engine = new DockerIsol8({
       mode: "persistent",
       network: "none",
@@ -270,27 +270,18 @@ describe("Library: Persistent Mode Lifecycle", () => {
     try {
       // First execution with Python — creates container
       const r1 = await engine.execute({
-        code: "with open('/sandbox/marker.txt', 'w') as f: f.write('python-was-here')",
+        code: "print('python running')",
         runtime: "python",
       });
       expect(r1.exitCode).toBe(0);
 
-      // Switch to Node — this destroys the Python container and creates a new one
-      const r2 = await engine.execute({
-        code: "console.log('node running')",
-        runtime: "node",
-      });
-      expect(r2.exitCode).toBe(0);
-
-      // The marker file from the Python container should be gone
-      const r3 = await engine.execute({
-        code: `
-const fs = require('fs');
-try { fs.readFileSync('/sandbox/marker.txt', 'utf8'); print('found'); }
-catch { console.log('not found'); }`,
-        runtime: "node",
-      });
-      expect(r3.stdout).toContain("not found");
+      // Switching to Node should throw — persistent containers are single-runtime
+      await expect(
+        engine.execute({
+          code: "console.log('node running')",
+          runtime: "node",
+        })
+      ).rejects.toThrow("Cannot switch runtime");
     } finally {
       await engine.stop();
     }

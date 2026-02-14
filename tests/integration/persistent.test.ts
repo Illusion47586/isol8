@@ -38,26 +38,36 @@ describe("Integration: Persistent Execution & File I/O", () => {
   }, 30_000);
 
   test("Bash: State preservation (file based)", async () => {
-    // Write file in one exec
-    await engine.execute({
-      code: "echo 'hello bash' > /tmp/bash_state",
-      runtime: "bash",
+    // Bash needs its own persistent engine — cannot switch runtimes on a persistent container
+    const bashEngine = new DockerIsol8({
+      mode: "persistent",
+      network: "none",
+      memoryLimit: "128m",
     });
 
-    // Read file in next exec
-    const result = await engine.execute({
-      code: "cat /tmp/bash_state",
-      runtime: "bash",
-    });
+    try {
+      await bashEngine.start();
 
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout.trim()).toBe("hello bash");
+      // Write file in one exec
+      await bashEngine.execute({
+        code: "echo 'hello bash' > /tmp/bash_state",
+        runtime: "bash",
+      });
+
+      // Read file in next exec
+      const result = await bashEngine.execute({
+        code: "cat /tmp/bash_state",
+        runtime: "bash",
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe("hello bash");
+    } finally {
+      await bashEngine.stop();
+    }
   }, 30_000);
 
   test("File Upload (putFile)", async () => {
-    // Ensure the persistent container is running Python (previous test may have switched to bash)
-    await engine.execute({ code: "print('ready')", runtime: "python" });
-
     await engine.putFile("/sandbox/input.txt", "Hello from host");
 
     const result = await engine.execute({
