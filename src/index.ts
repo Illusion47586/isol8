@@ -16,7 +16,14 @@ export type { DockerIsol8Options } from "./engine/docker";
 // ─── Engine ───
 export { DockerIsol8 } from "./engine/docker";
 // ─── Runtime ───
-export { BunAdapter, DenoAdapter, NodeAdapter, PythonAdapter, RuntimeRegistry } from "./runtime";
+export {
+  BunAdapter,
+  bashAdapter,
+  DenoAdapter,
+  NodeAdapter,
+  PythonAdapter,
+  RuntimeRegistry,
+} from "./runtime";
 export type { RuntimeAdapter } from "./runtime/adapter";
 // ─── Server ───
 export { createServer } from "./server/index";
