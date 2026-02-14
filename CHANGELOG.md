@@ -1,3 +1,10 @@
+# [0.5.0](https://github.com/Illusion47586/isol8/compare/v0.4.3...v0.5.0) (2026-02-14)
+
+
+### Features
+
+* add --persist and --debug engine flags ([0d1a220](https://github.com/Illusion47586/isol8/commit/0d1a22021aa5ad169a7049a276379c6ad2e16e70))
+
 ## [0.4.3](https://github.com/Illusion47586/isol8/compare/v0.4.2...v0.4.3) (2026-02-14)
 
 
