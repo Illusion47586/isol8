@@ -7,7 +7,7 @@ description: Securely execute untrusted Python, Node.js, Bun, Deno, and Bash cod
 
 Isol8 is a secure execution engine for running untrusted code inside Docker containers with strict resource limits, network controls, and output sanitization. Use this skill when you need to execute code, scripts, or system commands in a safe, isolated environment.
 
-> For full documentation, see the [isol8 docs](../../docs/index.mdx). This file is a quick-reference for AI agents — it covers the most common operations and links to detailed docs for everything else.
+> For full documentation, see the [isol8 docs](https://bingo-ccc81346.mintlify.app). This file is a quick-reference for AI agents — it covers the most common operations and links to detailed docs for everything else.
 
 ## Quick Reference
 
@@ -15,10 +15,10 @@ Isol8 is a secure execution engine for running untrusted code inside Docker cont
 
 | Command | Purpose | Full Docs |
 |:--------|:--------|:----------|
-| `isol8 run [file]` | Execute code in an isolated container | [cli/run.mdx](../../docs/cli/run.mdx) |
-| `isol8 setup` | Build Docker images, optionally bake in packages | [cli/setup.mdx](../../docs/cli/setup.mdx) |
-| `isol8 serve` | Start HTTP server for remote execution (requires Bun) | [cli/serve.mdx](../../docs/cli/serve.mdx) |
-| `isol8 config` | Display resolved configuration | [cli/config.mdx](../../docs/cli/config.mdx) |
+| `isol8 run [file]` | Execute code in an isolated container | [CLI: run](https://bingo-ccc81346.mintlify.app/cli/run) |
+| `isol8 setup` | Build Docker images, optionally bake in packages | [CLI: setup](https://bingo-ccc81346.mintlify.app/cli/setup) |
+| `isol8 serve` | Start HTTP server for remote execution (requires Bun) | [CLI: serve](https://bingo-ccc81346.mintlify.app/cli/serve) |
+| `isol8 config` | Display resolved configuration | [CLI: config](https://bingo-ccc81346.mintlify.app/cli/config) |
 
 ### Input Resolution (`isol8 run`)
 
@@ -42,7 +42,7 @@ Isol8 is a secure execution engine for running untrusted code inside Docker cont
 | `--secret <KEY=VALUE>` | — | Secret env var, value masked in output (repeatable) |
 | `--stdin <data>` | — | Pipe data to stdin |
 
-For the complete flag reference (20 flags total), see [cli/run.mdx](../../docs/cli/run.mdx).
+For the complete flag reference (20 flags total), see [CLI: run](https://bingo-ccc81346.mintlify.app/cli/run).
 
 ## CLI Examples
 
@@ -68,7 +68,7 @@ isol8 run script.py --host http://server:3000 --key my-api-key
 
 ## Library API (Quick Reference)
 
-For full library documentation, see [library/overview.mdx](../../docs/library/overview.mdx).
+For full library documentation, see [Library Overview](https://bingo-ccc81346.mintlify.app/library/overview).
 
 ### DockerIsol8
 
@@ -99,7 +99,7 @@ console.log(result.durationMs);
 await isol8.stop();
 ```
 
-Full options reference: [library/execution.mdx](../../docs/library/execution.mdx)
+Full options reference: [Execution Options](https://bingo-ccc81346.mintlify.app/library/execution)
 
 ### RemoteIsol8
 
@@ -127,7 +127,7 @@ for await (const event of isol8.executeStream({
 }
 ```
 
-Full streaming docs: [library/streaming.mdx](../../docs/library/streaming.mdx)
+Full streaming docs: [Streaming](https://bingo-ccc81346.mintlify.app/library/streaming)
 
 ### File I/O (Persistent Mode)
 
@@ -136,11 +136,11 @@ await isol8.putFile("/sandbox/data.csv", "col1,col2\n1,2");
 const buf = await isol8.getFile("/sandbox/output.txt");
 ```
 
-Full file I/O docs: [library/file-io.mdx](../../docs/library/file-io.mdx)
+Full file I/O docs: [File I/O](https://bingo-ccc81346.mintlify.app/library/file-io)
 
 ## HTTP Server API
 
-Full endpoint reference: [server/endpoints.mdx](../../docs/server/endpoints.mdx)
+Full endpoint reference: [Server Endpoints](https://bingo-ccc81346.mintlify.app/server/endpoints)
 
 | Method | Path | Auth | Description |
 |:-------|:-----|:-----|:------------|
@@ -155,7 +155,7 @@ Full endpoint reference: [server/endpoints.mdx](../../docs/server/endpoints.mdx)
 
 Config is loaded from (first found): `./isol8.config.json` or `~/.isol8/config.json`. Partial configs are deep-merged with defaults.
 
-Full configuration reference: [configuration.mdx](../../docs/configuration.mdx)
+Full configuration reference: [Configuration](https://bingo-ccc81346.mintlify.app/configuration)
 
 ## Security Defaults
 
@@ -167,7 +167,7 @@ Full configuration reference: [configuration.mdx](../../docs/configuration.mdx)
 | Network | Disabled (`none`) |
 | Output | Truncated at 1MB, secrets masked |
 
-Full security model: [security.mdx](../../docs/security.mdx)
+Full security model: [Security](https://bingo-ccc81346.mintlify.app/security)
 
 ## Troubleshooting
 
