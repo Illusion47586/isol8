@@ -1,10 +1,35 @@
 {
   "name": "isol8",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "description": "Secure code execution engine for AI agents",
+  "author": "Illusion47586",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Illusion47586/isol8.git"
+  },
+  "homepage": "https://github.com/Illusion47586/isol8",
+  "bugs": {
+    "url": "https://github.com/Illusion47586/isol8/issues"
+  },
+  "keywords": [
+    "sandbox",
+    "docker",
+    "code-execution",
+    "isolation",
+    "security",
+    "ai-agents",
+    "container",
+    "runtime"
+  ],
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts",
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
     "./schema": "./schema/isol8.config.schema.json"
   },
   "bin": {
@@ -50,8 +75,8 @@
     "dist",
     "schema",
     "docker",
-    "src",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "jsonValidation": [
     {
