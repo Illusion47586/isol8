@@ -99,17 +99,16 @@ Timeout-enforced sandbox`"]
 
 ## Three Ways to Use isol8
 
-<CardGroup cols={3}>
-  <Card title="CLI" icon="terminal" href="/cli/run">
+  <Card title="CLI" icon="terminal" href="/cli/run" horizontal>
     Run code from the command line with `isol8 run`. Supports inline code (`-e`), file execution, stdin piping, persistent mode, secret injection, and package installation.
   </Card>
-  <Card title="TypeScript Library" icon="brackets-curly" href="/library/overview">
+  <Card title="TypeScript Library" icon="brackets-curly" href="/library/overview" horizontal>
     Import `DockerIsol8` for local execution or `RemoteIsol8` to connect to a remote server. Both implement the same `Isol8Engine` interface with `execute()`, `executeStream()`, `putFile()`, and `getFile()`.
   </Card>
-  <Card title="HTTP Server" icon="server" href="/server/overview">
+  <Card title="HTTP Server" icon="server" href="/server/overview" horizontal>
     Deploy `isol8 serve` as a standalone execution service. Exposes REST endpoints for code execution, streaming via SSE, and file I/O — all protected by Bearer token authentication.
   </Card>
-</CardGroup>
+
 
 ## Supported Runtimes
 
