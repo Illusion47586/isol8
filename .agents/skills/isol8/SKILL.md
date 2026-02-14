@@ -18,7 +18,7 @@ Isol8 is a secure execution engine for running untrusted code inside Docker cont
 | `isol8 run [file]` | Execute code in an isolated container | [CLI: run](https://bingo-ccc81346.mintlify.app/cli/run) |
 | `isol8 setup` | Build Docker images, optionally bake in packages | [CLI: setup](https://bingo-ccc81346.mintlify.app/cli/setup) |
 | `isol8 cleanup` | Remove orphaned isol8 containers | [CLI: cleanup](https://bingo-ccc81346.mintlify.app/cli/cleanup) |
-| `isol8 serve` | Start HTTP server for remote execution (auto-downloads binary) | [CLI: serve](https://bingo-ccc81346.mintlify.app/cli/serve) |
+| `isol8 serve` | Start HTTP server for remote execution (downloads binary on first use) | [CLI: serve](https://bingo-ccc81346.mintlify.app/cli/serve) |
 | `isol8 config` | Display resolved configuration | [CLI: config](https://bingo-ccc81346.mintlify.app/cli/config) |
 
 ### Input Resolution (`isol8 run`)
@@ -27,7 +27,7 @@ Isol8 is a secure execution engine for running untrusted code inside Docker cont
 2. File argument (runtime auto-detected from extension, or forced with `--runtime`)
 3. Stdin (defaults to `python` runtime)
 
-**Extension mapping:** `.py` → python, `.js` → node, `.ts` → bun, `.mts` → deno, `.sh` → bash
+**Extension mapping:** `.py` → python, `.js`/`.mjs`/`.cjs` → node, `.ts` → bun, `.mts` → deno, `.sh` → bash
 
 ### Most-Used Flags (`isol8 run`)
 
@@ -35,6 +35,7 @@ Isol8 is a secure execution engine for running untrusted code inside Docker cont
 |:-----|:--------|:------------|
 | `-e, --eval <code>` | — | Execute inline code |
 | `-r, --runtime <name>` | auto-detect | Force: `python`, `node`, `bun`, `deno`, `bash` |
+| `--no-stream` | `false` | Disable real-time output streaming |
 | `--persistent` | `false` | Keep container alive between runs |
 | `--persist` | `false` | Keep container after execution for debugging |
 | `--debug` | `false` | Enable internal debug logging |

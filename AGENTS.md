@@ -44,7 +44,8 @@ isol8/
 │   │   ├── concurrency.ts    # Async Semaphore for limiting concurrent containers
 │   │   └── image-builder.ts  # Docker image build logic (base + custom)
 │   ├── server/
-│   │   ├── index.ts          # Hono REST server (execute, file I/O, sessions)
+│   │   ├── index.ts          # Hono REST server (execute, file I/O, sessions); exports async createServer()
+│   │   ├── standalone.ts     # Entry point for compiled server binary (bun build --compile)
 │   │   └── auth.ts           # Bearer token auth middleware
 │   └── client/
 │       └── remote.ts         # RemoteIsol8 HTTP client
@@ -57,7 +58,8 @@ isol8/
 │   ├── unit/                 # Unit tests (bun:test)
 │   └── integration/          # Integration tests (require Docker)
 ├── scripts/
-│   └── build.ts              # Build script (bundles CLI for Node.js)
+│   ├── build.ts              # Build script (bundles CLI for Node.js)
+│   └── build-server.ts       # Build script for standalone server binary (bun build --compile)
 ├── biome.json                # Linter/formatter config
 ├── tsconfig.json             # TypeScript config
 └── package.json
@@ -138,6 +140,40 @@ interface RuntimeAdapter {
 ### Streaming
 `executeStream()` returns an `AsyncIterable<StreamEvent>` that yields stdout/stderr chunks as they arrive. The server exposes this via `POST /execute/stream` as SSE (Server-Sent Events). Each event is `data: {"type":"stdout"|"stderr"|"exit"|"error", "data":"..."}\n\n`.
 
+### Standalone Server Binary
+
+The `isol8 serve` command has two modes:
+
+1. **Dev mode** (running under Bun): starts the server directly in-process via `Bun.serve()`. Detected by checking `globalThis.Bun`.
+2. **Built CLI mode** (running under Node.js): downloads a pre-compiled standalone binary from GitHub Releases to `~/.isol8/bin/isol8-server` and spawns it as a child process. The binary embeds the Bun runtime, so no Bun installation is required.
+
+The binary is compiled with `bun build --compile` (without `--bytecode` — see below) from `src/server/standalone.ts`.
+
+Binaries are named `isol8-server-{os}-{arch}` (e.g. `isol8-server-darwin-arm64`, `isol8-server-linux-x64`). The CLI checks for version updates on every invocation and prompts the user before updating. Use `isol8 serve --update` to force re-download.
+
+### Lazy Imports (Server)
+
+`createServer()` in `src/server/index.ts` is **async** and lazy-imports `DockerIsol8` and runtime adapters via dynamic `await import()`:
+
+```typescript
+export async function createServer(options: ServerOptions) {
+  const { DockerIsol8 } = await import("../engine/docker");
+  await import("../runtime");
+  // ...
+}
+```
+
+Similarly, `src/server/standalone.ts` lazy-imports `createServer` after arg parsing:
+
+```typescript
+const { createServer } = await import("./index");
+const server = await createServer({ port, apiKey });
+```
+
+This avoids eagerly loading `dockerode` and its transitive dependency chain (`ssh2` → `protobufjs` → `long`) at module initialization time. The `long` polyfill crashes on Linux x64 when compiled with `bun build --compile --bytecode`. By deferring imports, `--version` and `--help` always work even if Docker is unavailable.
+
+**Important:** Do NOT add `--bytecode` back to the `bun build --compile` flags in `scripts/build.ts` or `scripts/build-server.ts`. It causes the `Long.fromNumber` crash on Linux.
+
 ### Network Filtering
 When `network: "filtered"`, containers get bridge networking with `HTTP_PROXY`/`HTTPS_PROXY` env vars pointing to `docker/proxy.mjs`. The proxy checks hostnames against whitelist/blacklist regex patterns.
 
@@ -212,6 +248,7 @@ bun run lint                # Lint check
 
 # Building
 bun run build               # Bundle CLI for distribution
+bun run build:server        # Compile standalone server binary (bun build --compile)
 bun run schema              # Regenerate JSON schema from types
 ```
 

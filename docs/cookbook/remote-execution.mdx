@@ -10,22 +10,24 @@ Deploy isol8 as a centralized code execution service that multiple clients can s
 Start the isol8 HTTP server:
 
 ```bash
-# Basic server (requires Bun runtime)
+# Start the server (downloads standalone binary on first use)
 isol8 serve --port 3000 --key my-secret-api-key
 
-# With custom config
-isol8 serve --port 3000 --key my-secret-api-key --config ./isol8.config.json
+# Force re-download the server binary
+isol8 serve --port 3000 --key my-secret-api-key --update
 ```
 
-Or programmatically:
+Or programmatically (requires Bun runtime):
 
 ```typescript
-import { serve } from "isol8/server";
+import { createServer } from "isol8/server";
 
-serve({
+const server = await createServer({
   port: 3000,
   apiKey: process.env.ISOL8_API_KEY!,
 });
+
+Bun.serve({ fetch: server.app.fetch, port: server.port });
 ```
 
 ## Remote Client (Library)

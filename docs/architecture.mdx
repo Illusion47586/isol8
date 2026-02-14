@@ -387,3 +387,53 @@ Files are transferred between the host and containers using `docker exec` with b
 - **Read:** `base64 /sandbox/file.txt` via `docker exec`, then decode on the host side
 
 The `createTarBuffer()` and `extractFromTar()` utilities in `engine/utils.ts` build minimal POSIX tar archives (512-byte header blocks with proper checksums and ustar magic) for the per-request `files` and `outputPaths` fields.
+
+## Standalone Server Binary
+
+The `isol8 serve` command runs the server as a pre-compiled standalone binary that embeds the Bun runtime. This eliminates the need to install Bun to use the server.
+
+```mermaid
+flowchart LR
+    CLI["isol8 serve<br/>(Node.js CLI)"]
+    CHECK{"Bun runtime<br/>available?"}
+    DEV["In-process<br/>Bun.serve()"]
+    DL["Download binary<br/>from GitHub Releases"]
+    CACHE["~/.isol8/bin/<br/>isol8-server"]
+    SPAWN["Spawn child<br/>process"]
+    SERVER["isol8-server<br/>(compiled binary)"]
+
+    CLI --> CHECK
+    CHECK -->|Yes| DEV
+    CHECK -->|No| DL
+    DL --> CACHE
+    CACHE --> SPAWN
+    SPAWN --> SERVER
+```
+
+**Two modes:**
+
+1. **Dev mode** — when running under Bun (e.g. `bun run dev -- serve`), the server starts directly in-process via `Bun.serve()`. Detected by checking `globalThis.Bun`.
+2. **Built CLI mode** — when running under Node.js (the distributed npm package), the CLI downloads a compiled binary from GitHub Releases on first use and spawns it as a child process. The binary is cached at `~/.isol8/bin/isol8-server`.
+
+Binaries are named `isol8-server-{os}-{arch}` (e.g. `isol8-server-darwin-arm64`, `isol8-server-linux-x64`) and compiled with `bun build --compile` from `src/server/standalone.ts`.
+
+### Lazy Imports
+
+Both `src/server/standalone.ts` and `src/server/index.ts` use dynamic `await import()` to defer loading of `dockerode` and its transitive dependencies (`ssh2` → `protobufjs` → `long`). This is critical because:
+
+1. The `long` polyfill crashes on Linux x64 when compiled with `bun build --compile --bytecode`
+2. By lazy-importing, `--version` and `--help` always work even if Docker is unavailable
+3. `createServer()` is `async` to support this pattern
+
+```typescript
+// src/server/standalone.ts — lazy-imports after arg parsing
+const { createServer } = await import("./index");
+const server = await createServer({ port, apiKey });
+
+// src/server/index.ts — lazy-imports inside createServer()
+export async function createServer(options: ServerOptions) {
+  const { DockerIsol8 } = await import("../engine/docker");
+  await import("../runtime");
+  // ...
+}
+```

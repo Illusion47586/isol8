@@ -135,12 +135,18 @@ isol8 cleanup --force
 
 ### `isol8 serve`
 
-Start the isol8 remote HTTP server. Downloads a pre-compiled standalone binary on first run (no Bun runtime required).
+Start the isol8 remote HTTP server. Downloads a pre-compiled standalone binary the first time you run this command (no Bun runtime required).
 
 ```bash
 isol8 serve --port 3000 --key my-secret-key
 isol8 serve --update  # Force re-download the server binary
 ```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-p, --port <port>` | Port to listen on | `3000` |
+| `-k, --key <key>` | API key for Bearer token auth | `$ISOL8_API_KEY` |
+| `--update` | Force re-download the server binary | `false` |
 
 ### `isol8 config`
 
@@ -408,6 +414,10 @@ bunx tsc --noEmit
 
 # Lint
 bun run lint
+
+# Build
+bun run build              # Bundle CLI for Node.js distribution
+bun run build:server       # Compile standalone server binary
 
 # Benchmarks
 bun run bench            # Cold start

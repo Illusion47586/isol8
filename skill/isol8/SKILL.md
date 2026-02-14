@@ -18,7 +18,7 @@ Isol8 is a secure execution engine for running untrusted code inside Docker cont
 | `isol8 run [file]` | Execute code in an isolated container | [CLI: run](https://bingo-ccc81346.mintlify.app/cli/run) |
 | `isol8 setup` | Build Docker images, optionally bake in packages | [CLI: setup](https://bingo-ccc81346.mintlify.app/cli/setup) |
 | `isol8 cleanup` | Remove orphaned isol8 containers | [CLI: cleanup](https://bingo-ccc81346.mintlify.app/cli/cleanup) |
-| `isol8 serve` | Start HTTP server for remote execution (auto-downloads binary) | [CLI: serve](https://bingo-ccc81346.mintlify.app/cli/serve) |
+| `isol8 serve` | Start HTTP server for remote execution (downloads binary on first use) | [CLI: serve](https://bingo-ccc81346.mintlify.app/cli/serve) |
 | `isol8 config` | Display resolved configuration | [CLI: config](https://bingo-ccc81346.mintlify.app/cli/config) |
 
 ### Input Resolution (`isol8 run`)
