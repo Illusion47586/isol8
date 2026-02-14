@@ -136,6 +136,7 @@ program
   .option("--secret <KEY=VALUE>", "Secret env var (repeatable, values masked)", collect, [])
   .option("--sandbox-size <size>", "Sandbox tmpfs size (e.g. 128m)")
   .option("--stdin <data>", "Data to pipe to stdin")
+  .option("--install <package>", "Install package for runtime (repeatable)", collect, [])
   .option("--host <url>", "Execute on remote server")
   .option("--key <key>", "API key for remote server")
   .action(async (file: string | undefined, opts) => {
@@ -151,6 +152,7 @@ program
         runtime,
         timeoutMs: engineOptions.timeoutMs,
         ...(stdinData ? { stdin: stdinData } : {}),
+        ...(opts.install.length > 0 ? { installPackages: opts.install } : {}),
       };
 
       const result = await engine.execute(req);

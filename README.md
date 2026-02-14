@@ -78,6 +78,9 @@ isol8 run -e "print(1+1)" --runtime python
 # Stdin
 echo "Bun.version" | isol8 run --runtime bun
 
+# With packages
+isol8 run -e "import numpy; print(numpy.__version__)" --install numpy --runtime python
+
 # Remote execution
 isol8 run script.py --host http://server:3000 --key my-api-key
 ```
@@ -93,6 +96,7 @@ isol8 run script.py --host http://server:3000 --key my-api-key
 | `--persistent` | Keep container alive between runs | `false` |
 | `--timeout <ms>` | Execution timeout in milliseconds | `30000` |
 | `--memory <limit>` | Memory limit (e.g. `512m`, `1g`) | `512m` |
+| `--install <pkg>` | Install package for runtime (repeatable) | — |
 | `--host <url>` | Remote server URL | — |
 | `--key <key>` | API key for remote server | `$ISOL8_API_KEY` |
 
@@ -127,7 +131,7 @@ await isol8.start();
 const result = await isol8.execute({
   code: 'print("Hello from isol8!")',
   runtime: "python",
-  timeoutMs: 10_000,
+  timeoutMs: 10000,
 });
 
 console.log(result.stdout);  // "Hello from isol8!"
