@@ -31,7 +31,13 @@
           },
           {
             "group": "CLI",
-            "pages": ["cli/run", "cli/setup", "cli/serve", "cli/config"]
+            "pages": [
+              "cli/run",
+              "cli/setup",
+              "cli/serve",
+              "cli/config",
+              "cli/cleanup"
+            ]
           },
           {
             "group": "TypeScript Library",
