@@ -47,7 +47,7 @@
     "docs:dev": "cd docs && mint dev",
     "docs:validate": "cd docs && mint validate",
     "docs:broken-links": "cd docs && mint broken-links",
-    "schema": "ts-json-schema-generator --path src/types.ts --type Isol8UserConfig --tsconfig tsconfig.json -o schema/isol8.config.schema.json",
+    "schema": "ts-json-schema-generator --path src/types.ts --type Isol8UserConfig --tsconfig tsconfig.json -o schema/isol8.config.schema.json && ultracite fix schema/isol8.config.schema.json",
     "publish:alpha": "bun run build && bun publish --tag alpha --access public --ignore-scripts",
     "release": "release-it",
     "prepare": "simple-git-hooks"
