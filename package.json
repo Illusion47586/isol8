@@ -19,6 +19,9 @@
     "bench": "bunx tsx benchmarks/spawn.ts",
     "bench:pool": "bunx tsx benchmarks/spawn-pool.ts",
     "bench:detailed": "bunx tsx benchmarks/spawn-detailed.ts",
+    "docs:dev": "cd docs && mint dev",
+    "docs:validate": "cd docs && mint validate",
+    "docs:broken-links": "cd docs && mint broken-links",
     "schema": "ts-json-schema-generator --path src/types.ts --type Isol8UserConfig --tsconfig tsconfig.json -o schema/isol8.config.schema.json",
     "release": "release-it",
     "prepare": "simple-git-hooks"
@@ -36,6 +39,7 @@
     "@types/dockerode": "^4.0.1",
     "@types/node": "^25.2.3",
     "lint-staged": "^16.2.7",
+    "mint": "^4.2.348",
     "release-it": "^19.2.4",
     "simple-git-hooks": "^2.13.1",
     "ts-json-schema-generator": "^2.5.0",
