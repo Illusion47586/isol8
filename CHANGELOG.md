@@ -1,3 +1,10 @@
+## [0.6.1](https://github.com/Illusion47586/isol8/compare/v0.6.0...v0.6.1) (2026-02-14)
+
+
+### Bug Fixes
+
+* reduce npm package size from 442MB to 2.2MB ([240aae3](https://github.com/Illusion47586/isol8/commit/240aae3af1e4f2b808f766920cef32e05f40b334))
+
 # [0.6.0](https://github.com/Illusion47586/isol8/compare/v0.5.1...v0.6.0) (2026-02-14)
 
 
