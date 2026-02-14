@@ -22,6 +22,7 @@ import type {
   StreamEvent,
 } from "../types";
 import { Semaphore } from "./concurrency";
+import { ContainerPool } from "./pool";
 import {
   createTarBuffer,
   extractFromTar,
@@ -250,6 +251,7 @@ export class DockerIsol8 implements Isol8Engine {
 
   private container: Docker.Container | null = null;
   private persistentRuntime: RuntimeAdapter | null = null;
+  private pool: ContainerPool | null = null;
 
   /**
    * @param options - Sandbox configuration options.
@@ -297,6 +299,12 @@ export class DockerIsol8 implements Isol8Engine {
       }
       this.container = null;
       this.persistentRuntime = null;
+    }
+
+    // Drain the warm container pool
+    if (this.pool) {
+      await this.pool.drain();
+      this.pool = null;
     }
   }
 
@@ -473,21 +481,26 @@ export class DockerIsol8 implements Isol8Engine {
     const timeoutMs = req.timeoutMs ?? this.defaultTimeoutMs;
     const image = await this.resolveImage(adapter);
 
-    // Create a container similar to persistent mode logic to support ReadonlyRootfs + Tmpfs
-    // We must start the container (activating tmpfs) before writing code to /sandbox
-    const container = await this.docker.createContainer({
-      Image: image,
-      Cmd: ["sleep", "infinity"], // Keep alive while we exec
-      WorkingDir: SANDBOX_WORKDIR,
-      Env: this.buildEnv(), // Base env, user env added at exec time
-      NetworkDisabled: this.network === "none",
-      HostConfig: this.buildHostConfig(),
-      StopTimeout: 2,
-    });
+    // Lazily initialize the container pool
+    if (!this.pool) {
+      this.pool = new ContainerPool({
+        docker: this.docker,
+        poolSize: 2,
+        createOptions: {
+          Cmd: ["sleep", "infinity"],
+          WorkingDir: SANDBOX_WORKDIR,
+          Env: this.buildEnv(),
+          NetworkDisabled: this.network === "none",
+          HostConfig: this.buildHostConfig(),
+          StopTimeout: 2,
+        },
+      });
+    }
+
+    // Acquire a pre-warmed container from the pool
+    const container = await this.pool.acquire(image);
 
     try {
-      await container.start();
-
       // Start proxy for filtered network mode
       if (this.network === "filtered") {
         await startProxy(container, this.networkFilter);
@@ -562,11 +575,8 @@ export class DockerIsol8 implements Isol8Engine {
         ...(req.outputPaths ? { files: await this.retrieveFiles(container, req.outputPaths) } : {}),
       };
     } finally {
-      try {
-        await container.remove({ force: true });
-      } catch {
-        // Best effort cleanup
-      }
+      // Return container to pool for reuse (pool will clean sandbox)
+      await this.pool!.release(container, image);
     }
   }
 
