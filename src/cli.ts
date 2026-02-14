@@ -241,7 +241,7 @@ program
 
 program
   .command("serve")
-  .description("Start the isol8 remote server (downloads standalone binary)")
+  .description("Start the isol8 remote server")
   .option("-p, --port <port>", "Port to listen on", "3000")
   .option("-k, --key <key>", "API key for authentication")
   .option("--update", "Force re-download the server binary")
@@ -252,12 +252,25 @@ program
       process.exit(1);
     }
 
-    const port = opts.port;
+    const port = Number.parseInt(opts.port, 10);
+
+    // When running under Bun (e.g. `bun run dev -- serve`), start the server
+    // directly in-process. When running under Node.js (the built CLI), download
+    // and launch the compiled standalone binary.
+    if (typeof globalThis.Bun !== "undefined") {
+      const { createServer } = await import("./server/index");
+      const server = createServer({ port, apiKey });
+      console.log(`[INFO] isol8 server v${VERSION} listening on http://localhost:${port}`);
+      console.log("       Auth: Bearer token required");
+      Bun.serve({ fetch: server.app.fetch, port });
+      return;
+    }
+
     const binaryPath = await ensureServerBinary(opts.update ?? false);
 
     // Spawn the server binary
     const { spawn: spawnChild } = await import("node:child_process");
-    const child = spawnChild(binaryPath, ["--port", port, "--key", apiKey], {
+    const child = spawnChild(binaryPath, ["--port", String(port), "--key", apiKey], {
       stdio: "inherit",
     });
 
