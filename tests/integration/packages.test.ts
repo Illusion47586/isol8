@@ -30,7 +30,7 @@ describe("Integration: Package Installation", () => {
 
   test("Node: installs lodash", async () => {
     const result = await engine.execute({
-      code: `console.log('NODE_PATH:', process.env.NODE_PATH); try { console.log(require.resolve('lodash')); const _ = require('lodash'); console.log(_.kebabCase('Hello World')); } catch (e) { console.error(e); process.exit(1); }`,
+      code: `import _ from 'lodash'; console.log(_.kebabCase('Hello World'));`,
       runtime: "node",
       installPackages: ["lodash"],
       timeoutMs: 60_000,
