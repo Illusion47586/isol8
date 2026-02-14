@@ -1,3 +1,10 @@
+## [0.4.3](https://github.com/Illusion47586/isol8/compare/v0.4.2...v0.4.3) (2026-02-14)
+
+
+### Bug Fixes
+
+* **runtime:** default node to .mjs to suppress warnings, support .cjs extension ([c5657ba](https://github.com/Illusion47586/isol8/commit/c5657ba7960158baead08f4cdc09a28d92b10e09))
+
 ## [0.4.2](https://github.com/Illusion47586/isol8/compare/v0.4.1...v0.4.2) (2026-02-14)
 
 
