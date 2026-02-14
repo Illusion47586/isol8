@@ -175,8 +175,8 @@ function getInstallCommand(runtime: string, packages: string[]): string[] {
     case "python":
       return ["pip", "install", "--user", "--no-cache-dir", "--break-system-packages", ...packages];
     case "node":
-      // Install to /sandbox/.npm-global (writable location with exec allowed)
-      return ["npm", "install", "-g", "--prefix=/sandbox/.npm-global", ...packages];
+      // Install to /sandbox (local node_modules) so resolution works for both CJS and ESM
+      return ["npm", "install", "--prefix", "/sandbox", ...packages];
     case "bun":
       // Bun global install - use /sandbox for writable location
       return ["bun", "install", "-g", "--global-dir=/sandbox/.bun-global", ...packages];
