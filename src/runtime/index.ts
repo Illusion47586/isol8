@@ -16,9 +16,9 @@ import { PythonAdapter } from "./adapters/python";
 // Register all built-in adapters (order matters for extension collisions)
 RuntimeRegistry.register(PythonAdapter);
 RuntimeRegistry.register(NodeAdapter);
-RuntimeRegistry.register(BunAdapter);
+RuntimeRegistry.register(BunAdapter); // Bun wins for .ts
 RuntimeRegistry.register(bashAdapter);
-RuntimeRegistry.register(DenoAdapter); // Deno wins for .ts since it's registered last
+RuntimeRegistry.register(DenoAdapter); // Deno uses .mts to avoid extension collision
 
 export type { RuntimeAdapter } from "./adapter";
 export { RuntimeRegistry } from "./adapter";
