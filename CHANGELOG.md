@@ -1,3 +1,10 @@
+# [0.6.0](https://github.com/Illusion47586/isol8/compare/v0.5.1...v0.6.0) (2026-02-14)
+
+
+### Features
+
+* standalone compiled server binary with auto-download CLI launcher ([#2](https://github.com/Illusion47586/isol8/issues/2)) ([4a3f0ac](https://github.com/Illusion47586/isol8/commit/4a3f0acf4431fc5768dd7773fd45ca36824a5d20))
+
 ## [0.5.1](https://github.com/Illusion47586/isol8/compare/v0.5.0...v0.5.1) (2026-02-14)
 
 
