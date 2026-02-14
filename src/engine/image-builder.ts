@@ -135,14 +135,27 @@ async function buildCustomImage(
       throw new Error(`Unknown runtime: ${runtime}`);
   }
 
-  const dockerfile = `FROM isol8:${runtime}\n${installCmd}\n`;
+  const dockerfileContent = `FROM isol8:${runtime}\n${installCmd}\n`;
 
-  // For custom images, we'll use the docker CLI approach instead
-  // since dockerode's inline dockerfile support is limited
-  const { execSync } = await import("node:child_process");
-  execSync(`echo '${dockerfile}' | docker build -t ${tag} -f - .`, {
-    cwd: DOCKERFILE_DIR,
-    stdio: "pipe",
+  // Build using dockerode with an inline tar containing just the Dockerfile
+  const { createTarBuffer } = await import("./utils");
+  const { Readable } = await import("node:stream");
+
+  const tarBuffer = createTarBuffer("Dockerfile", dockerfileContent);
+
+  const stream = await docker.buildImage(Readable.from(tarBuffer), {
+    t: tag,
+    dockerfile: "Dockerfile",
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    docker.modem.followProgress(stream, (err) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve();
+      }
+    });
   });
 
   onProgress?.({ runtime, status: "done" });
