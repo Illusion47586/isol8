@@ -21,11 +21,25 @@ import { buildBaseImages, buildCustomImages } from "./engine/image-builder";
 // Register all built-in runtime adapters
 import { RuntimeRegistry } from "./runtime";
 import type { ExecutionRequest, Isol8Engine, Isol8Options, NetworkMode, Runtime } from "./types";
+import { logger } from "./utils/logger";
 import { VERSION } from "./version";
 
 const program = new Command();
 
-program.name("isol8").description("Secure code execution engine").version(VERSION);
+program
+  .name("isol8")
+  .description("Secure code execution engine")
+  .version(VERSION)
+  .option("--debug", "Enable debug logging")
+  .hook("preAction", (thisCommand) => {
+    const opts = thisCommand.optsWithGlobals();
+    if (opts.debug) {
+      logger.setDebug(true);
+    }
+    logger.debug(`[CLI] Command: ${thisCommand.args?.[0] ?? thisCommand.name()}`);
+    logger.debug(`[CLI] Version: ${VERSION}`);
+    logger.debug(`[CLI] Platform: ${platform()} ${arch()}`);
+  });
 
 // ─── setup ────────────────────────────────────────────────────────────
 
@@ -39,12 +53,14 @@ program
   .option("--bash <packages>", "Additional Bash packages (comma-separated)")
   .action(async (opts) => {
     const docker = new Docker();
+    logger.debug("[Setup] Connecting to Docker daemon");
 
     // Check Docker connection
     const spinner = ora("Checking Docker...").start();
     try {
       await docker.ping();
       spinner.stopAndPersist({ symbol: "[OK]", text: "Docker is running" });
+      logger.debug("[Setup] Docker ping successful");
     } catch {
       spinner.stopAndPersist({ symbol: "[ERR]", text: "Docker is not running or not installed." });
       console.error("      Install Docker: https://docs.docker.com/get-docker/");
@@ -54,12 +70,17 @@ program
 
     // Build base images
     spinner.start("Building isol8 images...");
+    logger.debug("[Setup] Building base images");
     await buildBaseImages(docker, (progress) => {
       const status =
         progress.status === "error" ? "[ERR]" : progress.status === "done" ? "[OK]" : "[..]";
       if (progress.status === "building") {
         spinner.text = `Building ${progress.runtime}...`;
+        logger.debug(`[Setup] Building base image for ${progress.runtime}`);
       } else if (progress.status === "done" || progress.status === "error") {
+        logger.debug(
+          `[Setup] Base image ${progress.runtime}: ${progress.status}${progress.message ? ` (${progress.message})` : ""}`
+        );
         spinner.stopAndPersist({
           symbol: status,
           text: `${progress.runtime}${progress.message ? `: ${progress.message}` : ""}`,
@@ -75,36 +96,50 @@ program
 
     // Build custom images from config or CLI flags
     const config = loadConfig();
+    logger.debug("[Setup] Config loaded");
 
     // Merge CLI flags into config dependencies
     if (opts.python) {
+      logger.debug(`[Setup] Adding Python packages from CLI: ${opts.python}`);
       config.dependencies.python = [
         ...(config.dependencies.python ?? []),
         ...opts.python.split(","),
       ];
     }
     if (opts.node) {
+      logger.debug(`[Setup] Adding Node.js packages from CLI: ${opts.node}`);
       config.dependencies.node = [...(config.dependencies.node ?? []), ...opts.node.split(",")];
     }
     if (opts.bun) {
+      logger.debug(`[Setup] Adding Bun packages from CLI: ${opts.bun}`);
       config.dependencies.bun = [...(config.dependencies.bun ?? []), ...opts.bun.split(",")];
     }
     if (opts.deno) {
+      logger.debug(`[Setup] Adding Deno packages from CLI: ${opts.deno}`);
       config.dependencies.deno = [...(config.dependencies.deno ?? []), ...opts.deno.split(",")];
     }
     if (opts.bash) {
+      logger.debug(`[Setup] Adding Bash packages from CLI: ${opts.bash}`);
       config.dependencies.bash = [...(config.dependencies.bash ?? []), ...opts.bash.split(",")];
     }
 
     const hasDeps = Object.values(config.dependencies).some((pkgs) => pkgs && pkgs.length > 0);
     if (hasDeps) {
+      logger.debug(
+        "[Setup] Building custom images with dependencies:",
+        JSON.stringify(config.dependencies)
+      );
       spinner.start("Building custom images with dependencies...");
       await buildCustomImages(docker, config, (progress) => {
         const status =
           progress.status === "error" ? "[ERR]" : progress.status === "done" ? "[OK]" : "[..]";
         if (progress.status === "building") {
           spinner.text = `Building custom ${progress.runtime}...`;
+          logger.debug(`[Setup] Building custom image for ${progress.runtime}`);
         } else if (progress.status === "done" || progress.status === "error") {
+          logger.debug(
+            `[Setup] Custom image ${progress.runtime}: ${progress.status}${progress.message ? ` (${progress.message})` : ""}`
+          );
           spinner.stopAndPersist({
             symbol: status,
             text: `${progress.runtime}${progress.message ? ` (${progress.message})` : ""}`,
@@ -150,11 +185,27 @@ program
   .option("--host <url>", "Execute on remote server")
   .option("--key <key>", "API key for remote server")
   .option("--no-stream", "Disable real-time output streaming") // Default is now streaming
-  .option("--debug", "Enable debug logging")
   .option("--persist", "Keep container running after execution for inspection")
   .action(async (file: string | undefined, opts) => {
     const { code, runtime, engineOptions, engine, stdinData, fileExtension } =
       await resolveRunInput(file, opts);
+
+    logger.debug(`[Run] Runtime: ${runtime}, mode: ${engineOptions.mode}`);
+    logger.debug(`[Run] Network: ${engineOptions.network}, timeout: ${engineOptions.timeoutMs}ms`);
+    logger.debug(`[Run] Memory: ${engineOptions.memoryLimit}, CPU: ${engineOptions.cpuLimit}`);
+    logger.debug(`[Run] Code length: ${code.length} chars`);
+    if (stdinData) {
+      logger.debug(`[Run] Stdin data provided (${stdinData.length} chars)`);
+    }
+    if (opts.install?.length > 0) {
+      logger.debug(`[Run] Packages to install: ${opts.install.join(", ")}`);
+    }
+    if (opts.host) {
+      logger.debug(`[Run] Remote execution on ${opts.host}`);
+    }
+    if (engineOptions.persist) {
+      logger.debug("[Run] Persist mode enabled");
+    }
 
     // cleanup on exit
     const cleanup = async () => {
@@ -168,6 +219,7 @@ program
     let exitCode = 0;
     try {
       await engine.start();
+      logger.debug("[Run] Engine started");
       spinner.text = "Running code...";
 
       const req: ExecutionRequest = {
@@ -181,6 +233,7 @@ program
 
       // Stream by default unless --no-stream is passed
       if (opts.stream !== false) {
+        logger.debug("[Run] Using streaming mode");
         spinner.stop(); // Stop spinner for streaming output
         const stream = engine.executeStream(req);
         for await (const event of stream) {
@@ -198,7 +251,11 @@ program
           }
         }
       } else {
+        logger.debug("[Run] Using non-streaming mode");
         const result = await engine.execute(req);
+        logger.debug(
+          `[Run] Execution completed: exitCode=${result.exitCode}, duration=${result.durationMs}ms, truncated=${result.truncated}`
+        );
         spinner.stop(); // Stop spinner before printing output
 
         if (result.stdout) {
@@ -226,6 +283,7 @@ program
       throw err;
     } finally {
       // Ensure cleanup happens, but don't hang forever
+      logger.debug("[Run] Stopping engine");
       const cleanupPromise = engine.stop();
       const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 5000));
 
@@ -253,11 +311,14 @@ program
     }
 
     const port = Number.parseInt(opts.port, 10);
+    logger.debug(`[Serve] Port: ${port}`);
+    logger.debug(`[Serve] API key: ${"*".repeat(apiKey.length)}`);
 
     // When running under Bun (e.g. `bun run dev -- serve`), start the server
     // directly in-process. When running under Node.js (the built CLI), download
     // and launch the compiled standalone binary.
     if (typeof globalThis.Bun !== "undefined") {
+      logger.debug("[Serve] Running under Bun, starting server in-process");
       const { createServer } = await import("./server/index");
       const server = await createServer({ port, apiKey });
       console.log(`[INFO] isol8 server v${VERSION} listening on http://localhost:${port}`);
@@ -266,7 +327,9 @@ program
       return;
     }
 
+    logger.debug("[Serve] Running under Node.js, launching standalone binary");
     const binaryPath = await ensureServerBinary(opts.update ?? false);
+    logger.debug(`[Serve] Binary path: ${binaryPath}`);
 
     // Spawn the server binary
     const { spawn: spawnChild } = await import("node:child_process");
@@ -290,6 +353,7 @@ program
 function getServerBinaryName(): string {
   const os = platform();
   const cpu = arch();
+  logger.debug(`[Serve] Resolving binary name for ${os}-${cpu}`);
 
   const osMap: Record<string, string> = {
     darwin: "darwin",
@@ -318,6 +382,7 @@ function getServerBinaryName(): string {
 /** Get the version of an existing server binary, or null if it doesn't exist or fails. */
 async function getServerBinaryVersion(binaryPath: string): Promise<string | null> {
   if (!existsSync(binaryPath)) {
+    logger.debug(`[Serve] No binary found at ${binaryPath}`);
     return null;
   }
   try {
@@ -326,8 +391,10 @@ async function getServerBinaryVersion(binaryPath: string): Promise<string | null
       encoding: "utf-8",
       timeout: 5000,
     });
+    logger.debug(`[Serve] Existing binary version: ${output.trim()}`);
     return output.trim();
   } catch {
+    logger.debug("[Serve] Failed to get binary version");
     return null;
   }
 }
@@ -336,6 +403,7 @@ async function getServerBinaryVersion(binaryPath: string): Promise<string | null
 async function downloadServerBinary(binaryPath: string): Promise<void> {
   const binaryName = getServerBinaryName();
   const url = `https://github.com/Illusion47586/isol8/releases/download/v${VERSION}/${binaryName}`;
+  logger.debug(`[Serve] Download URL: ${url}`);
 
   const spinner = ora(`Downloading isol8 server v${VERSION}...`).start();
   try {
@@ -363,6 +431,7 @@ async function downloadServerBinary(binaryPath: string): Promise<void> {
 
     // Rename into place
     renameSync(tmpPath, binaryPath);
+    logger.debug(`[Serve] Binary saved to ${binaryPath} (${buffer.length} bytes)`);
 
     spinner.succeed(`Downloaded isol8 server v${VERSION}`);
   } catch (err) {
@@ -398,9 +467,11 @@ async function promptYesNo(question: string): Promise<boolean> {
 async function ensureServerBinary(forceUpdate: boolean): Promise<string> {
   const binDir = join(homedir(), ".isol8", "bin");
   const binaryPath = join(binDir, "isol8-server");
+  logger.debug(`[Serve] Binary path: ${binaryPath}, forceUpdate: ${forceUpdate}`);
 
   // Force re-download
   if (forceUpdate) {
+    logger.debug("[Serve] Force update requested");
     await downloadServerBinary(binaryPath);
     return binaryPath;
   }
@@ -410,16 +481,19 @@ async function ensureServerBinary(forceUpdate: boolean): Promise<string> {
 
   if (existingVersion === null) {
     // No binary found — download
+    logger.debug("[Serve] No existing binary, downloading");
     await downloadServerBinary(binaryPath);
     return binaryPath;
   }
 
   if (existingVersion === VERSION) {
     // Version matches — use as-is
+    logger.debug(`[Serve] Binary version ${existingVersion} matches CLI`);
     return binaryPath;
   }
 
   // Version mismatch — prompt user
+  logger.debug(`[Serve] Version mismatch: binary=${existingVersion}, CLI=${VERSION}`);
   console.log(`Server binary v${existingVersion} found, but CLI is v${VERSION}.`);
   const shouldUpdate = await promptYesNo("Download updated binary? [Y/n] ");
 
@@ -447,6 +521,8 @@ program
       join(homedir(), ".isol8", "config.json"),
     ];
     const loadedFrom = searchPaths.find((p) => existsSync(p));
+    logger.debug(`[Config] Config source: ${loadedFrom ?? "defaults"}`);
+    logger.debug(`[Config] Resolved config: ${JSON.stringify(config)}`);
 
     if (opts.json) {
       console.log(JSON.stringify(config, null, 2));
@@ -532,12 +608,14 @@ program
   .option("--force", "Skip confirmation prompt")
   .action(async (opts) => {
     const docker = new Docker();
+    logger.debug("[Cleanup] Connecting to Docker daemon");
 
     // Check Docker connection
     const spinner = ora("Checking Docker...").start();
     try {
       await docker.ping();
       spinner.succeed("Docker is running");
+      logger.debug("[Cleanup] Docker ping successful");
     } catch {
       spinner.fail("Docker is not running or not installed.");
       process.exit(1);
@@ -548,6 +626,9 @@ program
     const containers = await docker.listContainers({ all: true });
     const isol8Containers = containers.filter(
       (c) => c.Image.startsWith("isol8:") || c.Image.startsWith("isol8-custom:")
+    );
+    logger.debug(
+      `[Cleanup] Found ${containers.length} total containers, ${isol8Containers.length} isol8 containers`
     );
 
     if (isol8Containers.length === 0) {
@@ -587,7 +668,9 @@ program
 
     // Remove containers using the static cleanup method
     spinner.start("Removing containers...");
+    logger.debug("[Cleanup] Removing containers");
     const result = await DockerIsol8.cleanup(docker);
+    logger.debug(`[Cleanup] Removed: ${result.removed}, failed: ${result.failed}`);
 
     // Print errors if any
     if (result.errors.length > 0) {
@@ -609,6 +692,7 @@ program
 // biome-ignore lint/suspicious/noExplicitAny: commander opts are untyped
 async function resolveRunInput(file: string | undefined, opts: any) {
   const config = loadConfig();
+  logger.debug("[Run] Config loaded");
 
   let code: string;
   let runtime: Runtime;
@@ -616,8 +700,10 @@ async function resolveRunInput(file: string | undefined, opts: any) {
   if (opts.eval) {
     code = opts.eval;
     runtime = (opts.runtime ?? "python") as Runtime;
+    logger.debug(`[Run] Inline eval, runtime: ${runtime}`);
   } else if (file) {
     const filePath = resolve(file);
+    logger.debug(`[Run] Reading file: ${filePath}`);
     if (!existsSync(filePath)) {
       console.error(`[ERR] File not found: ${file}`);
       process.exit(1);
@@ -625,15 +711,18 @@ async function resolveRunInput(file: string | undefined, opts: any) {
     code = readFileSync(filePath, "utf-8");
     if (opts.runtime) {
       runtime = opts.runtime as Runtime;
+      logger.debug(`[Run] Runtime specified: ${runtime}`);
     } else {
       try {
         runtime = RuntimeRegistry.detect(file).name;
+        logger.debug(`[Run] Auto-detected runtime: ${runtime}`);
       } catch {
         console.error(`[ERR] Cannot detect runtime for ${file}. Use --runtime to specify.`);
         process.exit(1);
       }
     }
   } else {
+    logger.debug("[Run] Reading code from stdin");
     const chunks: Buffer[] = [];
     for await (const chunk of process.stdin) {
       chunks.push(chunk as Buffer);
@@ -661,11 +750,9 @@ async function resolveRunInput(file: string | undefined, opts: any) {
     persist: opts.persist ?? false,
   };
 
-  // Configure global logger if debug enabled
-  if (engineOptions.debug) {
-    const { logger } = await import("./utils/logger");
-    logger.setDebug(true);
-  }
+  logger.debug(
+    `[Run] Engine options: mode=${engineOptions.mode}, network=${engineOptions.network}`
+  );
 
   // Determine file extension from file argument if present
   let fileExtension: string | undefined;
@@ -693,6 +780,7 @@ async function resolveRunInput(file: string | undefined, opts: any) {
 
   let engine: Isol8Engine;
   if (opts.host) {
+    logger.debug(`[Run] Using remote engine: ${opts.host}`);
     const apiKey = opts.key ?? process.env.ISOL8_API_KEY;
     if (!apiKey) {
       console.error("[ERR] API key required. Use --key or ISOL8_API_KEY env var.");
@@ -703,6 +791,7 @@ async function resolveRunInput(file: string | undefined, opts: any) {
       engineOptions
     );
   } else {
+    logger.debug("[Run] Using local Docker engine");
     engine = new DockerIsol8(engineOptions, config.maxConcurrent);
   }
 

@@ -11,6 +11,12 @@
       }
     ],
     [
+      "@semantic-release/exec",
+      {
+        "prepareCmd": "bun run build:server:all"
+      }
+    ],
+    [
       "@semantic-release/git",
       {
         "assets": ["package.json", "bun.lock", "CHANGELOG.md"],
