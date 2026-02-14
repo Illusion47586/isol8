@@ -134,6 +134,81 @@ const result = await isol8.execute({ code: "print(1)", runtime: "python" });
 await isol8.stop();    // Sends DELETE /session/:id if sessionId was set
 ```
 
+## Container Cleanup
+
+The `DockerIsol8` class provides a static utility method to remove all isol8 containers from your Docker environment. This is useful for maintenance, testing, and cleanup operations.
+
+```typescript
+import { DockerIsol8 } from "isol8";
+
+// Remove all isol8 containers
+const result = await DockerIsol8.cleanup();
+
+console.log(`Removed: ${result.removed}`);
+console.log(`Failed: ${result.failed}`);
+
+if (result.errors.length > 0) {
+  console.error("Errors:", result.errors);
+}
+```
+
+### Cleanup Result
+
+The `cleanup()` method returns an object with:
+
+<ResponseField name="removed" type="number">
+  Number of containers successfully removed.
+</ResponseField>
+
+<ResponseField name="failed" type="number">
+  Number of containers that failed to remove.
+</ResponseField>
+
+<ResponseField name="errors" type="string[]">
+  Array of error messages for failed removals (format: `"containerId: error message"`).
+</ResponseField>
+
+### Custom Docker Instance
+
+You can pass a custom Docker instance to the cleanup method:
+
+```typescript
+import Docker from "dockerode";
+import { DockerIsol8 } from "isol8";
+
+const docker = new Docker({ socketPath: "/custom/docker.sock" });
+const result = await DockerIsol8.cleanup(docker);
+```
+
+### Use Cases
+
+Common scenarios for programmatic cleanup:
+
+```typescript
+// Clean up before test suite
+beforeEach(async () => {
+  await DockerIsol8.cleanup();
+});
+
+// Clean up after test suite
+afterAll(async () => {
+  const result = await DockerIsol8.cleanup();
+  if (result.failed > 0) {
+    console.warn(`Warning: ${result.failed} containers failed to clean up`);
+  }
+});
+
+// Periodic maintenance in a long-running service
+setInterval(async () => {
+  const result = await DockerIsol8.cleanup();
+  console.log(`Cleaned up ${result.removed} orphaned containers`);
+}, 3600000); // Every hour
+```
+
+<Note>
+  The `cleanup()` method only removes containers using isol8 images (`isol8:*` or `isol8-custom:*`). Your other Docker containers are never affected.
+</Note>
+
 ## Isol8Engine Interface
 
 Both `DockerIsol8` and `RemoteIsol8` implement this interface:

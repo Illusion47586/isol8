@@ -22,8 +22,8 @@ const DEFAULT_CONFIG: Isol8Config = {
     memoryLimit: "512m",
     cpuLimit: 1.0,
     network: "none",
-    sandboxSize: "64m",
-    tmpSize: "64m",
+    sandboxSize: "512m",
+    tmpSize: "256m",
   },
   network: {
     whitelist: [],

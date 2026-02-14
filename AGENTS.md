@@ -27,7 +27,7 @@ isol8/
 │   ├── types.ts              # All type definitions (Sandbox, ExecutionRequest/Result, Config)
 │   ├── config.ts             # Config file discovery + loading + defaults
 │   ├── index.ts              # Public library API (re-exports)
-│   ├── cli.ts                # CLI entry point (setup, run, serve, config commands)
+│   ├── cli.ts                # CLI entry point (setup, run, serve, config, cleanup commands)
 │   ├── runtime/
 │   │   ├── adapter.ts        # RuntimeAdapter interface + RuntimeRegistry
 │   │   ├── index.ts          # Barrel file, registers all built-in adapters
@@ -141,8 +141,37 @@ interface RuntimeAdapter {
 ### Network Filtering
 When `network: "filtered"`, containers get bridge networking with `HTTP_PROXY`/`HTTPS_PROXY` env vars pointing to `docker/proxy.mjs`. The proxy checks hostnames against whitelist/blacklist regex patterns.
 
+### Package Installation
+When `installPackages` is provided in the execution request, packages are installed to `/sandbox/.local` (Python), `/sandbox/.npm-global` (Node.js), or `/sandbox/.bun-global` (Bun). These directories allow execution of shared libraries (`.so` files) which is required for packages like numpy.
+
+**Important:** Packages install to `/sandbox` (not `/tmp`) because:
+- `/tmp` has `noexec` flag preventing `.so` files from loading
+- `/sandbox` has `exec` flag allowing native extensions to work
+- Default `sandboxSize` is 512MB to accommodate packages like numpy
+
+Environment variables set during execution:
+- `PYTHONUSERBASE=/sandbox/.local`
+- `NPM_CONFIG_PREFIX=/sandbox/.npm-global`
+- `PATH` includes `/sandbox/.local/bin`, `/sandbox/.npm-global/bin`, etc.
+
 ### File I/O
 Files are transferred as tar archives using the Docker API (`putArchive`/`getArchive`). The tar create/extract logic is in `engine/utils.ts`.
+
+### Container Filesystem
+Containers use two tmpfs mounts for security and performance:
+
+1. **`/sandbox`** (default: 512MB, configurable via `sandboxSize`)
+   - Working directory for code execution
+   - Package installations stored here (`.local`, `.npm-global`, etc.)
+   - Allows execution (`exec` flag) for shared libraries
+   - User files and outputs
+
+2. **`/tmp`** (default: 256MB, configurable via `tmpSize`)
+   - Temporary files and caches
+   - No execution allowed (`noexec` flag) for security
+   - Used for pip/npm caches during installation
+
+Both sizes can be configured via CLI flags (`--sandbox-size`, `--tmp-size`) or in `isol8.config.json`.
 
 ### Config Resolution
 Config is loaded from (first found wins):
@@ -164,12 +193,13 @@ bun run lint                # Lint check
 
 # Building
 bun run build               # Bundle CLI for distribution
+bun run schema              # Regenerate JSON schema from types
 ```
 
 ## Guidelines for Changes
 
 1. **Types first** — if adding a feature, update `src/types.ts` first
-2. **Config schema in sync** — if touching `Isol8Config`, update `schema/isol8.config.schema.json` too
+2. **Config schema in sync** — if touching `Isol8Config`, run `bun run schema` to update `schema/isol8.config.schema.json`
 3. **Tests are in `tests/unit/`** — use `bun:test` (`describe`, `test`, `expect`)
 4. **Runtime adapters** — to add a new runtime, create `src/runtime/adapters/<name>.ts`, implement `RuntimeAdapter`, register in `src/runtime/index.ts`, and add a Dockerfile stage in `docker/Dockerfile`
 5. **No external requests in unit tests** — Docker-dependent tests go in `tests/integration/`

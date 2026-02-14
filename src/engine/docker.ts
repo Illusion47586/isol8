@@ -173,13 +173,15 @@ function wrapWithTimeout(cmd: string[], timeoutSec: number): string[] {
 function getInstallCommand(runtime: string, packages: string[]): string[] {
   switch (runtime) {
     case "python":
-      return ["pip", "install", "--no-cache-dir", "--break-system-packages", ...packages];
+      return ["pip", "install", "--user", "--no-cache-dir", "--break-system-packages", ...packages];
     case "node":
-      return ["npm", "install", "-g", ...packages];
+      // Install to /sandbox/.npm-global (writable location with exec allowed)
+      return ["npm", "install", "-g", "--prefix=/sandbox/.npm-global", ...packages];
     case "bun":
-      return ["bun", "install", "-g", ...packages];
+      // Bun global install - use /sandbox for writable location
+      return ["bun", "install", "-g", "--global-dir=/sandbox/.bun-global", ...packages];
     case "deno":
-      // Deno uses URL imports; cache modules
+      // Deno uses URL imports; cache modules to /sandbox
       return ["sh", "-c", packages.map((p) => `deno cache ${p}`).join(" && ")];
     case "bash":
       return ["apk", "add", "--no-cache", ...packages];
@@ -200,10 +202,27 @@ async function installPackages(
   // Debug log
   console.error(`[DEBUG] Installing packages: ${JSON.stringify(cmd)}`);
 
+  // Set environment for writable install locations
+  // Use /sandbox instead of /tmp because /tmp has noexec flag which prevents loading .so files
+  const env: string[] = [
+    "PATH=/sandbox/.local/bin:/sandbox/.npm-global/bin:/sandbox/.bun-global/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin",
+  ];
+
+  if (runtime === "python") {
+    env.push("PYTHONUSERBASE=/sandbox/.local");
+  } else if (runtime === "node") {
+    env.push("NPM_CONFIG_PREFIX=/sandbox/.npm-global");
+    env.push("NPM_CONFIG_CACHE=/sandbox/.npm-cache");
+    env.push("npm_config_cache=/sandbox/.npm-cache");
+  } else if (runtime === "deno") {
+    env.push("DENO_DIR=/sandbox/.deno");
+  }
+
   const exec = await container.exec({
     Cmd: cmd,
     AttachStdout: true,
     AttachStderr: true,
+    Env: env,
   });
 
   const stream = await exec.start({ Detach: false, Tty: false });
@@ -296,8 +315,8 @@ export class DockerIsol8 implements Isol8Engine {
     this.defaultTimeoutMs = options.timeoutMs ?? 30_000;
     this.overrideImage = options.image;
     this.semaphore = new Semaphore(maxConcurrent);
-    this.sandboxSize = options.sandboxSize ?? "64m";
-    this.tmpSize = options.tmpSize ?? "64m";
+    this.sandboxSize = options.sandboxSize ?? "512m";
+    this.tmpSize = options.tmpSize ?? "256m";
   }
 
   /**
@@ -752,8 +771,8 @@ export class DockerIsol8 implements Isol8Engine {
       PidsLimit: this.pidsLimit,
       ReadonlyRootfs: this.readonlyRootFs,
       Tmpfs: {
-        "/tmp": `rw,noexec,nosuid,size=${this.tmpSize}`,
-        [SANDBOX_WORKDIR]: `rw,size=${this.sandboxSize}`,
+        "/tmp": `rw,noexec,nosuid,nodev,size=${this.tmpSize}`,
+        [SANDBOX_WORKDIR]: `rw,exec,nosuid,nodev,size=${this.sandboxSize}`,
       },
       SecurityOpt: ["no-new-privileges"],
     };
@@ -770,7 +789,11 @@ export class DockerIsol8 implements Isol8Engine {
   private buildEnv(extra?: Record<string, string>): string[] {
     const env: string[] = [
       "PYTHONUNBUFFERED=1",
-      "NODE_PATH=/usr/local/lib/node_modules:/sandbox/node_modules",
+      "PYTHONUSERBASE=/sandbox/.local",
+      "NPM_CONFIG_PREFIX=/sandbox/.npm-global",
+      "DENO_DIR=/sandbox/.deno",
+      "PATH=/sandbox/.local/bin:/sandbox/.npm-global/bin:/sandbox/.bun-global/bin:/usr/local/bin:/usr/bin:/bin",
+      "NODE_PATH=/usr/local/lib/node_modules:/sandbox/.npm-global/lib/node_modules:/sandbox/node_modules",
     ];
 
     // Add secrets as env vars
@@ -948,5 +971,56 @@ export class DockerIsol8 implements Isol8Engine {
 
     // Trim trailing whitespace
     return result.trimEnd();
+  }
+
+  /**
+   * Remove all isol8 containers (both running and stopped).
+   *
+   * This static utility method finds and removes all containers created by isol8,
+   * identified by images starting with `isol8:` or `isol8-custom:`.
+   *
+   * @param docker - Optional Docker instance. If not provided, creates a new one.
+   * @returns Promise resolving to an object with counts of removed and failed containers.
+   *
+   * @example
+   * ```typescript
+   * import { DockerIsol8 } from "isol8";
+   *
+   * // Remove all isol8 containers
+   * const result = await DockerIsol8.cleanup();
+   * console.log(`Removed ${result.removed} containers`);
+   * if (result.failed > 0) {
+   *   console.log(`Failed to remove ${result.failed} containers`);
+   * }
+   * ```
+   */
+  static async cleanup(
+    docker?: Docker
+  ): Promise<{ removed: number; failed: number; errors: string[] }> {
+    const dockerInstance = docker ?? new Docker();
+
+    // Find all isol8 containers
+    const containers = await dockerInstance.listContainers({ all: true });
+    const isol8Containers = containers.filter(
+      (c) => c.Image.startsWith("isol8:") || c.Image.startsWith("isol8-custom:")
+    );
+
+    let removed = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    for (const containerInfo of isol8Containers) {
+      try {
+        const container = dockerInstance.getContainer(containerInfo.Id);
+        await container.remove({ force: true });
+        removed++;
+      } catch (err) {
+        failed++;
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        errors.push(`${containerInfo.Id.slice(0, 12)}: ${errorMsg}`);
+      }
+    }
+
+    return { removed, failed, errors };
   }
 }

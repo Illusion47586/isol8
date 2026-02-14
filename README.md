@@ -110,11 +110,24 @@ isol8 run script.py --host http://server:3000 --key my-api-key
 | `--writable` | Disable read-only root filesystem | `false` |
 | `--max-output <bytes>` | Maximum output size in bytes | `1048576` |
 | `--secret <KEY=VALUE>` | Secret env var (repeatable, values masked) | — |
-| `--sandbox-size <size>` | Sandbox tmpfs size (e.g. `128m`) | `64m` |
+| `--sandbox-size <size>` | Sandbox tmpfs size (e.g. `512m`, `1g`) | `512m` |
+| `--tmp-size <size>` | Tmp tmpfs size (e.g. `256m`, `512m`) | `256m` |
 | `--stdin <data>` | Data to pipe to stdin | — |
 | `--install <pkg>` | Install package for runtime (repeatable) | — |
 | `--host <url>` | Remote server URL | — |
 | `--key <key>` | API key for remote server | `$ISOL8_API_KEY` |
+
+### `isol8 cleanup`
+
+Remove orphaned isol8 containers.
+
+```bash
+# Interactive (prompts for confirmation)
+isol8 cleanup
+
+# Force (skip confirmation)
+isol8 cleanup --force
+```
 
 ### `isol8 serve`
 
@@ -339,12 +352,27 @@ bun run bench:detailed   # Phase breakdown
 
 | Layer | Protection |
 |-------|-----------|
-| **Filesystem** | Read-only root, writable `/sandbox` (tmpfs, 64MB), writable `/tmp` (tmpfs, noexec, 64MB) |
+| **Filesystem** | Read-only root, writable `/sandbox` (tmpfs, 512MB, exec allowed), writable `/tmp` (tmpfs, 256MB, noexec) |
 | **Processes** | PID limit (default 64), `no-new-privileges` |
 | **Resources** | CPU (1 core), memory (512MB), execution timeout (30s) |
 | **Network** | Disabled by default; optional proxy-based filtering |
 | **Output** | Truncated at 1MB; secrets masked from stdout/stderr |
 | **Isolation** | Each execution in its own container (ephemeral) or exec (persistent) |
+
+### Container Filesystem
+
+Containers use two tmpfs mounts:
+
+1. **`/sandbox`** (default: 512MB, configurable via `--sandbox-size` or config)
+   - Working directory for code execution
+   - Package installations stored here (`.local`, `.npm-global`, etc.)
+   - Allows execution (`exec` flag) for shared libraries like numpy's `.so` files
+   - User files and outputs
+
+2. **`/tmp`** (default: 256MB, configurable via `--tmp-size` or config)
+   - Temporary files and caches
+   - No execution allowed (`noexec` flag) for security
+   - Used during package installation
 
 ## REST API
 

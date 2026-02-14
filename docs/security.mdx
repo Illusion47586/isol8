@@ -18,11 +18,40 @@ Each execution runs inside a Docker container with the following security constr
 | Memory limit | 512 MB | `--memory` / `memoryLimit` |
 | CPU limit | 1 core | `--cpu` / `cpuLimit` |
 | PID limit | 64 | `--pids-limit` / `pidsLimit` |
-| Sandbox tmpfs | 64 MB | `--sandbox-size` / `sandboxSize` |
-| Tmp tmpfs | 64 MB | `tmpSize` |
+| Sandbox tmpfs | 512 MB | `--sandbox-size` / `sandboxSize` |
+| Tmp tmpfs | 256 MB | `--tmp-size` / `tmpSize` |
 | `no-new-privileges` | Enabled | Not configurable |
 | Non-root user (`sandbox`) | Enabled | Not configurable |
 | Execution timeout | 30 seconds | `--timeout` / `timeoutMs` |
+
+## Container Filesystem
+
+Containers use two tmpfs mounts for security and performance:
+
+### `/sandbox` (default: 512 MB)
+
+- **Purpose**: Working directory for code execution
+- **Mount flags**: `rw,exec,nosuid,nodev`
+- **Contents**: 
+  - User code files
+  - Package installations (`.local`, `.npm-global`, `.bun-global`)
+  - User-created files and outputs
+- **Execution**: Allowed (required for native extensions like numpy's `.so` files)
+- **Configurable via**: `--sandbox-size` CLI flag or `sandboxSize` config option
+
+### `/tmp` (default: 256 MB)
+
+- **Purpose**: Temporary files and caches
+- **Mount flags**: `rw,noexec,nosuid,nodev`
+- **Contents**:
+  - Temporary files created by programs
+  - Package manager caches during installation
+- **Execution**: Disabled (`noexec` flag) for security
+- **Configurable via**: `--tmp-size` CLI flag or `tmpSize` config option
+
+<Info>
+Packages installed with `--install` are stored in `/sandbox` (not `/tmp`) because they often contain shared libraries (`.so` files) that need to be executable. The `/tmp` mount has the `noexec` flag which would prevent these libraries from loading.
+</Info>
 
 ## Network Control
 

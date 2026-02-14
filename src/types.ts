@@ -177,10 +177,10 @@ export interface Isol8Options {
   /** Override the Docker image (ignores runtime adapter image). */
   image?: string;
 
-  /** Size of the `/sandbox` tmpfs mount (e.g. `"64m"`, `"256m"`). @default "64m" */
+  /** Size of the `/sandbox` tmpfs mount (e.g. `"64m"`, `"256m"`). Packages installed with `--install` are stored here. @default "512m" */
   sandboxSize?: string;
 
-  /** Size of the `/tmp` tmpfs mount (e.g. `"64m"`, `"128m"`). @default "64m" */
+  /** Size of the `/tmp` tmpfs mount (e.g. `"64m"`, `"128m"`). @default "256m" */
   tmpSize?: string;
 }
 
@@ -256,9 +256,9 @@ export interface Isol8Defaults {
   cpuLimit: number;
   /** Default network mode. @default "none" */
   network: NetworkMode;
-  /** Default size of the `/sandbox` tmpfs mount. @default "64m" */
+  /** Default size of the `/sandbox` tmpfs mount. @default "512m" */
   sandboxSize: string;
-  /** Default size of the `/tmp` tmpfs mount. @default "64m" */
+  /** Default size of the `/tmp` tmpfs mount. @default "256m" */
   tmpSize: string;
 }
 

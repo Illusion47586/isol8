@@ -92,6 +92,10 @@
     "*.{ts,tsx}": [
       "ultracite fix",
       "bash -c 'bunx tsc --noEmit -p tsconfig.json'"
+    ],
+    "src/types.ts": [
+      "bash -c 'bun run schema'",
+      "git add schema/isol8.config.schema.json"
     ]
   }
 }

@@ -1,0 +1,185 @@
+---
+title: "isol8 cleanup"
+description: "Remove orphaned isol8 containers"
+---
+
+# Cleanup Containers
+
+Remove all isol8 containers from your Docker environment. This command finds and removes both running and stopped containers created by isol8.
+
+```bash
+isol8 cleanup [options]
+```
+
+## When to Use
+
+Use `isol8 cleanup` to:
+
+- **Remove orphaned containers** — Clean up containers left behind from interrupted executions or persistent sessions
+- **Free disk space** — Remove stopped containers that are no longer needed
+- **Reset environment** — Clear all isol8 containers before starting fresh
+- **Maintenance** — Periodic cleanup as part of system maintenance routines
+
+## Container Detection
+
+The command identifies isol8 containers by their image names:
+- Containers using images starting with `isol8:` (base images)
+- Containers using images starting with `isol8-custom:` (custom images with baked-in packages)
+
+This includes containers in any state (running, stopped, paused, etc.).
+
+## Options
+
+<ResponseField name="--force" type="boolean" default="false">
+  Skip the interactive confirmation prompt and remove all containers immediately. Useful for automation and scripts.
+</ResponseField>
+
+## Interactive Mode (Default)
+
+By default, the command displays all found containers and prompts for confirmation before removal:
+
+```bash
+$ isol8 cleanup
+✔ Docker is running
+✔ Found 3 isol8 container(s)
+
+  🟢 running 4d2f9a8c1b3e | isol8:python | created 2/14/2026, 10:30:15 AM
+  ⚪ stopped 7e5c3d1f8a2b | isol8:node | created 2/14/2026, 9:15:42 AM
+  ⚪ stopped a9f1d6e4b8c3 | isol8-custom:python | created 2/13/2026, 4:22:18 PM
+
+Remove all these containers? [y/N] y
+✔ Removed 3 container(s)
+```
+
+### Container Status Icons
+
+- 🟢 **running** — Container is currently executing code
+- ⚪ **stopped** — Container has exited and is no longer running
+
+## Force Mode
+
+Use `--force` to skip the confirmation prompt. This is useful in automated scripts or CI/CD pipelines:
+
+```bash
+$ isol8 cleanup --force
+✔ Docker is running
+✔ Found 2 isol8 container(s)
+✔ Removed 2 container(s)
+```
+
+## Return Codes
+
+| Code | Meaning |
+|:-----|:--------|
+| `0` | Success — all containers removed or no containers found |
+| `1` | Error — Docker not running, connection failed, or permission denied |
+
+If some containers fail to remove, the command still exits with code `0` but displays a warning with the failure count.
+
+## Examples
+
+### Basic Cleanup
+
+```bash
+# Interactive cleanup (prompts for confirmation)
+isol8 cleanup
+
+# Force cleanup (no prompt)
+isol8 cleanup --force
+```
+
+### Scheduled Cleanup
+
+Add to cron for periodic maintenance:
+
+```bash
+# Clean up isol8 containers daily at 2 AM
+0 2 * * * /usr/local/bin/isol8 cleanup --force
+```
+
+### Before Running Tests
+
+Clean up before running integration tests:
+
+```bash
+isol8 cleanup --force && npm test
+```
+
+## Programmatic Usage
+
+For programmatic cleanup in TypeScript/JavaScript applications, use the static `DockerIsol8.cleanup()` method:
+
+```typescript
+import { DockerIsol8 } from "isol8";
+
+// Remove all isol8 containers
+const result = await DockerIsol8.cleanup();
+
+console.log(`Removed: ${result.removed}`);
+console.log(`Failed: ${result.failed}`);
+
+if (result.errors.length > 0) {
+  console.error("Errors:", result.errors);
+}
+```
+
+See the [Library Overview](/library/overview#cleanup) for more details on the programmatic API.
+
+## Safety
+
+The `isol8 cleanup` command is safe to run at any time:
+
+- **Container selection** — Only removes containers with isol8-specific images. Your other Docker containers are never touched.
+- **Force removal** — Uses `docker rm --force` to remove containers even if they're running. Code execution is immediately terminated.
+- **No data loss** — Containers use ephemeral tmpfs storage by design. No persistent data is lost.
+- **Idempotent** — Safe to run multiple times. If no containers exist, the command exits gracefully with an info message.
+
+<Warning>
+  Running containers are forcefully killed during cleanup. Any code currently executing in those containers will be interrupted immediately without cleanup or graceful shutdown.
+</Warning>
+
+## Troubleshooting
+
+### Docker Not Running
+
+```
+✖ Docker is not running or not installed.
+```
+
+**Solution:** Start Docker Desktop or the Docker daemon:
+
+```bash
+# macOS
+open -a Docker
+
+# Linux (systemd)
+sudo systemctl start docker
+```
+
+### Permission Denied
+
+```
+Failed to remove abc123456789: permission denied
+```
+
+**Solution:** Run with appropriate permissions. On Linux, you may need `sudo` or to add your user to the `docker` group:
+
+```bash
+sudo usermod -aG docker $USER
+# Log out and back in for group changes to take effect
+```
+
+### Container Removal Failed
+
+If some containers fail to remove:
+
+1. Check if containers are in use by another process
+2. Try stopping the container first: `docker stop <container-id>`
+3. Use Docker's native removal: `docker rm --force <container-id>`
+4. If persistent errors occur, restart the Docker daemon
+
+## Related Commands
+
+- [`isol8 run`](/cli/run) — Execute code in isol8 containers
+- [`isol8 config`](/cli/config) — View cleanup configuration (auto-prune, max age)
+- [`isol8 serve`](/cli/serve) — Start server with automatic stale session cleanup

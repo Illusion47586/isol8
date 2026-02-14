@@ -39,6 +39,16 @@ jobs:
       - name: Build
         run: bun run build
 
+      - name: Check schema is up to date
+        run: |
+          bun run schema
+          if ! git diff --quiet schema/isol8.config.schema.json; then
+            echo "Error: schema/isol8.config.schema.json is out of sync"
+            echo "Please run 'bun run schema' and commit the changes"
+            git diff schema/isol8.config.schema.json
+            exit 1
+          fi
+
       - name: Unit Tests
         run: bun test tests/unit/
 

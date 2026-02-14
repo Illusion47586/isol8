@@ -135,6 +135,7 @@ program
   .option("--max-output <bytes>", "Maximum output size in bytes")
   .option("--secret <KEY=VALUE>", "Secret env var (repeatable, values masked)", collect, [])
   .option("--sandbox-size <size>", "Sandbox tmpfs size (e.g. 128m)")
+  .option("--tmp-size <size>", "Tmp tmpfs size (e.g. 256m, 512m)")
   .option("--stdin <data>", "Data to pipe to stdin")
   .option("--install <package>", "Install package for runtime (repeatable)", collect, [])
   .option("--host <url>", "Execute on remote server")
@@ -263,6 +264,8 @@ program
     console.log(`  Memory limit:    ${config.defaults.memoryLimit}`);
     console.log(`  CPU limit:       ${config.defaults.cpuLimit}`);
     console.log(`  Network:         ${config.defaults.network}`);
+    console.log(`  Sandbox size:    ${config.defaults.sandboxSize}`);
+    console.log(`  Tmp size:        ${config.defaults.tmpSize}`);
 
     // Network
     console.log("");
@@ -309,6 +312,86 @@ program
     }
 
     console.log("");
+  });
+
+// ─── cleanup ──────────────────────────────────────────────────────────
+
+program
+  .command("cleanup")
+  .description("Remove orphaned isol8 containers")
+  .option("--force", "Skip confirmation prompt")
+  .action(async (opts) => {
+    const docker = new Docker();
+
+    // Check Docker connection
+    const spinner = ora("Checking Docker...").start();
+    try {
+      await docker.ping();
+      spinner.succeed("Docker is running");
+    } catch {
+      spinner.fail("Docker is not running or not installed.");
+      process.exit(1);
+    }
+
+    // Find all isol8 containers
+    spinner.start("Finding isol8 containers...");
+    const containers = await docker.listContainers({ all: true });
+    const isol8Containers = containers.filter(
+      (c) => c.Image.startsWith("isol8:") || c.Image.startsWith("isol8-custom:")
+    );
+
+    if (isol8Containers.length === 0) {
+      spinner.info("No isol8 containers found");
+      return;
+    }
+
+    spinner.succeed(`Found ${isol8Containers.length} isol8 container(s)`);
+
+    // Show container details
+    console.log("");
+    for (const c of isol8Containers) {
+      const status = c.State === "running" ? "🟢 running" : "⚪ stopped";
+      const created = new Date(c.Created * 1000).toLocaleString();
+      console.log(`  ${status} ${c.Id.slice(0, 12)} | ${c.Image} | created ${created}`);
+    }
+    console.log("");
+
+    // Confirm deletion
+    if (!opts.force) {
+      const readline = await import("node:readline");
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+      });
+
+      const answer = await new Promise<string>((resolve) => {
+        rl.question("Remove all these containers? [y/N] ", resolve);
+      });
+      rl.close();
+
+      if (answer.toLowerCase() !== "y" && answer.toLowerCase() !== "yes") {
+        console.log("Cleanup cancelled");
+        return;
+      }
+    }
+
+    // Remove containers using the static cleanup method
+    spinner.start("Removing containers...");
+    const result = await DockerIsol8.cleanup(docker);
+
+    // Print errors if any
+    if (result.errors.length > 0) {
+      console.log("");
+      for (const err of result.errors) {
+        console.error(`  Failed to remove ${err}`);
+      }
+    }
+
+    if (result.failed === 0) {
+      spinner.succeed(`Removed ${result.removed} container(s)`);
+    } else {
+      spinner.warn(`Removed ${result.removed} container(s), ${result.failed} failed`);
+    }
   });
 
 // ─── Helpers ──────────────────────────────────────────────────────────
@@ -364,6 +447,7 @@ async function resolveRunInput(file: string | undefined, opts: any) {
     ...(opts.writable ? { readonlyRootFs: false } : {}),
     ...(opts.maxOutput ? { maxOutputSize: Number.parseInt(opts.maxOutput, 10) } : {}),
     ...(opts.sandboxSize ? { sandboxSize: opts.sandboxSize } : {}),
+    ...(opts.tmpSize ? { tmpSize: opts.tmpSize } : {}),
   };
 
   // Parse --secret flags into secrets map
