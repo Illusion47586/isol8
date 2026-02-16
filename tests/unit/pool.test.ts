@@ -108,7 +108,7 @@ describe("ContainerPool", () => {
     expect(c3.remove).toHaveBeenCalled();
   });
 
-  test("cleans sandbox on release", async () => {
+  test("kills user processes and cleans sandbox on release", async () => {
     const { docker, container } = createMockChain();
     const pool = new ContainerPool({
       docker,
@@ -120,9 +120,13 @@ describe("ContainerPool", () => {
     await pool.release(c, "test-image");
 
     expect(container.exec).toHaveBeenCalled();
-    const execCall = (container.exec as any).mock.calls[0];
-    // Check command checks for rm -rf /sandbox/*
-    expect(execCall[0].Cmd[2]).toContain("rm -rf /sandbox/*");
+    const execCalls = (container.exec as any).mock.calls;
+
+    // First exec: kill all sandbox-user processes
+    expect(execCalls[0][0].Cmd[2]).toContain("pkill -9 -u sandbox");
+
+    // Second exec: wipe the sandbox filesystem
+    expect(execCalls[1][0].Cmd[2]).toContain("rm -rf /sandbox/*");
   });
 
   test("drains pool", async () => {

@@ -65,8 +65,9 @@ export class ContainerPool {
   }
 
   /**
-   * Return a container to the pool after use. The container's /sandbox
-   * tmpfs is wiped clean so it's ready for the next execution.
+   * Return a container to the pool after use. All processes owned by the
+   * `sandbox` user are killed, and the `/sandbox` tmpfs is wiped clean
+   * so the container is ready for the next execution.
    * If the pool is full, the container is destroyed instead.
    */
   async release(container: Docker.Container, image: string): Promise<void> {
@@ -79,6 +80,21 @@ export class ContainerPool {
     }
 
     try {
+      // Kill all processes owned by the sandbox user to prevent process
+      // persistence across executions. The container's init (tini + sleep)
+      // runs as root, so it survives this kill. See: GitHub issue #3.
+      const killExec = await container.exec({
+        Cmd: ["sh", "-c", "pkill -9 -u sandbox 2>/dev/null; true"],
+      });
+      await killExec.start({ Detach: true });
+
+      // Wait for kill to complete before wiping the filesystem
+      let killInfo = await killExec.inspect();
+      while (killInfo.Running) {
+        await new Promise((r) => setTimeout(r, 5));
+        killInfo = await killExec.inspect();
+      }
+
       // Wipe the sandbox for next use
       const cleanExec = await container.exec({
         Cmd: ["sh", "-c", "rm -rf /sandbox/* /sandbox/.[!.]* 2>/dev/null; true"],

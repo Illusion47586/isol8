@@ -20,8 +20,27 @@ Each execution runs inside a Docker container with the following security constr
 | Tmp tmpfs | 256 MB | `--tmp-size` / `tmpSize` |
 | `no-new-privileges` | Enabled | Not configurable |
 | Non-root user (`sandbox`) | Enabled | Not configurable |
+| Process cleanup on pool reuse | Enabled | Not configurable |
 | Seccomp Profile | Safety (Blacklist) | `security.seccomp` |
 | Execution timeout | 30 seconds | `--timeout` / `timeoutMs` |
+
+## Process Isolation
+
+All user code runs as a non-root `sandbox` user (uid 100) inside the container. The container's init process (`tini` + `sleep infinity`) runs as root, which means:
+
+- User code **cannot** kill the container's init process
+- User code **cannot** escalate privileges (`no-new-privileges` is set)
+- User code **cannot** access or modify root-owned system files
+
+When containers are returned to the warm pool for reuse, **all processes owned by the `sandbox` user are killed** (`pkill -9 -u sandbox`) before the filesystem is wiped. This prevents background processes from one execution from persisting into the next execution.
+
+```mermaid
+flowchart LR
+    A["Execution\ncompletes"] --> B["pkill -9\n-u sandbox"]
+    B --> C["rm -rf\n/sandbox/*"]
+    C --> D["Return to\npool"]
+    D --> E["Ready for\nnext user"]
+```
 
 ## Seccomp Profile
 

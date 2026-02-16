@@ -51,6 +51,7 @@ async function writeFileViaExec(
 
   const exec = await container.exec({
     Cmd: ["sh", "-c", `printf '%s' '${b64}' | base64 -d > ${filePath}`],
+    User: "sandbox",
   });
 
   // Run detached — avoids hijack/stream issues with Bun
@@ -80,6 +81,7 @@ async function readFileViaExec(container: Docker.Container, filePath: string): P
     Cmd: ["base64", filePath],
     AttachStdout: true,
     AttachStderr: true,
+    User: "sandbox",
   });
 
   const stream = await exec.start({ Tty: false });
@@ -230,6 +232,8 @@ async function installPackages(
     AttachStdout: true,
     AttachStderr: true,
     Env: env,
+    // Bash uses apk which requires root; all others install to user directories
+    User: runtime === "bash" ? "root" : "sandbox",
   });
 
   const stream = await exec.start({ Detach: false, Tty: false });
@@ -499,6 +503,7 @@ export class DockerIsol8 implements Isol8Engine {
           AttachStdout: true,
           AttachStderr: true,
           WorkingDir: SANDBOX_WORKDIR,
+          User: "sandbox",
         });
 
         const execStream = await exec.start({ Tty: false });
@@ -604,6 +609,7 @@ export class DockerIsol8 implements Isol8Engine {
         AttachStdout: true,
         AttachStderr: true,
         WorkingDir: SANDBOX_WORKDIR,
+        User: "sandbox",
       });
 
       const start = performance.now();
@@ -703,6 +709,7 @@ export class DockerIsol8 implements Isol8Engine {
       AttachStdout: true,
       AttachStderr: true,
       WorkingDir: SANDBOX_WORKDIR,
+      User: "sandbox",
     });
 
     const start = performance.now();
@@ -799,7 +806,7 @@ export class DockerIsol8 implements Isol8Engine {
       ReadonlyRootfs: this.readonlyRootFs,
       Tmpfs: {
         "/tmp": `rw,noexec,nosuid,nodev,size=${this.tmpSize}`,
-        [SANDBOX_WORKDIR]: `rw,exec,nosuid,nodev,size=${this.sandboxSize}`,
+        [SANDBOX_WORKDIR]: `rw,exec,nosuid,nodev,size=${this.sandboxSize},uid=100,gid=101`,
       },
       SecurityOpt: this.buildSecurityOpts(),
     };

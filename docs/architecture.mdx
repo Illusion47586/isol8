@@ -92,6 +92,7 @@ sequenceDiagram
     Docker-->>Engine: stdout + stderr + exit code
     Engine->>Engine: postProcessOutput (mask, truncate, trim)
     Engine->>Pool: release(container)
+    Pool->>Docker: exec(pkill -9 -u sandbox)
     Pool->>Docker: exec(rm -rf /sandbox/*)
     Engine->>Sem: release()
     Engine-->>Caller: ExecutionResult
@@ -101,7 +102,7 @@ sequenceDiagram
 - The semaphore limits concurrent executions (default: 10, configurable via `maxConcurrent`)
 - Code is written to `/sandbox/code.<ext>` via `docker exec` using base64 encoding (avoids tar/putArchive issues with read-only root filesystems)
 - Commands are wrapped with `timeout -s KILL <seconds>` for hard enforcement
-- On release, the pool runs `rm -rf /sandbox/*` to clean state before returning the container
+- On release, the pool first kills all user processes (`pkill -9 -u sandbox`) then wipes the filesystem (`rm -rf /sandbox/*`) before returning the container. This prevents background processes from persisting across executions.
 
 ### Persistent Execution
 
@@ -194,7 +195,7 @@ stateDiagram-v2
         [*] --> Idle
         Idle --> InUse: acquire()
         InUse --> Cleaning: release()
-        Cleaning --> Idle: /sandbox wiped
+        Cleaning --> Idle: processes killed + /sandbox wiped
         InUse --> Replenishing: Pool below size
         Replenishing --> Idle: Background create
     }
@@ -205,14 +206,14 @@ stateDiagram-v2
 | Pool size | 2 | Hardcoded, not configurable |
 | Per-image pools | Yes | Each Docker image gets its own pool |
 | Replenishment | Background | Fire-and-forget, deduplicated via `replenishing` Set |
-| Cleanup on release | `rm -rf /sandbox/*` | Executed via `docker exec` |
+| Cleanup on release | `pkill -9 -u sandbox` then `rm -rf /sandbox/*` | Kill user processes, then wipe filesystem |
 | Overflow handling | Destroy | If pool is full on release, container is force-removed |
 
 ### Pool Lifecycle
 
 1. **`warm(image)`** -- Pre-creates containers up to `poolSize` for a given image. Called lazily on first `execute()`.
 2. **`acquire(image)`** -- Returns a container from the pool if available, otherwise creates a new one. Triggers background replenishment.
-3. **`release(container, image)`** -- Wipes `/sandbox`, returns the container to the pool. If the pool is already at capacity, the container is destroyed instead.
+3. **`release(container, image)`** -- Kills all user processes (`pkill -9 -u sandbox`), wipes `/sandbox`, and returns the container to the pool. If the pool is already at capacity, the container is destroyed instead.
 4. **`drain()`** -- Force-removes all pooled containers across all images. Called by `stop()`.
 
 ## Concurrency Model
@@ -329,12 +330,13 @@ All runtimes (except Deno) share a common `base` stage:
 |:----------|:--------|
 | OS | Alpine 3.21 |
 | Init system | tini (PID 1, proper signal handling) |
+| Non-root user | `sandbox` (uid 100, gid 101) |
 | Network proxy | `proxy.mjs` copied to `/usr/local/bin/` |
 | Working directory | `/sandbox` |
 | Additional packages | `curl`, `ca-certificates` |
 
 <Note>
-  The Deno stage does **not** extend `base`. It uses `denoland/deno:alpine` as its base image and re-applies the base setup (tini, proxy, workdir, entrypoint) manually. This is because Deno's official Alpine image has its own specific setup requirements.
+  The Deno stage does **not** extend `base`. It uses `denoland/deno:alpine` as its base image and re-applies the base setup (tini, proxy, workdir, sandbox user, entrypoint) manually. This is because Deno's official Alpine image has its own specific setup requirements.
 </Note>
 
 ### Custom Images
@@ -355,8 +357,9 @@ Every container is created with the following security constraints applied via `
 | Control | Setting | Purpose |
 |:--------|:--------|:--------|
 | Read-only root FS | `ReadonlyRootfs: true` | Prevents writes outside tmpfs mounts |
-| Sandbox tmpfs | `/sandbox` (default 64MB) | Writable workspace for code and files |
-| Tmp tmpfs | `/tmp` (default 32MB) | Temporary files |
+| Sandbox tmpfs | `/sandbox` (default 512MB) | Writable workspace for code and files |
+| Tmp tmpfs | `/tmp` (default 256MB) | Temporary files |
+| Non-root user | `User: "sandbox"` | Code runs as unprivileged `sandbox` user (uid 100) |
 | Memory limit | Default 512MB | Hard cap, container killed if exceeded |
 | CPU quota | Default 0.5 cores | Expressed as NanoCPUs |
 | PID limit | Default 100 | Prevents fork bombs |

@@ -177,7 +177,7 @@ const result = await isol8.execute({
 
 console.log(result.stdout);  // "Hello from isol8!"
 console.log(result.exitCode); // 0
-console.log(result.durationMs); // ~55-95ms (warm pool)
+console.log(result.durationMs); // ~38-69ms (warm pool)
 
 await isol8.stop();
 ```
@@ -328,11 +328,11 @@ Each run creates a new `DockerIsol8` instance, executes, and tears down.
 
 | Runtime | Min | Median | Max | Avg |
 |---------|-----|--------|-----|-----|
-| Python | 148ms | 155ms | 414ms | 239ms |
-| Node.js | 152ms | 155ms | 186ms | 165ms |
-| Bun | 124ms | 145ms | 260ms | 176ms |
-| Deno | 339ms | 372ms | 626ms | 446ms |
-| Bash | 115ms | 123ms | 148ms | 128ms |
+| Python | 111ms | 120ms | 188ms | 140ms |
+| Node.js | 114ms | 126ms | 178ms | 130ms |
+| Bun | 104ms | 121ms | 196ms | 139ms |
+| Deno | 112ms | 122ms | 199ms | 139ms |
+| Bash | 104ms | 114ms | 152ms | 121ms |
 
 ### Warm Pool (reused engine)
 
@@ -340,11 +340,11 @@ A single `DockerIsol8` instance reused across 5 runs. The first run is cold (poo
 
 | Runtime | Cold | Warm Avg | Warm Min | Speedup |
 |---------|------|----------|----------|---------|
-| Python | 285ms | 95ms | 89ms | 3.2x |
-| Node.js | 177ms | 91ms | 76ms | 2.3x |
-| Bun | 157ms | 72ms | 66ms | 2.4x |
-| Deno | 330ms | 264ms | 231ms | 1.4x |
-| Bash | 222ms | 68ms | 55ms | 4.0x |
+| Python | 198ms | 56ms | 49ms | 4.1x |
+| Node.js | 145ms | 69ms | 60ms | 2.4x |
+| Bun | 152ms | 51ms | 45ms | 3.4x |
+| Deno | 128ms | 62ms | 54ms | 2.4x |
+| Bash | 124ms | 43ms | 38ms | 3.3x |
 
 ### Execution Phase Breakdown
 
@@ -352,10 +352,10 @@ Where time is spent in the container lifecycle (raw Docker API, no pool):
 
 | Runtime | Create | Start | Write | Exec Setup | Run | Cleanup | Total |
 |---------|--------|-------|-------|------------|-----|---------|-------|
-| Python | 41ms | 49ms | 17ms | 1ms | 40ms | 43ms | 190ms |
-| Node.js | 32ms | 63ms | 34ms | 1ms | 39ms | 43ms | 212ms |
-| Bun | 32ms | 56ms | 26ms | 1ms | 27ms | 44ms | 186ms |
-| Bash | 35ms | 69ms | 23ms | 1ms | 20ms | 48ms | 196ms |
+| Python | 69ms | 52ms | 19ms | 1ms | 22ms | 51ms | 213ms |
+| Node.js | 47ms | 41ms | 15ms | 1ms | 30ms | 36ms | 169ms |
+| Bun | 55ms | 42ms | 15ms | 1ms | 18ms | 37ms | 166ms |
+| Bash | 50ms | 50ms | 14ms | 1ms | 13ms | 43ms | 172ms |
 
 Run benchmarks yourself:
 
@@ -370,7 +370,7 @@ bun run bench:detailed   # Phase breakdown
 | Layer | Protection |
 |-------|-----------|
 | **Filesystem** | Read-only root, writable `/sandbox` (tmpfs, 512MB, exec allowed), writable `/tmp` (tmpfs, 256MB, noexec) |
-| **Processes** | PID limit (default 64), `no-new-privileges` |
+| **Processes** | PID limit (default 64), `no-new-privileges`, non-root `sandbox` user, all user processes killed between pool reuses |
 | **Resources** | CPU (1 core), memory (512MB), execution timeout (30s) |
 | **Network** | Disabled by default; optional proxy-based filtering |
 | **Output** | Truncated at 1MB; secrets masked from stdout/stderr |
