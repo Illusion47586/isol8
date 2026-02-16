@@ -224,6 +224,7 @@ jobs:
         uses: marocchino/sticky-pull-request-comment@v2
         if: github.event_name == 'pull_request'
         with:
+          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
           recreate: true
           path: code-coverage-results.md
           header: coverage-report
