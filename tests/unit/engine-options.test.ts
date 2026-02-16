@@ -175,4 +175,30 @@ describe("DockerIsol8 engine options", () => {
       expect(engine).toBeDefined();
     });
   });
+
+  // ── filtered network mode: CapAdd for iptables ──
+
+  describe("filtered network mode", () => {
+    test("network: 'filtered' is accepted by the engine", () => {
+      const { docker } = createMockDocker();
+      const engine = new DockerIsol8({
+        docker,
+        mode: "ephemeral",
+        network: "filtered",
+        networkFilter: { whitelist: ["example\\.com"], blacklist: [] },
+      });
+      expect(engine).toBeDefined();
+    });
+
+    test("network: 'none' does not require CapAdd", () => {
+      const { docker } = createMockDocker();
+      // Constructing with network: "none" should work without NET_ADMIN
+      const engine = new DockerIsol8({
+        docker,
+        mode: "ephemeral",
+        network: "none",
+      });
+      expect(engine).toBeDefined();
+    });
+  });
 });

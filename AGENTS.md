@@ -180,6 +180,14 @@ This avoids eagerly loading `dockerode` and its transitive dependency chain (`ss
 ### Network Filtering
 When `network: "filtered"`, containers get bridge networking with `HTTP_PROXY`/`HTTPS_PROXY` env vars pointing to `docker/proxy.mjs`. The proxy checks hostnames against whitelist/blacklist regex patterns.
 
+**iptables enforcement:** In addition to the proxy, iptables rules are applied inside the container to ensure the `sandbox` user (uid 100) can **only** reach `127.0.0.1:8118` (the proxy). All other outbound traffic from uid 100 is dropped at the kernel level, preventing bypass via raw sockets or non-HTTP protocols. The container is given `CAP_NET_ADMIN` to set these rules. The rules are:
+1. Allow all traffic on loopback interface
+2. Allow established/related connections
+3. Allow sandbox user (uid 100) to reach `127.0.0.1:8118` (proxy)
+4. Drop all other outbound traffic from uid 100
+
+The iptables rules are flushed during pool cleanup (`iptables -F OUTPUT`) so containers can be reused across network modes.
+
 ### Package Installation
 When `installPackages` is provided in the execution request, packages are installed to `/sandbox/.local` (Python), `/sandbox/.npm-global` (Node.js), or `/sandbox/.bun-global` (Bun). These directories allow execution of shared libraries (`.so` files) which is required for packages like numpy.
 

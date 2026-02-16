@@ -66,4 +66,63 @@ except:
     // Should crash/OOM
     expect(result.exitCode).not.toBe(0);
   }, 30_000);
+
+  test("Network: 'filtered' blocks raw socket bypass via iptables", async () => {
+    const engine = new DockerIsol8({
+      mode: "ephemeral",
+      network: "filtered",
+      networkFilter: {
+        whitelist: ["^example\\.com$"],
+        blacklist: [],
+      },
+    });
+
+    // Attempt a raw socket connection that bypasses the proxy.
+    // With iptables enforcement, this should be dropped at the kernel level.
+    const result = await engine.execute({
+      code: `
+import socket
+try:
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(3)
+    s.connect(("1.1.1.1", 80))
+    s.close()
+    print("bypass_success")
+except Exception as e:
+    print("bypass_blocked")
+      `,
+      runtime: "python",
+      timeoutMs: 15_000,
+    });
+
+    // The raw socket connection should be blocked by iptables
+    expect(result.stdout).toContain("bypass_blocked");
+  }, 60_000);
+
+  test("Network: 'filtered' allows HTTP through proxy", async () => {
+    const engine = new DockerIsol8({
+      mode: "ephemeral",
+      network: "filtered",
+      networkFilter: {
+        whitelist: ["^example\\.com$"],
+        blacklist: [],
+      },
+    });
+
+    // HTTP request through proxy should work for whitelisted host
+    const result = await engine.execute({
+      code: `
+import urllib.request
+try:
+    r = urllib.request.urlopen("http://example.com", timeout=5)
+    print("proxy_allowed")
+except Exception as e:
+    print(f"proxy_error: {e}")
+      `,
+      runtime: "python",
+      timeoutMs: 15_000,
+    });
+
+    expect(result.stdout).toContain("proxy_allowed");
+  }, 60_000);
 });

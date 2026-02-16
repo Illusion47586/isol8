@@ -254,17 +254,20 @@ Full host network access. The container shares the host's network stack via `Net
 
 ### `filtered`
 
-HTTP/HTTPS traffic is routed through a filtering proxy (`proxy.mjs`) running inside the container. All other protocols are blocked.
+HTTP/HTTPS traffic is routed through a filtering proxy (`proxy.mjs`) running inside the container. Kernel-level iptables rules enforce that the `sandbox` user can **only** reach the proxy — all other outbound traffic is dropped.
 
 ```mermaid
 sequenceDiagram
     participant Code as User Code
+    participant IPT as iptables (kernel)
     participant Proxy as proxy.mjs (127.0.0.1:8118)
     participant Internet
 
     Note over Code: HTTP_PROXY and HTTPS_PROXY<br/>env vars set automatically
 
-    Code->>Proxy: HTTP request to api.example.com
+    Code->>IPT: HTTP request to api.example.com
+    IPT->>IPT: Check: uid 100 → only 127.0.0.1:8118 allowed
+    IPT->>Proxy: Forward to proxy (allowed)
     Proxy->>Proxy: Check hostname against blacklist
     Proxy->>Proxy: Check hostname against whitelist
 
@@ -276,15 +279,20 @@ sequenceDiagram
         Proxy-->>Code: 403 Forbidden
     end
 
-    Code->>Proxy: HTTPS CONNECT to api.example.com:443
-    alt Allowed
-        Proxy->>Internet: TCP tunnel (CONNECT)
-        Note over Proxy,Internet: TLS passthrough, proxy cannot inspect
-        Internet-->>Code: Encrypted data
-    else Blocked
-        Proxy-->>Code: 403 Forbidden
-    end
+    Code->>IPT: Raw TCP to external host
+    IPT-->>Code: DROP (blocked by iptables)
 ```
+
+**iptables enforcement:**
+
+Before user code runs, iptables OUTPUT chain rules are set (as root) inside the container:
+
+1. **Allow loopback** — all traffic on `lo` interface is permitted
+2. **Allow established** — responses to existing connections are permitted
+3. **Allow proxy** — sandbox user (uid 100) can reach `127.0.0.1:8118`
+4. **Drop all other** — all other outbound traffic from uid 100 is dropped
+
+This prevents bypass via raw sockets, direct TCP connections, or any non-HTTP protocol. The container is given `CAP_NET_ADMIN` to set these rules.
 
 **Proxy details:**
 - Runs on `127.0.0.1:8118` inside the container (configurable via `ISOL8_PROXY_PORT`)
@@ -333,7 +341,7 @@ All runtimes (except Deno) share a common `base` stage:
 | Non-root user | `sandbox` (uid 100, gid 101) |
 | Network proxy | `proxy.mjs` copied to `/usr/local/bin/` |
 | Working directory | `/sandbox` |
-| Additional packages | `curl`, `ca-certificates` |
+| Additional packages | `curl`, `ca-certificates`, `iptables` |
 
 <Note>
   The Deno stage does **not** extend `base`. It uses `denoland/deno:alpine` as its base image and re-applies the base setup (tini, proxy, workdir, sandbox user, entrypoint) manually. This is because Deno's official Alpine image has its own specific setup requirements.
@@ -364,6 +372,7 @@ Every container is created with the following security constraints applied via `
 | CPU quota | Default 0.5 cores | Expressed as NanoCPUs |
 | PID limit | Default 100 | Prevents fork bombs |
 | Security opts | `no-new-privileges` | Prevents privilege escalation |
+| Network capability | `CAP_NET_ADMIN` (filtered mode only) | Allows iptables rules to enforce proxy-only access |
 | Stop timeout | 2 seconds | Hardcoded; container force-killed after |
 
 ## Output Pipeline

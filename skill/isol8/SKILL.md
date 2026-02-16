@@ -175,7 +175,7 @@ Full configuration reference: [Configuration](https://bingo-ccc81346.mintlify.ap
 | User isolation | Non-root `sandbox` user (uid 100), processes killed between pool reuses |
 | Processes | PID limit 64, `no-new-privileges` |
 | Resources | 1 CPU, 512MB memory, 30s timeout |
-| Network | Disabled (`none`) |
+| Network | Disabled (`none`), iptables enforcement in `filtered` mode |
 | Output | Truncated at 1MB, secrets masked |
 | Seccomp | "safety" (blocks mount, swap, ptrace, etc.) |
 

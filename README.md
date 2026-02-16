@@ -270,6 +270,8 @@ const isol8 = new DockerIsol8({
 });
 ```
 
+In `filtered` mode, iptables rules are applied at the kernel level to ensure the `sandbox` user can **only** reach the internal filtering proxy (`127.0.0.1:8118`). All other outbound traffic from the sandbox user is dropped, preventing bypass via raw sockets or non-HTTP protocols.
+
 ## Configuration
 
 Create `isol8.config.json` in your project root or `~/.isol8/config.json`.

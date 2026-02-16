@@ -8,7 +8,7 @@
  * Docker-dependent tests use the same gating pattern as integration tests.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 import { exec, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -1633,27 +1633,4 @@ describe("library bundle", () => {
 // ─── Cleanup ─────────────────────────────────────────────────────────
 
 // Cleanup any leftover containers from --persist test
-afterAll(async () => {
-  if (!hasDocker) {
-    return;
-  }
-  try {
-    const Docker = (await import("dockerode")).default;
-    const docker = new Docker();
-    const containers = await docker.listContainers({ all: true });
-    const isol8Containers = containers.filter(
-      (c) => c.Image.startsWith("isol8:") && c.Labels?.isol8 !== undefined
-    );
-    for (const c of isol8Containers) {
-      try {
-        const container = docker.getContainer(c.Id);
-        await container.stop().catch(() => {});
-        await container.remove({ force: true }).catch(() => {});
-      } catch {
-        // ignore
-      }
-    }
-  } catch {
-    // ignore
-  }
-});
+// Global cleanup is handled by tests/preload.ts via bunfig.toml

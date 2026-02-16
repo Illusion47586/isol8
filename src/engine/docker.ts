@@ -165,6 +165,55 @@ async function startProxy(
 }
 
 /**
+ * Sets up iptables rules inside the container to enforce network filtering.
+ *
+ * Only traffic from the `sandbox` user (uid 100) to the local proxy
+ * on PROXY_PORT is allowed. All other outbound traffic from the sandbox
+ * user is dropped at the kernel level, preventing raw-socket bypass of
+ * the HTTP proxy.
+ *
+ * Rules added (in order):
+ *   1. Allow all loopback traffic (lo interface)
+ *   2. Allow established/related connections (return traffic)
+ *   3. Allow sandbox user → 127.0.0.1:PROXY_PORT (TCP)
+ *   4. Drop all other outbound from sandbox user (uid 100)
+ *
+ * Must be called AFTER startProxy() since the proxy needs to bind first.
+ * Runs as root (default exec user) since iptables requires CAP_NET_ADMIN.
+ */
+async function setupIptables(container: Docker.Container): Promise<void> {
+  const rules = [
+    // Allow all loopback traffic
+    "iptables -A OUTPUT -o lo -j ACCEPT",
+    // Allow established/related connections (responses to allowed requests)
+    "iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT",
+    // Allow sandbox user to reach the proxy
+    `iptables -A OUTPUT -p tcp -d 127.0.0.1 --dport ${PROXY_PORT} -m owner --uid-owner 100 -j ACCEPT`,
+    // Drop everything else from the sandbox user
+    "iptables -A OUTPUT -m owner --uid-owner 100 -j DROP",
+  ].join(" && ");
+
+  const exec = await container.exec({
+    Cmd: ["sh", "-c", rules],
+    // Runs as root (default) — iptables requires elevated privileges
+  });
+  await exec.start({ Detach: true });
+
+  // Wait for the exec to complete
+  let info = await exec.inspect();
+  while (info.Running) {
+    await new Promise((r) => setTimeout(r, 50));
+    info = await exec.inspect();
+  }
+
+  if (info.ExitCode !== 0) {
+    throw new Error(`Failed to set up iptables rules (exit code ${info.ExitCode})`);
+  }
+
+  logger.debug("[Filtered] iptables rules applied — sandbox user restricted to proxy only");
+}
+
+/**
  * Wraps a command with the `timeout` utility so the process is killed
  * after the specified duration. Returns the wrapped command.
  */
@@ -465,6 +514,7 @@ export class DockerIsol8 implements Isol8Engine {
 
         if (this.network === "filtered") {
           await startProxy(container, this.networkFilter);
+          await setupIptables(container);
         }
 
         // Write code
@@ -569,6 +619,7 @@ export class DockerIsol8 implements Isol8Engine {
       // Start proxy for filtered network mode
       if (this.network === "filtered") {
         await startProxy(container, this.networkFilter);
+        await setupIptables(container);
       }
 
       // Write code to the active tmpfs via exec (putArchive fails with ReadonlyRootfs)
@@ -789,6 +840,7 @@ export class DockerIsol8 implements Isol8Engine {
     // Start proxy for filtered network mode
     if (this.network === "filtered") {
       await startProxy(this.container, this.networkFilter);
+      await setupIptables(this.container);
     }
 
     this.persistentRuntime = adapter;
@@ -813,6 +865,11 @@ export class DockerIsol8 implements Isol8Engine {
 
     if (this.network === "filtered") {
       config.NetworkMode = "bridge";
+      // CAP_NET_ADMIN is required for iptables rules that enforce proxy-only
+      // outbound traffic from the sandbox user. The capability is used once
+      // at container startup (by root) to set rules, then the sandbox user
+      // (which runs all user code) cannot modify them.
+      config.CapAdd = ["NET_ADMIN"];
     } else if (this.network === "host") {
       config.NetworkMode = "host";
     }

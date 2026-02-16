@@ -84,7 +84,7 @@ export class ContainerPool {
       // persistence across executions. The container's init (tini + sleep)
       // runs as root, so it survives this kill. See: GitHub issue #3.
       const killExec = await container.exec({
-        Cmd: ["sh", "-c", "pkill -9 -u sandbox 2>/dev/null; true"],
+        Cmd: ["sh", "-c", "pkill -9 -u sandbox 2>/dev/null; iptables -F OUTPUT 2>/dev/null; true"],
       });
       await killExec.start({ Detach: true });
 
