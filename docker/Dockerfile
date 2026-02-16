@@ -1,6 +1,7 @@
 # ── Base ──────────────────────────────────────────────────────────────
 FROM alpine:3.21 AS base
-RUN apk add --no-cache tini curl ca-certificates
+RUN apk add --no-cache tini curl ca-certificates \
+    && addgroup -S sandbox && adduser -S sandbox -G sandbox -h /sandbox
 COPY proxy.mjs /usr/local/bin/proxy.mjs
 RUN chmod +x /usr/local/bin/proxy.mjs
 WORKDIR /sandbox
@@ -26,7 +27,8 @@ CMD ["bun"]
 
 # ── Deno ──────────────────────────────────────────────────────────────
 FROM denoland/deno:alpine AS deno
-RUN apk add --no-cache tini curl ca-certificates
+RUN apk add --no-cache tini curl ca-certificates \
+    && addgroup -S sandbox && adduser -S sandbox -G sandbox -h /sandbox
 COPY proxy.mjs /usr/local/bin/proxy.mjs
 RUN chmod +x /usr/local/bin/proxy.mjs
 WORKDIR /sandbox

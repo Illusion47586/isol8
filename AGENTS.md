@@ -135,7 +135,10 @@ interface RuntimeAdapter {
 `Semaphore` in `engine/concurrency.ts` limits concurrent container executions. The limit is set by `maxConcurrent` in config (default: 10).
 
 ### Container Pool
-`ContainerPool` in `engine/pool.ts` keeps pre-started containers warm for fast ephemeral execution. After use, containers have their `/sandbox` wiped and are returned to the pool. The pool auto-replenishes in the background. This reduces execution latency from ~300ms to ~80ms.
+`ContainerPool` in `engine/pool.ts` keeps pre-started containers warm for fast ephemeral execution. After use, containers have all user processes killed (`pkill -9 -u sandbox`) and their `/sandbox` wiped before being returned to the pool. The pool auto-replenishes in the background. This reduces execution latency from ~300ms to ~80ms.
+
+### Non-root Execution
+All user code runs as the `sandbox` user (uid 100, gid 101), not root. This is enforced via `User: "sandbox"` on all user-facing `container.exec()` calls in `docker.ts`. The container's init process (`tini` + `sleep infinity`) runs as root, so `pkill -9 -u sandbox` kills only user-spawned processes without killing the container itself. The only exception is bash runtime package installation (`apk add`), which requires root.
 
 ### Streaming
 `executeStream()` returns an `AsyncIterable<StreamEvent>` that yields stdout/stderr chunks as they arrive. The server exposes this via `POST /execute/stream` as SSE (Server-Sent Events). Each event is `data: {"type":"stdout"|"stderr"|"exit"|"error", "data":"..."}\n\n`.

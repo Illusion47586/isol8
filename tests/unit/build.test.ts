@@ -1218,7 +1218,7 @@ except:
 
   test("--writable allows writing to root filesystem", async () => {
     const { stdout } = await runCLI(
-      "run -e \"import os; os.makedirs('/opt/test', exist_ok=True); print('writable-ok')\" -r python --writable --no-stream"
+      "run -e \"import os; os.makedirs('/sandbox/test_dir', exist_ok=True); print('writable-ok')\" -r python --writable --no-stream"
     );
     expect(stdout).toContain("writable-ok");
   }, 30_000);
