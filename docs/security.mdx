@@ -20,7 +20,19 @@ Each execution runs inside a Docker container with the following security constr
 | Tmp tmpfs | 256 MB | `--tmp-size` / `tmpSize` |
 | `no-new-privileges` | Enabled | Not configurable |
 | Non-root user (`sandbox`) | Enabled | Not configurable |
+| Seccomp Profile | Strict | `security.seccomp` |
 | Execution timeout | 30 seconds | `--timeout` / `timeoutMs` |
+
+## Seccomp Profile
+
+isol8 applies a "strict" seccomp profile by default to minimize the kernel attack surface. This profile blocks:
+
+- **Kernel Module Operations**: `init_module`, `finit_module`, `delete_module`, etc.
+- **Process Tracing**: `ptrace` (prevents inspecting other processes).
+- **Mount Operations**: `mount`, `umount`, `pivot_root`.
+- **Reboot/Kexec**: `reboot`, `kexec_load`.
+
+The profile allows standard application behavior but restricts privileged administrative actions typically not needed for code execution tasks.
 
 ## Container Filesystem
 

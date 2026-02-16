@@ -130,6 +130,18 @@ Packages to bake into custom Docker images when running `isol8 setup`.
   Alpine apk packages.
 </ResponseField>
 
+
+### seccomp
+
+Security computing mode profile configuration.
+
+<ResponseField name="security.seccomp" type="string" default="strict">
+  The seccomp profile to use:
+  - `strict`: Blocks dangerous syscalls like `mount`, `ptrace`, and kernel module operations (safe default).
+  - `unconfined`: Disables seccomp filtering (use with caution).
+  - `path/to/profile.json`: Path to a custom seccomp profile JSON file.
+</ResponseField>
+
 ## JSON Schema
 
 A JSON Schema file is available at `schema/isol8.config.schema.json`. Reference it in your config file for editor autocompletion:
