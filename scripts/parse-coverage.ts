@@ -1,11 +1,16 @@
-import { readFileSync, writeFileSync } from "node:fs";
+#!/usr/bin/env bun
 
 // Simple LCOV parser
-function parseLcov(path: string) {
-  if (!require("node:fs").existsSync(path)) {
-    return { lines: 0, functions: 0, branches: 0 };
+async function parseLcov(path: string) {
+  const file = Bun.file(path);
+  if (!(await file.exists())) {
+    return {
+      lines: { total: 0, hit: 0, pct: 0 },
+      functions: { total: 0, hit: 0, pct: 0 },
+      branches: { total: 0, hit: 0, pct: 0 },
+    };
   }
-  const content = readFileSync(path, "utf-8");
+  const content = await file.text();
   const lines = content.split("\n");
 
   let totalLines = 0;
@@ -63,8 +68,8 @@ function parseLcov(path: string) {
 const input = process.argv[2] || "coverage/lcov.info";
 const output = process.argv[3] || "coverage/summary.json";
 
-const current = parseLcov(input);
+const current = await parseLcov(input);
 // Write to summary file
-writeFileSync(output, JSON.stringify(current, null, 2));
+await Bun.write(output, JSON.stringify(current, null, 2));
 
 console.log(JSON.stringify(current));
