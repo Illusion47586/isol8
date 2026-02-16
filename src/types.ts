@@ -198,6 +198,9 @@ export interface Isol8Options {
    * @default false
    */
   persist?: boolean;
+
+  /** Security settings. */
+  security?: SecurityConfig;
 }
 
 /**
@@ -304,6 +307,21 @@ export interface Isol8Dependencies {
 }
 
 /**
+ * Security configuration for the execution environment.
+ */
+export interface SecurityConfig {
+  /**
+   * Seccomp profile mode.
+   * - "strict": Use the default strict profile (default).
+   * - "unconfined": Do not apply any seccomp profile.
+   * - "custom": Use the profile at `customProfilePath`.
+   */
+  seccomp?: "strict" | "unconfined" | "custom";
+  /** Path to a custom seccomp profile JSON file. Required if seccomp is "custom". */
+  customProfilePath?: string;
+}
+
+/**
  * Top-level configuration schema for isol8.
  *
  * Loaded from `isol8.config.json` in the working directory or `~/.isol8/config.json`.
@@ -327,6 +345,9 @@ export interface Isol8Config {
 
   /** Runtime-specific packages to bake into custom Docker images. */
   dependencies: Isol8Dependencies;
+
+  /** Security settings. */
+  security: SecurityConfig;
 
   /** Enable debug logging. @default false */
   debug: boolean;
@@ -357,4 +378,7 @@ export interface Isol8UserConfig {
 
   /** Runtime-specific packages to bake into custom Docker images. */
   dependencies?: Isol8Dependencies;
+
+  /** Security settings. */
+  security?: SecurityConfig;
 }

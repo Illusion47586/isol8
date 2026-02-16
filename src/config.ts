@@ -34,6 +34,9 @@ const DEFAULT_CONFIG: Isol8Config = {
     maxContainerAgeMs: 3_600_000,
   },
   dependencies: {},
+  security: {
+    seccomp: "strict",
+  },
   debug: false,
 };
 
@@ -97,6 +100,11 @@ function mergeConfig(defaults: Isol8Config, overrides: Partial<Isol8Config>): Is
     dependencies: {
       ...defaults.dependencies,
       ...overrides.dependencies,
+    },
+    security: {
+      seccomp: overrides.security?.seccomp ?? defaults.security.seccomp,
+      customProfilePath:
+        overrides.security?.customProfilePath ?? defaults.security.customProfilePath,
     },
     debug: overrides.debug ?? defaults.debug,
   };

@@ -7,6 +7,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
 import { PassThrough } from "node:stream";
 import Docker from "dockerode";
 import { RuntimeRegistry } from "../runtime";
@@ -19,6 +20,7 @@ import type {
   Isol8Options,
   NetworkFilterConfig,
   NetworkMode,
+  SecurityConfig,
   StreamEvent,
 } from "../types";
 import { logger } from "../utils/logger";
@@ -297,6 +299,8 @@ export class DockerIsol8 implements Isol8Engine {
   private readonly semaphore: Semaphore;
   private readonly sandboxSize: string;
   private readonly tmpSize: string;
+  // No, I'll just add security field
+  private readonly security: SecurityConfig;
   private readonly persist: boolean;
 
   private container: Docker.Container | null = null;
@@ -324,6 +328,7 @@ export class DockerIsol8 implements Isol8Engine {
     this.sandboxSize = options.sandboxSize ?? "512m";
     this.tmpSize = options.tmpSize ?? "256m";
     this.persist = options.persist ?? false;
+    this.security = options.security ?? { seccomp: "strict" };
 
     if (options.debug) {
       logger.setDebug(true);
@@ -793,10 +798,9 @@ export class DockerIsol8 implements Isol8Engine {
       PidsLimit: this.pidsLimit,
       ReadonlyRootfs: this.readonlyRootFs,
       Tmpfs: {
-        "/tmp": `rw,noexec,nosuid,nodev,size=${this.tmpSize}`,
         [SANDBOX_WORKDIR]: `rw,exec,nosuid,nodev,size=${this.sandboxSize}`,
       },
-      SecurityOpt: ["no-new-privileges"],
+      SecurityOpt: this.buildSecurityOpts(),
     };
 
     if (this.network === "filtered") {
@@ -806,6 +810,62 @@ export class DockerIsol8 implements Isol8Engine {
     }
 
     return config;
+  }
+
+  private buildSecurityOpts(): string[] {
+    const opts = ["no-new-privileges"];
+
+    if (this.security.seccomp === "unconfined") {
+      opts.push("seccomp=unconfined");
+      return opts;
+    }
+
+    if (this.security.seccomp === "custom" && this.security.customProfilePath) {
+      try {
+        const profile = readFileSync(this.security.customProfilePath, "utf-8");
+        opts.push(`seccomp=${profile}`);
+      } catch (e) {
+        logger.error(`Failed to load custom seccomp profile: ${e}`);
+      }
+      return opts;
+    }
+
+    // Default strict mode
+    try {
+      const profile = this.loadDefaultSeccompProfile();
+      if (profile) {
+        opts.push(`seccomp=${profile}`);
+      }
+    } catch (e) {
+      logger.error(`Failed to load default seccomp profile: ${e}`);
+    }
+
+    return opts;
+  }
+
+  private loadDefaultSeccompProfile(): string | null {
+    // Try resolving relative to this file (dev mode)
+    // Note: in bundled code, import.meta.url might point to dist/index.js
+
+    // 1. Try ../../docker/seccomp-profile.json (Development structure)
+    // In dev: src/engine/docker.ts -> ../../docker
+    const devPath = new URL("../../docker/seccomp-profile.json", import.meta.url);
+    if (existsSync(devPath)) {
+      return readFileSync(devPath, "utf-8");
+    }
+
+    // 2. Try ./docker/seccomp-profile.json (Production/Dist structure)
+    // In dist: dist/index.js -> ./docker
+    const prodPath = new URL("./docker/seccomp-profile.json", import.meta.url);
+    if (existsSync(prodPath)) {
+      return readFileSync(prodPath, "utf-8");
+    }
+
+    // 3. Fallback: Try reading absolute path if we assume standard install location?
+    // Not reliable.
+
+    logger.warn("Could not locate default seccomp profile. Running without seccomp filter.");
+    return null;
   }
 
   private buildEnv(extra?: Record<string, string>): string[] {
