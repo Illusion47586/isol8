@@ -84,17 +84,42 @@ jobs:
       - name: Test Coverage
         run: bun run test:coverage
 
-      - name: Extract Coverage Percentage
+      - name: Download Main Branch Coverage
+        if: github.event_name == 'pull_request'
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          workflow: ci.yml
+          branch: main
+          name: coverage-report
+          path: coverage-main/
+        continue-on-error: true
+
+      - name: Extract Coverage Percentages
         id: coverage
         run: |
-          COVERAGE=$(cat coverage/coverage-summary.json | jq '.total.lines.pct' | awk '{printf "%.0f", $1}')
-          echo "percentage=$COVERAGE" >> $GITHUB_OUTPUT
-          echo "Coverage: $COVERAGE%"
+          # Current branch coverage
+          CURRENT=$(cat coverage/coverage-summary.json | jq '.total.lines.pct' | awk '{printf "%.2f", $1}')
+          echo "current=$CURRENT" >> $GITHUB_OUTPUT
+          
+          # Main branch coverage (if available)
+          if [ -f coverage-main/coverage-summary.json ]; then
+            MAIN=$(cat coverage-main/coverage-summary.json | jq '.total.lines.pct' | awk '{printf "%.2f", $1}')
+            DIFF=$(echo "$CURRENT - $MAIN" | bc -l)
+            echo "main=$MAIN" >> $GITHUB_OUTPUT
+            echo "diff=$DIFF" >> $GITHUB_OUTPUT
+          else
+            echo "main=0" >> $GITHUB_OUTPUT
+            echo "diff=0" >> $GITHUB_OUTPUT
+          fi
+          
+          echo "Current: $CURRENT%"
+          echo "Main: $MAIN%"
+          echo "Diff: $DIFF%"
 
       - name: Generate Coverage Badge
         run: |
-          COLOR=$(if [ ${{ steps.coverage.outputs.percentage }} -ge 80 ]; then echo "brightgreen"; elif [ ${{ steps.coverage.outputs.percentage }} -ge 50 ]; then echo "yellow"; else echo "red"; fi)
-          curl -s "https://img.shields.io/badge/coverage-${{ steps.coverage.outputs.percentage }}%25-${COLOR}" -o coverage/coverage-badge.svg
+          COLOR=$(if [ $(echo "${{ steps.coverage.outputs.current }} >= 80" | bc -l) -eq 1 ]; then echo "brightgreen"; elif [ $(echo "${{ steps.coverage.outputs.current }} >= 50" | bc -l) -eq 1 ]; then echo "yellow"; else echo "red"; fi)
+          curl -s "https://img.shields.io/badge/coverage-${{ steps.coverage.outputs.current }}%25-${COLOR}" -o coverage/coverage-badge.svg
 
       - name: Commit Coverage Badge
         uses: stefanzweifel/git-auto-commit-action@v5
@@ -103,6 +128,30 @@ jobs:
           file_pattern: coverage/coverage-badge.svg
           skip_checkout: true
         continue-on-error: true
+
+      - name: Generate Coverage Comparison Report
+        if: github.event_name == 'pull_request'
+        run: |
+          cat > code-coverage-results.md << EOF
+      ## Test Coverage Report
+
+      | Branch | Coverage | Change |
+      |--------|----------|--------|
+      | This PR | ${{ steps.coverage.outputs.current }}% | - |
+      | main | ${{ steps.coverage.outputs.main }}% | - |
+      | **Diff** | - | ${{ steps.coverage.outputs.diff }}% |
+
+      EOF
+          
+          # Add trend indicator
+          DIFF=${{ steps.coverage.outputs.diff }}
+          if [ $(echo "$DIFF > 0" | bc -l) -eq 1 ]; then
+            echo "✅ Coverage **increased** by $DIFF%" >> code-coverage-results.md
+          elif [ $(echo "$DIFF < 0" | bc -l) -eq 1 ]; then
+            echo "⚠️ Coverage **decreased** by $(echo "$DIFF * -1" | bc -l)%" >> code-coverage-results.md
+          else
+            echo "➡️ Coverage unchanged" >> code-coverage-results.md
+          fi
 
       - name: Coverage Summary
         uses: irongut/CodeCoverageSummary@v1.3.0
@@ -116,6 +165,15 @@ jobs:
           indicators: true
           output: both
           thresholds: "50 80"
+
+      - name: Append Detailed Report
+        if: github.event_name == 'pull_request'
+        run: |
+          if [ -f code-coverage-results.md ]; then
+            echo "" >> code-coverage-results.md
+            echo "## Detailed Coverage" >> code-coverage-results.md
+            cat coverage/lcov.info >> code-coverage-results.md 2>/dev/null || true
+          fi
 
       - name: Add Coverage PR Comment
         uses: marocchino/sticky-pull-request-comment@v2
