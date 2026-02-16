@@ -41,7 +41,7 @@
     "build:server": "bun run scripts/build-server.ts",
     "build:server:all": "bun run scripts/build-server.ts --all",
     "test": "bun test",
-    "test:coverage": "bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage",
+    "test:coverage": "bun test",
     "lint:check": "ultracite check",
     "lint:fix": "ultracite fix",
     "bench": "bunx tsx benchmarks/spawn.ts",
