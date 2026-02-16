@@ -104,6 +104,9 @@
     "src/types.ts": [
       "bash -c 'bun run schema'",
       "git add schema/isol8.config.schema.json"
+    ],
+    "*.{yaml,yml,json}": [
+      "ultracite fix"
     ]
   }
 }
