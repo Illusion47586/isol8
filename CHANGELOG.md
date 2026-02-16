@@ -1,3 +1,16 @@
+# [0.7.0](https://github.com/Illusion47586/isol8/compare/v0.6.2...v0.7.0) (2026-02-16)
+
+
+### Bug Fixes
+
+* kill user processes on container pool reuse to prevent cross-execution persistence ([#21](https://github.com/Illusion47586/isol8/issues/21)) ([cca0f48](https://github.com/Illusion47586/isol8/commit/cca0f480bd80b9a87f15c92d083ffbd423273647)), closes [#3](https://github.com/Illusion47586/isol8/issues/3)
+
+
+### Features
+
+* **ci:** switch release workflow to GitHub App for bypass ([#29](https://github.com/Illusion47586/isol8/issues/29)) ([5539164](https://github.com/Illusion47586/isol8/commit/553916431961ffb45a3489fa5d4328df8bfd1509))
+* implement seccomp profile for container security ([#20](https://github.com/Illusion47586/isol8/issues/20)) ([b14206b](https://github.com/Illusion47586/isol8/commit/b14206b6787e8c8eacf195e78383ee3d3f40afd7)), closes [#15](https://github.com/Illusion47586/isol8/issues/15)
+
 ## [0.6.2](https://github.com/Illusion47586/isol8/compare/v0.6.1...v0.6.2) (2026-02-14)
 
 
