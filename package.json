@@ -62,6 +62,8 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.15",
+    "@commitlint/cli": "^20.4.1",
+    "@commitlint/config-conventional": "^20.4.1",
     "@semantic-release/changelog": "^6.0.3",
     "@semantic-release/exec": "^7.1.0",
     "@semantic-release/git": "^10.0.1",
@@ -94,7 +96,8 @@
     }
   ],
   "simple-git-hooks": {
-    "pre-commit": "bun run lint-staged"
+    "pre-commit": "bun run lint-staged",
+    "commit-msg": "bunx commitlint --edit $1"
   },
   "lint-staged": {
     "*.{ts,tsx}": [
