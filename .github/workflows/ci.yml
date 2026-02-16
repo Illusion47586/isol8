@@ -86,13 +86,6 @@ jobs:
       - name: Setup Docker Images
         run: node dist/cli.js setup
 
-      - name: Unit Tests
-        run: bun test tests/unit/
-
-      # Integration tests require Docker, which is avail on ubuntu-latest runners
-      - name: Integration Tests
-        run: bun test tests/integration/
-
       - name: Test Coverage
         run: bun run test:coverage
 
