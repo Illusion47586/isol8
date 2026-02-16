@@ -123,6 +123,7 @@ jobs:
         with:
           recreate: true
           path: code-coverage-results.md
+          header: coverage-report
 
       - name: Upload Coverage Report
         uses: actions/upload-artifact@v4
