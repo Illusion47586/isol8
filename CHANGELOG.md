@@ -1,3 +1,11 @@
+## [0.6.2](https://github.com/Illusion47586/isol8/compare/v0.6.1...v0.6.2) (2026-02-14)
+
+
+### Bug Fixes
+
+* add --debug flag to run/serve subcommands and server debug logging ([63d3283](https://github.com/Illusion47586/isol8/commit/63d32833ff54545b9f2eff2e03e639351e49bbca))
+* add debug logging to all CLI commands and fix server binary version mismatch ([99b776b](https://github.com/Illusion47586/isol8/commit/99b776b86fe350c3a685a3e562d0cfe34e7ceb4f))
+
 ## [0.6.1](https://github.com/Illusion47586/isol8/compare/v0.6.0...v0.6.1) (2026-02-14)
 
 
