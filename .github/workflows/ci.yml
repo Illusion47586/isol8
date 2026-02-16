@@ -11,10 +11,6 @@ permissions:
   pull-requests: write
   issues: write
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
   build:
     runs-on: ubuntu-latest
