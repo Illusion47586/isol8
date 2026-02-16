@@ -180,8 +180,8 @@ jobs:
         with:
           commit_message: "chore: update coverage badge [skip ci]"
           file_pattern: coverage/coverage-badge.svg
-          commit_user_name: isol8-release-bot[bot]
-          commit_user_email: isol8-release-bot[bot]@users.noreply.github.com
+          commit_user_name: Isol8 Github Bot
+          commit_user_email: isol8-github-bot[bot]@users.noreply.github.com
         env:
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
         continue-on-error: true
