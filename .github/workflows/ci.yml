@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: ["main"]
 
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -65,11 +70,7 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Install bc for calculations
-        run: sudo apt-get install -y bc
-
-      - name: Generate GitHub App Token (main only)
-        if: github.ref == 'refs/heads/main'
+      - name: Generate GitHub App Token
         id: generate-token
         uses: actions/create-github-app-token@v1
         with:
@@ -114,19 +115,19 @@ jobs:
             TOTAL_LINES=$(grep -c "^DA:" coverage/lcov.info || echo "0")
             HIT_LINES=$(grep "^DA:" coverage/lcov.info | cut -d',' -f2 | grep -c "^1$" || echo "0")
             if [ "$TOTAL_LINES" -gt 0 ]; then
-              CURRENT=$(echo "scale=2; $HIT_LINES * 100 / $TOTAL_LINES" | bc)
+              CURRENT=$(awk "BEGIN {printf \"%.2f\", $HIT_LINES * 100 / $TOTAL_LINES}")
             else
-              CURRENT="0"
+              CURRENT="0.00"
             fi
           else
-            CURRENT="0"
+            CURRENT="0.00"
           fi
           echo "current=$CURRENT" >> $GITHUB_OUTPUT
 
           # Main branch coverage (if available)
           if [ -f coverage-main/coverage-summary.json ]; then
             MAIN=$(cat coverage-main/coverage-summary.json | jq '.total.lines.pct' | awk '{printf "%.2f", $1}')
-            DIFF=$(echo "$CURRENT - $MAIN" | bc -l)
+            DIFF=$(awk "BEGIN {printf \"%.2f\", $CURRENT - $MAIN}")
             echo "main=$MAIN" >> $GITHUB_OUTPUT
             echo "diff=$DIFF" >> $GITHUB_OUTPUT
           elif [ -f coverage-main/lcov.info ]; then
@@ -134,15 +135,15 @@ jobs:
             MAIN_TOTAL=$(grep -c "^DA:" coverage-main/lcov.info || echo "0")
             MAIN_HIT=$(grep "^DA:" coverage-main/lcov.info | cut -d',' -f2 | grep -c "^1$" || echo "0")
             if [ "$MAIN_TOTAL" -gt 0 ]; then
-              MAIN=$(echo "scale=2; $MAIN_HIT * 100 / $MAIN_TOTAL" | bc)
+              MAIN=$(awk "BEGIN {printf \"%.2f\", $MAIN_HIT * 100 / $MAIN_TOTAL}")
             else
-              MAIN="0"
+              MAIN="0.00"
             fi
-            DIFF=$(echo "$CURRENT - $MAIN" | bc -l)
+            DIFF=$(awk "BEGIN {printf \"%.2f\", $CURRENT - $MAIN}")
             echo "main=$MAIN" >> $GITHUB_OUTPUT
             echo "diff=$DIFF" >> $GITHUB_OUTPUT
           else
-            MAIN="0"
+            MAIN="0.00"
             DIFF=$CURRENT  # If main is 0, diff is equal to current
             echo "main=$MAIN" >> $GITHUB_OUTPUT
             echo "diff=$DIFF" >> $GITHUB_OUTPUT
@@ -230,13 +231,13 @@ jobs:
       - name: Toggle Test Status Labels
         if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.generate-token.outputs.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           # Remove both labels first
           gh issue edit $PR_NUMBER --remove-label "tests:passing" --repo ${{ github.repository }} || true
           gh issue edit $PR_NUMBER --remove-label "tests:failing" --repo ${{ github.repository }} || true
-          
+
           # Add appropriate label based on test result
           if [ ${{ job.status }} == 'success' ]; then
             gh issue edit $PR_NUMBER --add-label "tests:passing" --repo ${{ github.repository }}
