@@ -16,6 +16,14 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
@@ -48,8 +56,11 @@ jobs:
           recreate: true
           path: code-coverage-results.md
 
-      - name: Upload Coverage Artifact
+      - name: Upload Coverage Report
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-report
-          path: code-coverage-results.md
+          name: pr-coverage-report
+          path: |
+            code-coverage-results.md
+            coverage/
+          retention-days: 7

@@ -84,12 +84,12 @@ jobs:
       - name: Test Coverage
         run: bun run test:coverage
 
-      - name: Upload Coverage to Codecov
-        uses: codecov/codecov-action@v5
+      - name: Upload Coverage Report
+        uses: actions/upload-artifact@v4
         with:
-          files: ./coverage/lcov.info
-          fail_ci_if_error: false
-          token: ${{ secrets.CODECOV_TOKEN }}
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
 
   docs:
     runs-on: ubuntu-latest
