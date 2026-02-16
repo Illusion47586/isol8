@@ -1,0 +1,13 @@
+[test]
+coverage = true
+coverageReporter = "lcov"
+coverageDir = "coverage"
+coverageSkipTestFiles = true
+coveragePathIgnorePatterns = [
+  "node_modules",
+  "dist",
+  "build",
+  "**/*.test.ts",
+  "**/*.spec.ts",
+  "scripts"
+]
