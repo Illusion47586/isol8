@@ -176,7 +176,7 @@ Full configuration reference: [Configuration](https://bingo-ccc81346.mintlify.ap
 | Resources | 1 CPU, 512MB memory, 30s timeout |
 | Network | Disabled (`none`) |
 | Output | Truncated at 1MB, secrets masked |
-| Seccomp | "strict" (blocks mount, swap, etc.) |
+| Seccomp | "safety" (blocks mount, swap, ptrace, etc.) |
 
 **Container Filesystem:**
 - `/sandbox` (512MB): Working directory, packages installed here, execution allowed for `.so` files

@@ -135,9 +135,9 @@ Packages to bake into custom Docker images when running `isol8 setup`.
 
 Security computing mode profile configuration.
 
-<ResponseField name="security.seccomp" type="string" default="strict">
+<ResponseField name="security.seccomp" type="string" default="safety">
   The seccomp profile to use:
-  - `strict`: Blocks dangerous syscalls like `mount`, `ptrace`, and kernel module operations (safe default).
+  - `safety`: Blocks known dangerous syscalls (mount, ptrace, kernel modules) while allowing standard runtime operations (blacklist approach).
   - `unconfined`: Disables seccomp filtering (use with caution).
   - `path/to/profile.json`: Path to a custom seccomp profile JSON file.
 </ResponseField>

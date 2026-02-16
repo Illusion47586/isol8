@@ -311,7 +311,7 @@ Add the `$schema` property to get autocompletion, validation, and inline documen
     "node": ["lodash"]
   },
   "security": {
-    "seccomp": "strict"
+    "seccomp": "safety"
   }
 }
 ```
@@ -375,7 +375,7 @@ bun run bench:detailed   # Phase breakdown
 | **Network** | Disabled by default; optional proxy-based filtering |
 | **Output** | Truncated at 1MB; secrets masked from stdout/stderr |
 | **Isolation** | Each execution in its own container (ephemeral) or exec (persistent) |
-| **Seccomp** | Default "strict" profile blocks dangerous syscalls (mount, swap, etc.); configurable via `security.seccomp` |
+| **Seccomp** | Default "safety" profile blocks dangerous syscalls (mount, swap, ptrace) but allows others for compatibility; configurable via `security.seccomp` |
 
 ### Container Filesystem
 
