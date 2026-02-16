@@ -102,65 +102,56 @@ jobs:
       - name: Extract Coverage Percentages
         id: coverage
         run: |
-          # Generate coverage-summary.json from lcov.info
-          if [ -f coverage/lcov.info ]; then
-            # Parse lcov to get line coverage percentage
-            TOTAL_LINES=$(grep -c "^DA:" coverage/lcov.info || echo "0")
-            HIT_LINES=$(grep "^DA:" coverage/lcov.info | cut -d',' -f2 | grep -c "^1$" || echo "0")
-            if [ "$TOTAL_LINES" -gt 0 ]; then
-              CURRENT=$(awk "BEGIN {printf \"%.2f\", $HIT_LINES * 100 / $TOTAL_LINES}")
-            else
-              CURRENT="0.00"
-            fi
-          else
-            CURRENT="0.00"
-          fi
-          echo "current=$CURRENT" >> $GITHUB_OUTPUT
-
-          # Main branch coverage (if available)
-          if [ -f coverage-main/coverage-summary.json ]; then
-            MAIN=$(cat coverage-main/coverage-summary.json | jq '.total.lines.pct' | awk '{printf "%.2f", $1}')
-            DIFF=$(awk "BEGIN {printf \"%.2f\", $CURRENT - $MAIN}")
-            echo "main=$MAIN" >> $GITHUB_OUTPUT
-            echo "diff=$DIFF" >> $GITHUB_OUTPUT
-          elif [ -f coverage-main/lcov.info ]; then
-            # Calculate from main's lcov.info
-            MAIN_TOTAL=$(grep -c "^DA:" coverage-main/lcov.info || echo "0")
-            MAIN_HIT=$(grep "^DA:" coverage-main/lcov.info | cut -d',' -f2 | grep -c "^1$" || echo "0")
-            if [ "$MAIN_TOTAL" -gt 0 ]; then
-              MAIN=$(awk "BEGIN {printf \"%.2f\", $MAIN_HIT * 100 / $MAIN_TOTAL}")
-            else
-              MAIN="0.00"
-            fi
-            DIFF=$(awk "BEGIN {printf \"%.2f\", $CURRENT - $MAIN}")
-            echo "main=$MAIN" >> $GITHUB_OUTPUT
-            echo "diff=$DIFF" >> $GITHUB_OUTPUT
-          else
-            MAIN="0.00"
-            DIFF=$CURRENT  # If main is 0, diff is equal to current
-            echo "main=$MAIN" >> $GITHUB_OUTPUT
-            echo "diff=$DIFF" >> $GITHUB_OUTPUT
-          fi
+          # Parse current coverage
+          bun scripts/parse-coverage.ts coverage/lcov.info coverage/summary.json
           
-          # Create coverage-summary.json for other actions
-          cat > coverage/coverage-summary.json << EOF
-          {
-            "total": {
-              "lines": {
-                "pct": $CURRENT
-              }
-            }
-          }
-          EOF
+          # Parse main branch coverage (if available)
+          if [ -f coverage-main/lcov.info ]; then
+            bun scripts/parse-coverage.ts coverage-main/lcov.info coverage-main/summary.json
+          else
+            # Create dummy zero coverage for main
+            echo '{"lines":{"pct":0},"functions":{"pct":0},"branches":{"pct":0}}' > coverage-main/summary.json
+          fi
 
-          echo "Current: $CURRENT%"
-          echo "Main: $MAIN%"
-          echo "Diff: $DIFF%"
+          # Extract values using jq
+          CUR_LINES=$(jq '.lines.pct' coverage/summary.json)
+          CUR_FUNCS=$(jq '.functions.pct' coverage/summary.json)
+          CUR_BRANS=$(jq '.branches.pct' coverage/summary.json)
+          
+          MAIN_LINES=$(jq '.lines.pct' coverage-main/summary.json)
+          MAIN_FUNCS=$(jq '.functions.pct' coverage-main/summary.json)
+          MAIN_BRANS=$(jq '.branches.pct' coverage-main/summary.json)
+
+          # Format to 2 decimal places
+          CUR_LINES=$(printf "%.2f" $CUR_LINES)
+          CUR_FUNCS=$(printf "%.2f" $CUR_FUNCS)
+          CUR_BRANS=$(printf "%.2f" $CUR_BRANS)
+          
+          MAIN_LINES=$(printf "%.2f" $MAIN_LINES)
+          MAIN_FUNCS=$(printf "%.2f" $MAIN_FUNCS)
+          MAIN_BRANS=$(printf "%.2f" $MAIN_BRANS)
+
+          # Calculate diffs
+          DIFF_LINES=$(echo "$CUR_LINES - $MAIN_LINES" | bc)
+          DIFF_FUNCS=$(echo "$CUR_FUNCS - $MAIN_FUNCS" | bc)
+          DIFF_BRANS=$(echo "$CUR_BRANS - $MAIN_BRANS" | bc)
+
+          echo "lines=$CUR_LINES" >> $GITHUB_OUTPUT
+          echo "funcs=$CUR_FUNCS" >> $GITHUB_OUTPUT
+          echo "brans=$CUR_BRANS" >> $GITHUB_OUTPUT
+          
+          echo "main_lines=$MAIN_LINES" >> $GITHUB_OUTPUT
+          echo "main_funcs=$MAIN_FUNCS" >> $GITHUB_OUTPUT
+          echo "main_brans=$MAIN_BRANS" >> $GITHUB_OUTPUT
+          
+          echo "diff_lines=$DIFF_LINES" >> $GITHUB_OUTPUT
+          echo "diff_funcs=$DIFF_FUNCS" >> $GITHUB_OUTPUT
+          echo "diff_brans=$DIFF_BRANS" >> $GITHUB_OUTPUT
 
       - name: Generate Coverage Badge
         run: |
-          COLOR=$(if [ $(echo "${{ steps.coverage.outputs.current }} >= 80" | bc -l) -eq 1 ]; then echo "brightgreen"; elif [ $(echo "${{ steps.coverage.outputs.current }} >= 50" | bc -l) -eq 1 ]; then echo "yellow"; else echo "red"; fi)
-          curl -s "https://img.shields.io/badge/coverage-${{ steps.coverage.outputs.current }}%25-${COLOR}" -o coverage/coverage-badge.svg
+          COLOR=$(if [ $(echo "${{ steps.coverage.outputs.lines }} >= 80" | bc -l) -eq 1 ]; then echo "brightgreen"; elif [ $(echo "${{ steps.coverage.outputs.lines }} >= 50" | bc -l) -eq 1 ]; then echo "yellow"; else echo "red"; fi)
+          curl -s "https://img.shields.io/badge/coverage-${{ steps.coverage.outputs.lines }}%25-${COLOR}" -o coverage/coverage-badge.svg
 
       - name: Upload Coverage Badge
         uses: actions/upload-artifact@v4
@@ -188,16 +179,16 @@ jobs:
           cat > code-coverage-results.md << EOF
           ## Test Coverage Report
 
-          | Branch | Coverage | Change |
-          |--------|----------|--------|
-          | This PR | ${{ steps.coverage.outputs.current }}% | - |
-          | main | ${{ steps.coverage.outputs.main }}% | - |
-          | **Diff** | - | ${{ steps.coverage.outputs.diff }}% |
+          | Metric | Current | Main | Change |
+          | :--- | :--- | :--- | :--- |
+          | **Lines** | ${{ steps.coverage.outputs.lines }}% | ${{ steps.coverage.outputs.main_lines }}% | ${{ steps.coverage.outputs.diff_lines }}% |
+          | **Functions** | ${{ steps.coverage.outputs.funcs }}% | ${{ steps.coverage.outputs.main_funcs }}% | ${{ steps.coverage.outputs.diff_funcs }}% |
+          | **Branches** | ${{ steps.coverage.outputs.brans }}% | ${{ steps.coverage.outputs.main_brans }}% | ${{ steps.coverage.outputs.diff_brans }}% |
 
           EOF
           
-          # Add trend indicator
-          DIFF=${{ steps.coverage.outputs.diff }}
+          # Add trend indicator based on Lines coverage
+          DIFF=${{ steps.coverage.outputs.diff_lines }}
           if [ $(echo "$DIFF > 0" | bc -l) -eq 1 ]; then
             echo "✅ Coverage **increased** by $DIFF%" >> code-coverage-results.md
           elif [ $(echo "$DIFF < 0" | bc -l) -eq 1 ]; then
