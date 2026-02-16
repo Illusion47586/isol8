@@ -184,13 +184,13 @@ async function startProxy(
 async function setupIptables(container: Docker.Container): Promise<void> {
   const rules = [
     // Allow all loopback traffic
-    "iptables -A OUTPUT -o lo -j ACCEPT",
+    "/usr/sbin/iptables -A OUTPUT -o lo -j ACCEPT",
     // Allow established/related connections (responses to allowed requests)
-    "iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT",
+    "/usr/sbin/iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT",
     // Allow sandbox user to reach the proxy
-    `iptables -A OUTPUT -p tcp -d 127.0.0.1 --dport ${PROXY_PORT} -m owner --uid-owner 100 -j ACCEPT`,
+    `/usr/sbin/iptables -A OUTPUT -p tcp -d 127.0.0.1 --dport ${PROXY_PORT} -m owner --uid-owner 100 -j ACCEPT`,
     // Drop everything else from the sandbox user
-    "iptables -A OUTPUT -m owner --uid-owner 100 -j DROP",
+    "/usr/sbin/iptables -A OUTPUT -m owner --uid-owner 100 -j DROP",
   ].join(" && ");
 
   const exec = await container.exec({
