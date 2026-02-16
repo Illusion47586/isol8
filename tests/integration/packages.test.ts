@@ -13,6 +13,7 @@ describe("Integration: Package Installation", () => {
     // Must allow network for installing packages
     network: "host",
     readonlyRootFs: false,
+    security: { seccomp: "unconfined" },
   });
 
   // Note: These tests might be slow due to network/install times

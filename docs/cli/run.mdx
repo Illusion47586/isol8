@@ -120,6 +120,10 @@ If the extension doesn't match any registered adapter, the CLI exits with an err
   Disable read-only root filesystem. By default, containers run with `ReadonlyRootfs: true` and writable tmpfs mounts at `/sandbox` and `/tmp`. Enable this flag if your code needs to write outside those directories.
 </ResponseField>
 
+<ResponseField name="--seccomp" type="string" default="safety">
+  Seccomp profile to use. Defaults to `safety` which blocks dangerous system calls (blacklist).
+</ResponseField>
+
 <ResponseField name="--secret" type="string">
   Secret environment variable in `KEY=VALUE` format. The value is injected into the container as an env var and automatically masked with `***` in all stdout and stderr output. Repeatable — use `--secret KEY1=val1 --secret KEY2=val2` for multiple secrets.
 </ResponseField>

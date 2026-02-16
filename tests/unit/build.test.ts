@@ -65,6 +65,7 @@ describe("artifact integrity", () => {
       "src/index.d.ts",
       "docker/Dockerfile",
       "docker/proxy.mjs",
+      "docker/seccomp-profile.json",
       "isol8-server",
     ];
     for (const file of required) {

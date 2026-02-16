@@ -306,7 +306,12 @@ Add the `$schema` property to get autocompletion, validation, and inline documen
   },
   "dependencies": {
     "python": ["numpy", "pandas"],
+  "dependencies": {
+    "python": ["numpy", "pandas"],
     "node": ["lodash"]
+  },
+  "security": {
+    "seccomp": "safety"
   }
 }
 ```
@@ -370,6 +375,7 @@ bun run bench:detailed   # Phase breakdown
 | **Network** | Disabled by default; optional proxy-based filtering |
 | **Output** | Truncated at 1MB; secrets masked from stdout/stderr |
 | **Isolation** | Each execution in its own container (ephemeral) or exec (persistent) |
+| **Seccomp** | Default "safety" profile blocks dangerous syscalls (mount, swap, ptrace) but allows others for compatibility; configurable via `security.seccomp` |
 
 ### Container Filesystem
 

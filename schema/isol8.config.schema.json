@@ -140,6 +140,10 @@
             }
           },
           "type": "object"
+        },
+        "security": {
+          "$ref": "#/definitions/SecurityConfig",
+          "description": "Security settings."
         }
       },
       "type": "object"
@@ -148,6 +152,22 @@
       "description": "Network access mode for isol8 containers.\n\n- `\"none\"` — All network access blocked (default, most secure).\n- `\"host\"` — Full host network access (use with caution).\n- `\"filtered\"` — HTTP/HTTPS traffic routed through a proxy that enforces   whitelist/blacklist regex rules on hostnames.",
       "enum": ["none", "host", "filtered"],
       "type": "string"
+    },
+    "SecurityConfig": {
+      "additionalProperties": false,
+      "description": "Security configuration for the execution environment.",
+      "properties": {
+        "customProfilePath": {
+          "description": "Path to a custom seccomp profile JSON file. Required if seccomp is \"custom\".",
+          "type": "string"
+        },
+        "seccomp": {
+          "description": "Seccomp profile mode.\n- \"strict\": Use the default strict profile (default).\n- \"unconfined\": Do not apply any seccomp profile.\n- \"custom\": Use the profile at `customProfilePath`.",
+          "enum": ["strict", "unconfined", "custom"],
+          "type": "string"
+        }
+      },
+      "type": "object"
     }
   }
 }
