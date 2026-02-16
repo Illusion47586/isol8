@@ -190,15 +190,15 @@ jobs:
         if: github.event_name == 'pull_request'
         run: |
           cat > code-coverage-results.md << EOF
-      ## Test Coverage Report
+          ## Test Coverage Report
 
-      | Branch | Coverage | Change |
-      |--------|----------|--------|
-      | This PR | ${{ steps.coverage.outputs.current }}% | - |
-      | main | ${{ steps.coverage.outputs.main }}% | - |
-      | **Diff** | - | ${{ steps.coverage.outputs.diff }}% |
+          | Branch | Coverage | Change |
+          |--------|----------|--------|
+          | This PR | ${{ steps.coverage.outputs.current }}% | - |
+          | main | ${{ steps.coverage.outputs.main }}% | - |
+          | **Diff** | - | ${{ steps.coverage.outputs.diff }}% |
 
-      EOF
+          EOF
           
           # Add trend indicator
           DIFF=${{ steps.coverage.outputs.diff }}
