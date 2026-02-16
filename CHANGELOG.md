@@ -1,3 +1,10 @@
+# [0.8.0](https://github.com/Illusion47586/isol8/compare/v0.7.0...v0.8.0) (2026-02-16)
+
+
+### Features
+
+* **ci:** add test coverage reporting and status badges ([#31](https://github.com/Illusion47586/isol8/issues/31)) ([77244d1](https://github.com/Illusion47586/isol8/commit/77244d1dd7557bb3a5ca78f862594a136762eb4c))
+
 # [0.7.0](https://github.com/Illusion47586/isol8/compare/v0.6.2...v0.7.0) (2026-02-16)
 
 
