@@ -275,11 +275,17 @@ except Exception as e:
     });
 
     // Verify the bash proxy works across runtimes, not just Python
+    // Node.js http module doesn't auto-use HTTP_PROXY, so we connect manually
     const result = await engine.execute({
       code: `
-const http = require("http");
-const url = "http://example.com";
-const req = http.get(url, { timeout: 5000 }, (res) => {
+import http from "http";
+const req = http.request({
+  hostname: '127.0.0.1',
+  port: 8118,
+  path: 'http://example.com',
+  method: 'GET',
+  headers: { 'Host': 'example.com' }
+}, (res) => {
   if (res.statusCode === 200) {
     console.log("node_proxy_allowed");
   } else {
@@ -288,6 +294,7 @@ const req = http.get(url, { timeout: 5000 }, (res) => {
   res.resume();
 });
 req.on("error", (e) => console.log("node_error: " + e.message));
+req.end();
       `,
       runtime: "node",
       timeoutMs: 15_000,

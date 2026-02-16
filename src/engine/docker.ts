@@ -127,16 +127,12 @@ async function startProxy(
   container: Docker.Container,
   networkFilter?: { whitelist: string[]; blacklist: string[] }
 ): Promise<void> {
-  const envParts: string[] = [];
-  if (networkFilter) {
-    envParts.push(`ISOL8_WHITELIST='${JSON.stringify(networkFilter.whitelist)}'`);
-    envParts.push(`ISOL8_BLACKLIST='${JSON.stringify(networkFilter.blacklist)}'`);
-  }
-  const envPrefix = envParts.length > 0 ? `${envParts.join(" ")} ` : "";
-
-  // Start proxy in background
+  // Start proxy in background using nohup to ensure it survives after exec ends
+  const envExport = networkFilter
+    ? `export ISOL8_WHITELIST=${JSON.stringify(networkFilter.whitelist)} ISOL8_BLACKLIST=${JSON.stringify(networkFilter.blacklist)};`
+    : "";
   const startExec = await container.exec({
-    Cmd: ["sh", "-c", `${envPrefix}bash /usr/local/bin/proxy.sh &`],
+    Cmd: ["sh", "-c", `${envExport} nohup bash /usr/local/bin/proxy.sh > /tmp/proxy.log 2>&1 &`],
   });
   await startExec.start({ Detach: true });
 
@@ -956,9 +952,11 @@ export class DockerIsol8 implements Isol8Engine {
     }
 
     // Add proxy config for filtered mode
-    if (this.network === "filtered" && this.networkFilter) {
-      env.push(`ISOL8_WHITELIST=${JSON.stringify(this.networkFilter.whitelist)}`);
-      env.push(`ISOL8_BLACKLIST=${JSON.stringify(this.networkFilter.blacklist)}`);
+    if (this.network === "filtered") {
+      if (this.networkFilter) {
+        env.push(`ISOL8_WHITELIST=${JSON.stringify(this.networkFilter.whitelist)}`);
+        env.push(`ISOL8_BLACKLIST=${JSON.stringify(this.networkFilter.blacklist)}`);
+      }
       env.push(`HTTP_PROXY=http://127.0.0.1:${PROXY_PORT}`);
       env.push(`HTTPS_PROXY=http://127.0.0.1:${PROXY_PORT}`);
       env.push(`http_proxy=http://127.0.0.1:${PROXY_PORT}`);
