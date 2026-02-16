@@ -142,8 +142,10 @@ jobs:
             echo "main=$MAIN" >> $GITHUB_OUTPUT
             echo "diff=$DIFF" >> $GITHUB_OUTPUT
           else
-            echo "main=0" >> $GITHUB_OUTPUT
-            echo "diff=0" >> $GITHUB_OUTPUT
+            MAIN="0"
+            DIFF=$CURRENT  # If main is 0, diff is equal to current
+            echo "main=$MAIN" >> $GITHUB_OUTPUT
+            echo "diff=$DIFF" >> $GITHUB_OUTPUT
           fi
           
           # Create coverage-summary.json for other actions
@@ -208,28 +210,6 @@ jobs:
             echo "⚠️ Coverage **decreased** by $(echo "$DIFF * -1" | bc -l)%" >> code-coverage-results.md
           else
             echo "➡️ Coverage unchanged" >> code-coverage-results.md
-          fi
-
-      - name: Coverage Summary
-        uses: irongut/CodeCoverageSummary@v1.3.0
-        with:
-          filename: coverage/lcov.info
-          badge: true
-          fail_below_min: false
-          format: markdown
-          hide_branch_rate: false
-          hide_complexity: false
-          indicators: true
-          output: both
-          thresholds: "50 80"
-
-      - name: Append Detailed Report
-        if: github.event_name == 'pull_request'
-        run: |
-          if [ -f code-coverage-results.md ]; then
-            echo "" >> code-coverage-results.md
-            echo "## Detailed Coverage" >> code-coverage-results.md
-            cat coverage/lcov.info >> code-coverage-results.md 2>/dev/null || true
           fi
 
       - name: Add Coverage PR Comment
