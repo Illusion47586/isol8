@@ -7,8 +7,9 @@ dist
 *.tgz
 
 # code coverage
-coverage
-*.lcov
+coverage/*.lcov
+coverage/coverage-summary.json
+coverage/tmp/
 
 # logs
 logs

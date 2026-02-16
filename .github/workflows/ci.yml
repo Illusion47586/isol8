@@ -6,13 +6,14 @@ on:
   pull_request:
     branches: ["main"]
 
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        node-version: [20.x]
 
     steps:
       - uses: actions/checkout@v3
@@ -39,15 +40,228 @@ jobs:
       - name: Build
         run: bun run build
 
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build
+          path: dist/
+          retention-days: 1
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate GitHub App Token
+        id: generate-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build
+          path: dist/
+
       - name: Setup Docker Images
         run: node dist/cli.js setup
 
-      - name: Unit Tests
-        run: bun test tests/unit/
+      - name: Test Coverage
+        run: bun test
 
-      # Integration tests require Docker, which is avail on ubuntu-latest runners
-      - name: Integration Tests
-        run: bun test tests/integration/
+      - name: Download Main Branch Coverage
+        if: github.event_name == 'pull_request'
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          workflow: ci.yml
+          branch: main
+          name: coverage-report
+          path: coverage-main/
+        continue-on-error: true
+
+      - name: Extract Coverage Percentages
+        id: coverage
+        run: |
+          # Ensure directories exist
+          mkdir -p coverage
+          mkdir -p coverage-main
+
+          # Parse current coverage
+          bun scripts/parse-coverage.ts coverage/lcov.info coverage/summary.json
+          
+          # Parse main branch coverage (if available)
+          if [ -f coverage-main/lcov.info ]; then
+            bun scripts/parse-coverage.ts coverage-main/lcov.info coverage-main/summary.json
+          else
+            # Create dummy zero coverage for main
+            echo '{"lines":{"pct":0},"functions":{"pct":0},"branches":{"pct":0}}' > coverage-main/summary.json
+          fi
+
+          # Extract values using jq
+          CUR_LINES=$(jq '.lines.pct' coverage/summary.json)
+          CUR_FUNCS=$(jq '.functions.pct' coverage/summary.json)
+          CUR_BRANS=$(jq '.branches.pct' coverage/summary.json)
+          
+          MAIN_LINES=$(jq '.lines.pct' coverage-main/summary.json)
+          MAIN_FUNCS=$(jq '.functions.pct' coverage-main/summary.json)
+          MAIN_BRANS=$(jq '.branches.pct' coverage-main/summary.json)
+
+          # Format to 2 decimal places
+          CUR_LINES=$(printf "%.2f" $CUR_LINES)
+          CUR_FUNCS=$(printf "%.2f" $CUR_FUNCS)
+          CUR_BRANS=$(printf "%.2f" $CUR_BRANS)
+          
+          MAIN_LINES=$(printf "%.2f" $MAIN_LINES)
+          MAIN_FUNCS=$(printf "%.2f" $MAIN_FUNCS)
+          MAIN_BRANS=$(printf "%.2f" $MAIN_BRANS)
+
+          # Calculate diffs
+          DIFF_LINES=$(echo "$CUR_LINES - $MAIN_LINES" | bc)
+          DIFF_FUNCS=$(echo "$CUR_FUNCS - $MAIN_FUNCS" | bc)
+          DIFF_BRANS=$(echo "$CUR_BRANS - $MAIN_BRANS" | bc)
+
+          echo "lines=$CUR_LINES" >> $GITHUB_OUTPUT
+          echo "funcs=$CUR_FUNCS" >> $GITHUB_OUTPUT
+          echo "brans=$CUR_BRANS" >> $GITHUB_OUTPUT
+          
+          echo "main_lines=$MAIN_LINES" >> $GITHUB_OUTPUT
+          echo "main_funcs=$MAIN_FUNCS" >> $GITHUB_OUTPUT
+          echo "main_brans=$MAIN_BRANS" >> $GITHUB_OUTPUT
+          
+          echo "diff_lines=$DIFF_LINES" >> $GITHUB_OUTPUT
+          echo "diff_funcs=$DIFF_FUNCS" >> $GITHUB_OUTPUT
+          echo "diff_brans=$DIFF_BRANS" >> $GITHUB_OUTPUT
+
+      - name: Generate Coverage Badge
+        run: |
+          COLOR=$(if [ $(echo "${{ steps.coverage.outputs.lines }} >= 80" | bc -l) -eq 1 ]; then echo "brightgreen"; elif [ $(echo "${{ steps.coverage.outputs.lines }} >= 50" | bc -l) -eq 1 ]; then echo "yellow"; else echo "red"; fi)
+          curl -s "https://img.shields.io/badge/coverage-${{ steps.coverage.outputs.lines }}%25-${COLOR}" -o coverage/coverage-badge.svg
+
+      - name: Upload Coverage Badge
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-badge
+          path: coverage/coverage-badge.svg
+          retention-days: 7
+          overwrite: true
+
+      - name: Commit Coverage Badge (main branch only)
+        if: github.ref == 'refs/heads/main'
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update coverage badge [skip ci]"
+          file_pattern: coverage/coverage-badge.svg
+          commit_user_name: Isol8 Github Bot
+          commit_user_email: isol8-github-bot[bot]@users.noreply.github.com
+        env:
+          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
+        continue-on-error: true
+
+      - name: Generate Coverage Comparison Report
+        if: github.event_name == 'pull_request'
+        run: |
+          # Function to get icon
+          get_icon() {
+            local val=$1
+            if [ $(echo "$val >= 80" | bc -l) -eq 1 ]; then echo "🟢";
+            elif [ $(echo "$val >= 50" | bc -l) -eq 1 ]; then echo "🟡";
+            else echo "🔴"; fi
+          }
+          
+          # Function to get trend icon
+          get_trend() {
+            local val=$1
+            if [ $(echo "$val > 0" | bc -l) -eq 1 ]; then echo "🔼 +$val%";
+            elif [ $(echo "$val < 0" | bc -l) -eq 1 ]; then echo "🔻 $val%";
+            else echo "➖ 0%"; fi
+          }
+
+          ICON_LINES=$(get_icon ${{ steps.coverage.outputs.lines }})
+          ICON_FUNCS=$(get_icon ${{ steps.coverage.outputs.funcs }})
+          ICON_BRANS=$(get_icon ${{ steps.coverage.outputs.brans }})
+          
+          TREND_LINES=$(get_trend ${{ steps.coverage.outputs.diff_lines }})
+          TREND_FUNCS=$(get_trend ${{ steps.coverage.outputs.diff_funcs }})
+          TREND_BRANS=$(get_trend ${{ steps.coverage.outputs.diff_brans }})
+
+          cat > code-coverage-results.md << EOF
+          ## 🧪 Test Coverage Report
+
+          | Metric | Current | Main | Diff |
+          | :--- | :---: | :---: | :---: |
+          | **Lines** | $ICON_LINES **${{ steps.coverage.outputs.lines }}%** | ${{ steps.coverage.outputs.main_lines }}% | $TREND_LINES |
+          | **Functions** | $ICON_FUNCS **${{ steps.coverage.outputs.funcs }}%** | ${{ steps.coverage.outputs.main_funcs }}% | $TREND_FUNCS |
+          | **Branches** | $ICON_BRANS **${{ steps.coverage.outputs.brans }}%** | ${{ steps.coverage.outputs.main_brans }}% | $TREND_BRANS |
+
+          EOF
+
+      - name: Add Coverage PR Comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        if: github.event_name == 'pull_request'
+        with:
+          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
+          recreate: true
+          path: code-coverage-results.md
+          header: coverage-report
+
+      - name: Upload Coverage Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
+
+      - name: Toggle Test Status Labels
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ steps.generate-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          # Get current labels
+          LABELS=$(gh issue view $PR_NUMBER --json labels -q '.labels[].name')
+
+          if [ "$JOB_STATUS" == "success" ]; then
+            TARGET_LABEL="tests:passing"
+            OPPOSING_LABEL="tests:failing"
+          else
+            TARGET_LABEL="tests:failing"
+            OPPOSING_LABEL="tests:passing"
+          fi
+
+          # Remove opposing label if present
+          if [[ "$LABELS" == *"$OPPOSING_LABEL"* ]]; then
+            echo "Removing $OPPOSING_LABEL"
+            gh issue edit $PR_NUMBER --remove-label "$OPPOSING_LABEL" --repo ${{ github.repository }}
+          fi
+
+          # Add target label if not present
+          if [[ "$LABELS" != *"$TARGET_LABEL"* ]]; then
+            echo "Adding $TARGET_LABEL"
+            gh issue edit $PR_NUMBER --add-label "$TARGET_LABEL" --repo ${{ github.repository }}
+          else
+            echo "$TARGET_LABEL already present"
+          fi
 
   docs:
     runs-on: ubuntu-latest
