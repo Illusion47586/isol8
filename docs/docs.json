@@ -71,6 +71,7 @@
               "cookbook/education",
               "cookbook/data-processing",
               "cookbook/ci-testing",
+              "cookbook/code-coverage",
               "cookbook/web-scraping",
               "cookbook/multi-runtime",
               "cookbook/remote-execution",
