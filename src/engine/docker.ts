@@ -798,6 +798,7 @@ export class DockerIsol8 implements Isol8Engine {
       PidsLimit: this.pidsLimit,
       ReadonlyRootfs: this.readonlyRootFs,
       Tmpfs: {
+        "/tmp": `rw,noexec,nosuid,nodev,size=${this.tmpSize}`,
         [SANDBOX_WORKDIR]: `rw,exec,nosuid,nodev,size=${this.sandboxSize}`,
       },
       SecurityOpt: this.buildSecurityOpts(),
