@@ -65,6 +65,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Install bc for calculations
+        run: sudo apt-get install -y bc
+
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
@@ -97,13 +100,36 @@ jobs:
       - name: Extract Coverage Percentages
         id: coverage
         run: |
-          # Current branch coverage
-          CURRENT=$(cat coverage/coverage-summary.json | jq '.total.lines.pct' | awk '{printf "%.2f", $1}')
+          # Generate coverage-summary.json from lcov.info
+          if [ -f coverage/lcov.info ]; then
+            # Parse lcov to get line coverage percentage
+            TOTAL_LINES=$(grep -c "^DA:" coverage/lcov.info || echo "0")
+            HIT_LINES=$(grep "^DA:" coverage/lcov.info | cut -d',' -f2 | grep -c "^1$" || echo "0")
+            if [ "$TOTAL_LINES" -gt 0 ]; then
+              CURRENT=$(echo "scale=2; $HIT_LINES * 100 / $TOTAL_LINES" | bc)
+            else
+              CURRENT="0"
+            fi
+          else
+            CURRENT="0"
+          fi
           echo "current=$CURRENT" >> $GITHUB_OUTPUT
-          
+
           # Main branch coverage (if available)
           if [ -f coverage-main/coverage-summary.json ]; then
             MAIN=$(cat coverage-main/coverage-summary.json | jq '.total.lines.pct' | awk '{printf "%.2f", $1}')
+            DIFF=$(echo "$CURRENT - $MAIN" | bc -l)
+            echo "main=$MAIN" >> $GITHUB_OUTPUT
+            echo "diff=$DIFF" >> $GITHUB_OUTPUT
+          elif [ -f coverage-main/lcov.info ]; then
+            # Calculate from main's lcov.info
+            MAIN_TOTAL=$(grep -c "^DA:" coverage-main/lcov.info || echo "0")
+            MAIN_HIT=$(grep "^DA:" coverage-main/lcov.info | cut -d',' -f2 | grep -c "^1$" || echo "0")
+            if [ "$MAIN_TOTAL" -gt 0 ]; then
+              MAIN=$(echo "scale=2; $MAIN_HIT * 100 / $MAIN_TOTAL" | bc)
+            else
+              MAIN="0"
+            fi
             DIFF=$(echo "$CURRENT - $MAIN" | bc -l)
             echo "main=$MAIN" >> $GITHUB_OUTPUT
             echo "diff=$DIFF" >> $GITHUB_OUTPUT
@@ -112,6 +138,17 @@ jobs:
             echo "diff=0" >> $GITHUB_OUTPUT
           fi
           
+          # Create coverage-summary.json for other actions
+          cat > coverage/coverage-summary.json << EOF
+          {
+            "total": {
+              "lines": {
+                "pct": $CURRENT
+              }
+            }
+          }
+          EOF
+
           echo "Current: $CURRENT%"
           echo "Main: $MAIN%"
           echo "Diff: $DIFF%"
@@ -121,12 +158,20 @@ jobs:
           COLOR=$(if [ $(echo "${{ steps.coverage.outputs.current }} >= 80" | bc -l) -eq 1 ]; then echo "brightgreen"; elif [ $(echo "${{ steps.coverage.outputs.current }} >= 50" | bc -l) -eq 1 ]; then echo "yellow"; else echo "red"; fi)
           curl -s "https://img.shields.io/badge/coverage-${{ steps.coverage.outputs.current }}%25-${COLOR}" -o coverage/coverage-badge.svg
 
-      - name: Commit Coverage Badge
+      - name: Upload Coverage Badge
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-badge
+          path: coverage/coverage-badge.svg
+          retention-days: 7
+          overwrite: true
+
+      - name: Commit Coverage Badge (main branch only)
+        if: github.ref == 'refs/heads/main'
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "chore: update coverage badge [skip ci]"
           file_pattern: coverage/coverage-badge.svg
-          skip_checkout: true
         continue-on-error: true
 
       - name: Generate Coverage Comparison Report
