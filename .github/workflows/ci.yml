@@ -68,6 +68,14 @@ jobs:
       - name: Install bc for calculations
         run: sudo apt-get install -y bc
 
+      - name: Generate GitHub App Token (main only)
+        if: github.ref == 'refs/heads/main'
+        id: generate-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
@@ -172,6 +180,10 @@ jobs:
         with:
           commit_message: "chore: update coverage badge [skip ci]"
           file_pattern: coverage/coverage-badge.svg
+          commit_user_name: isol8-release-bot[bot]
+          commit_user_email: isol8-release-bot[bot]@users.noreply.github.com
+        env:
+          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
         continue-on-error: true
 
       - name: Generate Coverage Comparison Report
