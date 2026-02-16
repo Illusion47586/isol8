@@ -120,7 +120,7 @@ const PROXY_STARTUP_TIMEOUT_MS = 5000;
 const PROXY_POLL_INTERVAL_MS = 100;
 
 /**
- * Starts proxy.mjs inside the container for filtered network mode.
+ * Starts the bash proxy inside the container for filtered network mode.
  * Waits until the proxy is listening on PROXY_PORT before returning.
  */
 async function startProxy(
@@ -136,7 +136,7 @@ async function startProxy(
 
   // Start proxy in background
   const startExec = await container.exec({
-    Cmd: ["sh", "-c", `${envPrefix}node /usr/local/bin/proxy.mjs &`],
+    Cmd: ["sh", "-c", `${envPrefix}bash /usr/local/bin/proxy.sh &`],
   });
   await startExec.start({ Detach: true });
 

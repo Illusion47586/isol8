@@ -59,7 +59,7 @@ export async function buildBaseImages(
 
     try {
       const stream = await docker.buildImage(
-        { context: DOCKERFILE_DIR, src: ["Dockerfile", "proxy.mjs"] },
+        { context: DOCKERFILE_DIR, src: ["Dockerfile", "proxy.sh", "proxy-handler.sh"] },
         {
           t: adapter.image,
           target,

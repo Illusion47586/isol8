@@ -64,7 +64,8 @@ describe("artifact integrity", () => {
       "index.js.map",
       "src/index.d.ts",
       "docker/Dockerfile",
-      "docker/proxy.mjs",
+      "docker/proxy.sh",
+      "docker/proxy-handler.sh",
       "docker/seccomp-profile.json",
       "isol8-server",
     ];
@@ -100,12 +101,15 @@ describe("artifact integrity", () => {
 
   test("docker assets are identical to source files", () => {
     const dockerfile = readFileSync(join(DIST, "docker/Dockerfile"));
-    const proxy = readFileSync(join(DIST, "docker/proxy.mjs"));
     const srcDockerfile = readFileSync(join(ROOT, "docker/Dockerfile"));
-    const srcProxy = readFileSync(join(ROOT, "docker/proxy.mjs"));
+    const proxy = readFileSync(join(DIST, "docker/proxy.sh"));
+    const srcProxy = readFileSync(join(ROOT, "docker/proxy.sh"));
+    const proxyHandler = readFileSync(join(DIST, "docker/proxy-handler.sh"));
+    const srcProxyHandler = readFileSync(join(ROOT, "docker/proxy-handler.sh"));
 
     expect(Buffer.compare(dockerfile, srcDockerfile)).toBe(0);
     expect(Buffer.compare(proxy, srcProxy)).toBe(0);
+    expect(Buffer.compare(proxyHandler, srcProxyHandler)).toBe(0);
   });
 
   test("package.json references resolve to existing files", () => {

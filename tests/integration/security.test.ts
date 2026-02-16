@@ -67,6 +67,8 @@ except:
     expect(result.exitCode).not.toBe(0);
   }, 30_000);
 
+  // ── Filtered network mode tests ──
+
   test("Network: 'filtered' blocks raw socket bypass via iptables", async () => {
     const engine = new DockerIsol8({
       mode: "ephemeral",
@@ -124,5 +126,196 @@ except Exception as e:
     });
 
     expect(result.stdout).toContain("proxy_allowed");
+  }, 60_000);
+
+  test("Network: 'filtered' blacklist blocks matching host", async () => {
+    const engine = new DockerIsol8({
+      mode: "ephemeral",
+      network: "filtered",
+      networkFilter: {
+        whitelist: [],
+        blacklist: ["^example\\.com$"],
+      },
+    });
+
+    // Blacklisted host should be blocked by the proxy (403)
+    const result = await engine.execute({
+      code: `
+import urllib.request
+try:
+    r = urllib.request.urlopen("http://example.com", timeout=5)
+    print(f"not_blocked: {r.status}")
+except urllib.error.HTTPError as e:
+    if e.code == 403:
+        print("blacklist_blocked")
+    else:
+        print(f"other_error: {e.code}")
+except Exception as e:
+    print(f"error: {e}")
+      `,
+      runtime: "python",
+      timeoutMs: 15_000,
+    });
+
+    expect(result.stdout).toContain("blacklist_blocked");
+  }, 60_000);
+
+  test("Network: 'filtered' whitelist blocks non-matching host", async () => {
+    const engine = new DockerIsol8({
+      mode: "ephemeral",
+      network: "filtered",
+      networkFilter: {
+        whitelist: ["^example\\.com$"],
+        blacklist: [],
+      },
+    });
+
+    // Non-whitelisted host should be blocked by the proxy (403)
+    const result = await engine.execute({
+      code: `
+import urllib.request
+try:
+    r = urllib.request.urlopen("http://httpbin.org/get", timeout=5)
+    print(f"not_blocked: {r.status}")
+except urllib.error.HTTPError as e:
+    if e.code == 403:
+        print("whitelist_blocked")
+    else:
+        print(f"other_error: {e.code}")
+except Exception as e:
+    print(f"error: {e}")
+      `,
+      runtime: "python",
+      timeoutMs: 15_000,
+    });
+
+    expect(result.stdout).toContain("whitelist_blocked");
+  }, 60_000);
+
+  test("Network: 'filtered' blacklist takes precedence over whitelist", async () => {
+    const engine = new DockerIsol8({
+      mode: "ephemeral",
+      network: "filtered",
+      networkFilter: {
+        whitelist: ["^example\\.com$"],
+        blacklist: ["^example\\.com$"],
+      },
+    });
+
+    // When a host matches both whitelist and blacklist, blacklist wins
+    const result = await engine.execute({
+      code: `
+import urllib.request
+try:
+    r = urllib.request.urlopen("http://example.com", timeout=5)
+    print(f"not_blocked: {r.status}")
+except urllib.error.HTTPError as e:
+    if e.code == 403:
+        print("blacklist_wins")
+    else:
+        print(f"other_error: {e.code}")
+except Exception as e:
+    print(f"error: {e}")
+      `,
+      runtime: "python",
+      timeoutMs: 15_000,
+    });
+
+    expect(result.stdout).toContain("blacklist_wins");
+  }, 60_000);
+
+  test("Network: 'filtered' CONNECT tunnel blocks blacklisted host", async () => {
+    const engine = new DockerIsol8({
+      mode: "ephemeral",
+      network: "filtered",
+      networkFilter: {
+        whitelist: [],
+        blacklist: ["^example\\.com$"],
+      },
+    });
+
+    // HTTPS uses CONNECT tunneling — the proxy should block before the TLS handshake
+    const result = await engine.execute({
+      code: `
+import urllib.request
+import ssl
+try:
+    ctx = ssl.create_default_context()
+    r = urllib.request.urlopen("https://example.com", timeout=5, context=ctx)
+    print(f"not_blocked: {r.status}")
+except urllib.error.HTTPError as e:
+    if e.code == 403:
+        print("connect_blocked")
+    else:
+        print(f"other_error: {e.code}")
+except urllib.error.URLError as e:
+    # CONNECT rejection may surface as a URLError with 403 in the reason
+    if "403" in str(e):
+        print("connect_blocked")
+    else:
+        print(f"url_error: {e}")
+except Exception as e:
+    print(f"error: {e}")
+      `,
+      runtime: "python",
+      timeoutMs: 15_000,
+    });
+
+    expect(result.stdout).toContain("connect_blocked");
+  }, 60_000);
+
+  test("Network: 'filtered' works with Node.js runtime", async () => {
+    const engine = new DockerIsol8({
+      mode: "ephemeral",
+      network: "filtered",
+      networkFilter: {
+        whitelist: ["^example\\.com$"],
+        blacklist: [],
+      },
+    });
+
+    // Verify the bash proxy works across runtimes, not just Python
+    const result = await engine.execute({
+      code: `
+const http = require("http");
+const url = "http://example.com";
+const req = http.get(url, { timeout: 5000 }, (res) => {
+  if (res.statusCode === 200) {
+    console.log("node_proxy_allowed");
+  } else {
+    console.log("node_unexpected_status: " + res.statusCode);
+  }
+  res.resume();
+});
+req.on("error", (e) => console.log("node_error: " + e.message));
+      `,
+      runtime: "node",
+      timeoutMs: 15_000,
+    });
+
+    expect(result.stdout).toContain("node_proxy_allowed");
+  }, 60_000);
+
+  test("Network: 'filtered' without networkFilter allows all traffic", async () => {
+    const engine = new DockerIsol8({
+      mode: "ephemeral",
+      network: "filtered",
+      // No networkFilter — proxy should allow all hostnames
+    });
+
+    const result = await engine.execute({
+      code: `
+import urllib.request
+try:
+    r = urllib.request.urlopen("http://example.com", timeout=5)
+    print("open_proxy_allowed")
+except Exception as e:
+    print(f"error: {e}")
+      `,
+      runtime: "python",
+      timeoutMs: 15_000,
+    });
+
+    expect(result.stdout).toContain("open_proxy_allowed");
   }, 60_000);
 });

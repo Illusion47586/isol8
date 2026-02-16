@@ -190,6 +190,42 @@ describe("DockerIsol8 engine options", () => {
       expect(engine).toBeDefined();
     });
 
+    test("network: 'filtered' with blacklist only", () => {
+      const { docker } = createMockDocker();
+      const engine = new DockerIsol8({
+        docker,
+        mode: "ephemeral",
+        network: "filtered",
+        networkFilter: { whitelist: [], blacklist: ["evil\\.com", "malware\\.org"] },
+      });
+      expect(engine).toBeDefined();
+    });
+
+    test("network: 'filtered' with both whitelist and blacklist", () => {
+      const { docker } = createMockDocker();
+      const engine = new DockerIsol8({
+        docker,
+        mode: "ephemeral",
+        network: "filtered",
+        networkFilter: {
+          whitelist: ["^api\\.example\\.com$"],
+          blacklist: ["^evil\\."],
+        },
+      });
+      expect(engine).toBeDefined();
+    });
+
+    test("network: 'filtered' without networkFilter defaults to open proxy", () => {
+      const { docker } = createMockDocker();
+      // When no networkFilter is provided, all traffic through the proxy is allowed
+      const engine = new DockerIsol8({
+        docker,
+        mode: "ephemeral",
+        network: "filtered",
+      });
+      expect(engine).toBeDefined();
+    });
+
     test("network: 'none' does not require CapAdd", () => {
       const { docker } = createMockDocker();
       // Constructing with network: "none" should work without NET_ADMIN
@@ -197,6 +233,16 @@ describe("DockerIsol8 engine options", () => {
         docker,
         mode: "ephemeral",
         network: "none",
+      });
+      expect(engine).toBeDefined();
+    });
+
+    test("network: 'host' is accepted by the engine", () => {
+      const { docker } = createMockDocker();
+      const engine = new DockerIsol8({
+        docker,
+        mode: "ephemeral",
+        network: "host",
       });
       expect(engine).toBeDefined();
     });
