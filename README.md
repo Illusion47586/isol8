@@ -420,6 +420,7 @@ bun run dev <command>
 
 # Run tests
 bun test
+bun run test:coverage    # With coverage report
 
 # Type check
 bunx tsc --noEmit
