@@ -101,7 +101,7 @@ If the extension doesn't match any registered adapter, the CLI exits with an err
   Network mode for the container:
   - `none` — No network access (default, most secure). Container is created with `NetworkDisabled: true`.
   - `host` — Full host network access. Container uses `NetworkMode: "host"`.
-  - `filtered` — Bridge network with an HTTP/HTTPS filtering proxy. Container gets `NetworkMode: "bridge"` with `HTTP_PROXY`/`HTTPS_PROXY` env vars pointing to the internal `proxy.mjs` process. Kernel-level iptables rules enforce that the sandbox user can only reach the proxy, preventing bypass via raw sockets.
+  - `filtered` — Bridge network with an HTTP/HTTPS filtering proxy. Container gets `NetworkMode: "bridge"` with `HTTP_PROXY`/`HTTPS_PROXY` env vars pointing to the internal proxy process (`proxy.sh`). Kernel-level iptables rules enforce that the sandbox user can only reach the proxy, preventing bypass via raw sockets.
 </ResponseField>
 
 <ResponseField name="--allow" type="string">
