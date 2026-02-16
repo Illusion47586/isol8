@@ -132,6 +132,23 @@ jobs:
           path: coverage/
           retention-days: 7
 
+      - name: Toggle Test Status Labels
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          # Remove both labels first
+          gh issue edit $PR_NUMBER --remove-label "tests:passing" --repo ${{ github.repository }} || true
+          gh issue edit $PR_NUMBER --remove-label "tests:failing" --repo ${{ github.repository }} || true
+          
+          # Add appropriate label based on test result
+          if [ ${{ job.status }} == 'success' ]; then
+            gh issue edit $PR_NUMBER --add-label "tests:passing" --repo ${{ github.repository }}
+          else
+            gh issue edit $PR_NUMBER --add-label "tests:failing" --repo ${{ github.repository }}
+          fi
+
   docs:
     runs-on: ubuntu-latest
 
