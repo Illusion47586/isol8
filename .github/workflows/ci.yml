@@ -102,6 +102,10 @@ jobs:
       - name: Extract Coverage Percentages
         id: coverage
         run: |
+          # Ensure directories exist
+          mkdir -p coverage
+          mkdir -p coverage-main
+
           # Parse current coverage
           bun scripts/parse-coverage.ts coverage/lcov.info coverage/summary.json
           
