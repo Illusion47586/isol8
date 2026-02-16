@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -244,7 +244,7 @@ jobs:
         run: |
           # Get current labels
           LABELS=$(gh issue view $PR_NUMBER --json labels -q '.labels[].name')
-          
+
           if [ "$JOB_STATUS" == "success" ]; then
             TARGET_LABEL="tests:passing"
             OPPOSING_LABEL="tests:failing"
@@ -252,13 +252,13 @@ jobs:
             TARGET_LABEL="tests:failing"
             OPPOSING_LABEL="tests:passing"
           fi
-          
+
           # Remove opposing label if present
           if [[ "$LABELS" == *"$OPPOSING_LABEL"* ]]; then
             echo "Removing $OPPOSING_LABEL"
             gh issue edit $PR_NUMBER --remove-label "$OPPOSING_LABEL" --repo ${{ github.repository }}
           fi
-          
+
           # Add target label if not present
           if [[ "$LABELS" != *"$TARGET_LABEL"* ]]; then
             echo "Adding $TARGET_LABEL"
