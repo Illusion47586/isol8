@@ -84,6 +84,26 @@ jobs:
       - name: Test Coverage
         run: bun run test:coverage
 
+      - name: Extract Coverage Percentage
+        id: coverage
+        run: |
+          COVERAGE=$(cat coverage/coverage-summary.json | jq '.total.lines.pct' | awk '{printf "%.0f", $1}')
+          echo "percentage=$COVERAGE" >> $GITHUB_OUTPUT
+          echo "Coverage: $COVERAGE%"
+
+      - name: Generate Coverage Badge
+        run: |
+          COLOR=$(if [ ${{ steps.coverage.outputs.percentage }} -ge 80 ]; then echo "brightgreen"; elif [ ${{ steps.coverage.outputs.percentage }} -ge 50 ]; then echo "yellow"; else echo "red"; fi)
+          curl -s "https://img.shields.io/badge/coverage-${{ steps.coverage.outputs.percentage }}%25-${COLOR}" -o coverage/coverage-badge.svg
+
+      - name: Commit Coverage Badge
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update coverage badge [skip ci]"
+          file_pattern: coverage/coverage-badge.svg
+          skip_checkout: true
+        continue-on-error: true
+
       - name: Upload Coverage Report
         uses: actions/upload-artifact@v4
         with:
