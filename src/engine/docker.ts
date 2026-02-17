@@ -25,8 +25,10 @@ import type {
   StreamEvent,
 } from "../types";
 import { logger } from "../utils/logger";
+import { AuditLogger } from "./audit";
 import { Semaphore } from "./concurrency";
 import { ContainerPool } from "./pool";
+import { type ContainerResourceUsage, calculateResourceDelta, getContainerStats } from "./stats";
 import {
   createTarBuffer,
   extractFromTar,
@@ -365,9 +367,9 @@ export class DockerIsol8 implements Isol8Engine {
   private readonly semaphore: Semaphore;
   private readonly sandboxSize: string;
   private readonly tmpSize: string;
-  // No, I'll just add security field
   private readonly security: SecurityConfig;
   private readonly persist: boolean;
+  private readonly auditLogger?: AuditLogger;
 
   private container: Docker.Container | null = null;
   private persistentRuntime: RuntimeAdapter | null = null;
@@ -395,6 +397,11 @@ export class DockerIsol8 implements Isol8Engine {
     this.tmpSize = options.tmpSize ?? "256m";
     this.persist = options.persist ?? false;
     this.security = options.security ?? { seccomp: "strict" };
+
+    // Initialize audit logger if audit config is provided
+    if (options.audit) {
+      this.auditLogger = new AuditLogger(options.audit);
+    }
 
     if (options.debug) {
       logger.setDebug(true);
@@ -440,13 +447,114 @@ export class DockerIsol8 implements Isol8Engine {
    */
   async execute(req: ExecutionRequest): Promise<ExecutionResult> {
     await this.semaphore.acquire();
+    const startTime = Date.now();
     try {
-      return this.mode === "persistent"
-        ? await this.executePersistent(req)
-        : await this.executeEphemeral(req);
+      const result =
+        this.mode === "persistent"
+          ? await this.executePersistent(req, startTime)
+          : await this.executeEphemeral(req, startTime);
+
+      return result;
     } finally {
       this.semaphore.release();
     }
+  }
+
+  /**
+   * Record an audit entry for the execution.
+   */
+  private async recordAudit(
+    req: ExecutionRequest,
+    result: ExecutionResult,
+    startTime: number,
+    container?: Docker.Container
+  ): Promise<void> {
+    try {
+      // Calculate code hash using Web Crypto API
+      const enc = new TextEncoder();
+      const data = enc.encode(req.code);
+      const digest = await crypto.subtle.digest("SHA-256", data);
+      const codeHash = Array.from(new Uint8Array(digest))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+
+      // Collect security events if container is available
+      let securityEvents: import("../types").SecurityEvent[] | undefined;
+      if (container && this.network === "filtered") {
+        securityEvents = await this.collectSecurityEvents(container);
+        if (securityEvents.length === 0) {
+          securityEvents = undefined;
+        }
+      }
+
+      const audit = {
+        executionId: result.executionId,
+        userId: req.metadata?.userId || "",
+        timestamp: new Date(startTime).toISOString(),
+        runtime: result.runtime,
+        codeHash,
+        containerId: result.containerId || "",
+        exitCode: result.exitCode,
+        durationMs: result.durationMs,
+        resourceUsage: result.resourceUsage,
+        securityEvents,
+        metadata: req.metadata,
+      };
+
+      // Apply privacy filtering and record
+      this.auditLogger!.record(audit);
+    } catch (err) {
+      logger.error("Failed to record audit log:", err);
+    }
+  }
+
+  /**
+   * Collect security events from the container (e.g., network filter blocks).
+   */
+  private async collectSecurityEvents(
+    container: Docker.Container
+  ): Promise<import("../types").SecurityEvent[]> {
+    const events: import("../types").SecurityEvent[] = [];
+
+    try {
+      // Read security events from proxy log
+      const exec = await container.exec({
+        Cmd: ["cat", "/tmp/isol8-proxy/security-events.jsonl"],
+        AttachStdout: true,
+        AttachStderr: false,
+        User: "root",
+      });
+
+      const stream = await exec.start({ Tty: false });
+      const chunks: Buffer[] = [];
+
+      for await (const chunk of stream as AsyncIterable<Buffer>) {
+        chunks.push(chunk);
+      }
+
+      const output = Buffer.concat(chunks).toString("utf-8").trim();
+      if (output) {
+        for (const line of output.split("\n")) {
+          if (line.trim()) {
+            try {
+              const event = JSON.parse(line);
+              events.push({
+                type: event.type || "unknown",
+                message: `Security event: ${event.type}`,
+                details: event.details || {},
+                timestamp: event.timestamp || new Date().toISOString(),
+              });
+            } catch {
+              // Skip malformed lines
+            }
+          }
+        }
+      }
+    } catch {
+      // No security events file or container doesn't exist anymore
+    }
+
+    return events;
   }
 
   /**
@@ -604,7 +712,10 @@ export class DockerIsol8 implements Isol8Engine {
     }
   }
 
-  private async executeEphemeral(req: ExecutionRequest): Promise<ExecutionResult> {
+  private async executeEphemeral(
+    req: ExecutionRequest,
+    startTime: number
+  ): Promise<ExecutionResult> {
     const adapter = this.getAdapter(req.runtime);
     const timeoutMs = req.timeoutMs ?? this.defaultTimeoutMs;
     const image = await this.resolveImage(adapter);
@@ -627,6 +738,16 @@ export class DockerIsol8 implements Isol8Engine {
 
     // Acquire a pre-warmed container from the pool
     const container = await this.pool.acquire(image);
+
+    // Collect baseline stats if resource tracking is enabled
+    let startStats: ContainerResourceUsage | undefined;
+    if (this.auditLogger) {
+      try {
+        startStats = await getContainerStats(container);
+      } catch (err) {
+        logger.debug("Failed to collect baseline stats:", err);
+      }
+    }
 
     try {
       // Start proxy for filtered network mode
@@ -688,7 +809,18 @@ export class DockerIsol8 implements Isol8Engine {
 
       const inspectResult = await exec.inspect();
 
-      return {
+      // Collect final stats and calculate resource usage delta
+      let resourceUsage: ExecutionResult["resourceUsage"];
+      if (startStats) {
+        try {
+          const endStats = await getContainerStats(container);
+          resourceUsage = calculateResourceDelta(startStats, endStats);
+        } catch (err) {
+          logger.debug("Failed to collect final stats:", err);
+        }
+      }
+
+      const result: ExecutionResult = {
         stdout: this.postProcessOutput(stdout, truncated),
         stderr: this.postProcessOutput(stderr, false),
         exitCode: inspectResult.ExitCode ?? 1,
@@ -698,8 +830,16 @@ export class DockerIsol8 implements Isol8Engine {
         runtime: req.runtime,
         timestamp: new Date().toISOString(),
         containerId: container.id,
+        ...(resourceUsage ? { resourceUsage } : {}),
         ...(req.outputPaths ? { files: await this.retrieveFiles(container, req.outputPaths) } : {}),
       };
+
+      // Record audit log if audit logger is configured
+      if (this.auditLogger) {
+        await this.recordAudit(req, result, startTime, container);
+      }
+
+      return result;
     } finally {
       if (this.persist) {
         logger.debug(`[Persist] Leaving container running for inspection: ${container.id}`);
@@ -710,7 +850,10 @@ export class DockerIsol8 implements Isol8Engine {
     }
   }
 
-  private async executePersistent(req: ExecutionRequest): Promise<ExecutionResult> {
+  private async executePersistent(
+    req: ExecutionRequest,
+    startTime: number
+  ): Promise<ExecutionResult> {
     const adapter = this.getAdapter(req.runtime);
     const timeoutMs = req.timeoutMs ?? this.defaultTimeoutMs;
 
@@ -788,7 +931,24 @@ export class DockerIsol8 implements Isol8Engine {
 
     const inspectResult = await exec.inspect();
 
-    return {
+    // Collect resource stats if tracking is enabled
+    let resourceUsage: ExecutionResult["resourceUsage"];
+    if (this.auditLogger) {
+      try {
+        const endStats = await getContainerStats(this.container!);
+        // For persistent mode, we don't have baseline, so use current values
+        resourceUsage = {
+          cpuPercent: endStats.cpuPercent,
+          memoryMB: endStats.memoryMB,
+          networkBytesIn: endStats.networkBytesIn,
+          networkBytesOut: endStats.networkBytesOut,
+        };
+      } catch (err) {
+        logger.debug("Failed to collect resource stats:", err);
+      }
+    }
+
+    const result: ExecutionResult = {
       stdout: this.postProcessOutput(stdout, truncated),
       stderr: this.postProcessOutput(stderr, false),
       exitCode: inspectResult.ExitCode ?? 1,
@@ -798,10 +958,18 @@ export class DockerIsol8 implements Isol8Engine {
       runtime: req.runtime,
       timestamp: new Date().toISOString(),
       containerId: this.container?.id,
+      ...(resourceUsage ? { resourceUsage } : {}),
       ...(req.outputPaths
         ? { files: await this.retrieveFiles(this.container!, req.outputPaths) }
         : {}),
     };
+
+    // Record audit log if audit logger is configured
+    if (this.auditLogger) {
+      await this.recordAudit(req, result, startTime, this.container!);
+    }
+
+    return result;
   }
 
   private async retrieveFiles(

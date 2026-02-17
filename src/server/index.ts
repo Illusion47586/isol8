@@ -98,6 +98,7 @@ export async function createServer(options: ServerOptions) {
       tmpSize: config.defaults.tmpSize,
       ...body.options,
       mode: body.sessionId ? "persistent" : "ephemeral",
+      audit: config.audit,
     };
 
     let engine: DockerIsol8;

@@ -85,6 +85,10 @@
               "cookbook/remote-execution",
               "cookbook/debugging"
             ]
+          },
+          {
+            "group": "Operations",
+            "pages": ["cookbook/audit-logs"]
           }
         ]
       },

@@ -37,6 +37,16 @@ const DEFAULT_CONFIG: Isol8Config = {
   security: {
     seccomp: "strict",
   },
+  audit: {
+    enabled: false,
+    destination: "filesystem",
+    logDir: undefined,
+    postLogScript: undefined,
+    trackResources: true,
+    retentionDays: 90,
+    includeCode: false,
+    includeOutput: false,
+  },
   debug: false,
 };
 
@@ -105,6 +115,10 @@ function mergeConfig(defaults: Isol8Config, overrides: Partial<Isol8Config>): Is
       seccomp: overrides.security?.seccomp ?? defaults.security.seccomp,
       customProfilePath:
         overrides.security?.customProfilePath ?? defaults.security.customProfilePath,
+    },
+    audit: {
+      ...defaults.audit,
+      ...overrides.audit,
     },
     debug: overrides.debug ?? defaults.debug,
   };

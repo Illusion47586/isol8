@@ -52,6 +52,53 @@
           "description": "JSON Schema URI for editor validation/completion.",
           "type": "string"
         },
+        "audit": {
+          "additionalProperties": false,
+          "description": "Audit logging configuration.",
+          "properties": {
+            "destination": {
+              "default": "filesystem",
+              "description": "Destination for audit logs (filesystem, stdout)",
+              "type": "string"
+            },
+            "enabled": {
+              "default": false,
+              "description": "Enable audit logging.",
+              "type": "boolean"
+            },
+            "includeCode": {
+              "default": false,
+              "description": "Whether to include the source code in audit logs",
+              "type": "boolean"
+            },
+            "includeOutput": {
+              "default": false,
+              "description": "Whether to include output (stdout/stderr) in audit logs",
+              "type": "boolean"
+            },
+            "logDir": {
+              "default": "undefined (uses ./.isol8_audit)",
+              "description": "Custom directory for audit log files",
+              "type": "string"
+            },
+            "postLogScript": {
+              "default": "undefined",
+              "description": "Script to run after each log entry (receives file path as argument)",
+              "type": "string"
+            },
+            "retentionDays": {
+              "default": 90,
+              "description": "Retention period for audit logs in days",
+              "type": "number"
+            },
+            "trackResources": {
+              "default": true,
+              "description": "Track resource usage (CPU, memory, network)",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
         "cleanup": {
           "additionalProperties": false,
           "description": "Container cleanup and lifecycle settings. (Partial override allowed).",
