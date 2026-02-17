@@ -9,6 +9,15 @@
     "dark": "#0A5C50"
   },
   "favicon": "/favicon.png",
+  "metadata": {
+    "og:site_name": "isol8 Documentation",
+    "og:title": "isol8 - Secure Code Execution Engine",
+    "og:description": "Secure code execution engine for AI agents. Run untrusted code in Docker containers with strict resource limits, network controls, and output sanitization.",
+    "og:url": "https://github.com/Illusion47586/isol8",
+    "twitter:title": "isol8 - Secure Code Execution Engine",
+    "twitter:description": "Secure code execution engine for AI agents. Run untrusted code in Docker containers.",
+    "twitter:card": "summary_large_image"
+  },
   "navbar": {
     "links": [
       {
