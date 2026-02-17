@@ -26,22 +26,64 @@ jobs:
           bun-version: latest
       
       - name: Verify Docker is running
-        run: |
-          docker info
-          docker version
+        run: docker info
       
       - name: Run production tests
-        run: bun run test:prod
+        id: tests
+        run: |
+          echo ""
+          echo "=========================================="
+          echo "Running Production Tests"
+          echo "=========================================="
+          bun run test:prod 2>&1 | tee test-output.log
+          
+          PASS=$(grep -E "^\s+[0-9]+ pass" test-output.log | grep -oE "[0-9]+" | head -1)
+          FAIL=$(grep -E "^\s+[0-9]+ fail" test-output.log | grep -oE "[0-9]+" | head -1)
+          
+          echo ""
+          echo "=========================================="
+          echo "Test Results"
+          echo "=========================================="
+          echo "Passed: ${PASS:-0}"
+          echo "Failed: ${FAIL:-0}"
+          
+          echo "passed=${PASS:-0}" >> $GITHUB_OUTPUT
+          echo "failed=${FAIL:-0}" >> $GITHUB_OUTPUT
         env:
           ISOL8_TEST_VERSION: ${{ github.event.inputs.version }}
 
-      - name: Run performance benchmarks (via bunx isol8)
+      - name: Run performance benchmarks
         if: github.event.inputs.runBenchmarks == 'true'
         run: |
           echo ""
           echo "=========================================="
           echo "Running CLI Performance Benchmarks"
           echo "=========================================="
-          bun run bench:cli
+          bun run bench:cli 2>&1 | tee bench-output.log
+          
+          echo ""
+          echo "=========================================="
+          echo "Benchmark Results Summary"
+          echo "=========================================="
+          python3 scripts/parse-bench-output.py
         env:
           ISOL8_TEST_VERSION: ${{ github.event.inputs.version }}
+
+      - name: Summary
+        run: |
+          echo ""
+          echo "=========================================="
+          echo "Workflow Summary"
+          echo "=========================================="
+          echo "Version tested: ${{ github.event.inputs.version }}"
+          echo "Tests: ${{ steps.tests.outputs.passed }} passed, ${{ steps.tests.outputs.failed }} failed"
+          BENCH=${{ github.event.inputs.runBenchmarks }}
+          if [ "$BENCH" = "true" ]; then
+            echo "Benchmarks: Yes"
+          else
+            echo "Benchmarks: No"
+          fi
+          echo ""
+          echo "=========================================="
+          echo "Production Tests Completed!"
+          echo "=========================================="
