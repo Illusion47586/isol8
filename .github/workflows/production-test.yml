@@ -7,6 +7,11 @@ on:
         description: 'isol8 version to test (default: latest)'
         required: false
         default: 'latest'
+      runBenchmarks:
+        description: 'Run performance benchmarks'
+        required: false
+        default: 'true'
+        type: boolean
 
 jobs:
   test:
@@ -32,3 +37,21 @@ jobs:
         run: bun run test:prod
         env:
           ISOL8_TEST_VERSION: ${{ github.event.inputs.version }}
+
+      - name: Run performance benchmarks
+        if: github.event.inputs.runBenchmarks == 'true'
+        run: |
+          echo ""
+          echo "=========================================="
+          echo "Running Performance Benchmarks"
+          echo "=========================================="
+          bun run bench
+
+      - name: Run warm pool benchmarks
+        if: github.event.inputs.runBenchmarks == 'true'
+        run: |
+          echo ""
+          echo "=========================================="
+          echo "Running Warm Pool Benchmarks"
+          echo "=========================================="
+          bun run bench:pool
