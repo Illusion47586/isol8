@@ -51,7 +51,8 @@ isol8/
 │       └── remote.ts         # RemoteIsol8 HTTP client
 ├── docker/
 │   ├── Dockerfile            # Multi-stage: base → python/node/bun/deno targets
-│   └── proxy.mjs             # HTTP/HTTPS filtering proxy for 'filtered' network mode
+│   ├── proxy.sh              # HTTP/HTTPS filtering proxy launcher for 'filtered' network mode
+│   └── proxy-handler.sh      # Per-connection proxy handler (HTTP forwarding + HTTPS CONNECT)
 ├── schema/
 │   └── isol8.config.schema.json  # JSON Schema for isol8.config.json
 ├── tests/
@@ -178,7 +179,15 @@ This avoids eagerly loading `dockerode` and its transitive dependency chain (`ss
 **Important:** Do NOT add `--bytecode` back to the `bun build --compile` flags in `scripts/build.ts` or `scripts/build-server.ts`. It causes the `Long.fromNumber` crash on Linux.
 
 ### Network Filtering
-When `network: "filtered"`, containers get bridge networking with `HTTP_PROXY`/`HTTPS_PROXY` env vars pointing to `docker/proxy.mjs`. The proxy checks hostnames against whitelist/blacklist regex patterns.
+When `network: "filtered"`, containers get bridge networking with `HTTP_PROXY`/`HTTPS_PROXY` env vars pointing to a bash-based proxy (`docker/proxy.sh` + `docker/proxy-handler.sh`). The proxy checks hostnames against whitelist/blacklist regex patterns. The proxy is implemented in bash (not Node.js) so it works in all runtime images without requiring any specific language runtime.
+
+**iptables enforcement:** In addition to the proxy, iptables rules are applied inside the container to ensure the `sandbox` user (uid 100) can **only** reach `127.0.0.1:8118` (the proxy). All other outbound traffic from uid 100 is dropped at the kernel level, preventing bypass via raw sockets or non-HTTP protocols. The container is given `CAP_NET_ADMIN` to set these rules. The rules are:
+1. Allow all traffic on loopback interface
+2. Allow established/related connections
+3. Allow sandbox user (uid 100) to reach `127.0.0.1:8118` (proxy)
+4. Drop all other outbound traffic from uid 100
+
+The iptables rules are flushed during pool cleanup (`/usr/sbin/iptables -F OUTPUT`) so containers can be reused across network modes. Note: the full path `/usr/sbin/iptables` must be used because `/usr/sbin` may not be in PATH during Docker exec (especially in CI environments like GitHub Actions).
 
 ### Package Installation
 When `installPackages` is provided in the execution request, packages are installed to `/sandbox/.local` (Python), `/sandbox/.npm-global` (Node.js), or `/sandbox/.bun-global` (Bun). These directories allow execution of shared libraries (`.so` files) which is required for packages like numpy.

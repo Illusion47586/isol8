@@ -92,7 +92,7 @@ Persistent containers are locked to a single runtime. Attempting to run Python a
 
 **`none`** (default) disables all network access. The container has no network interface. DNS, HTTP, TCP — nothing works. This is the most secure option.
 
-**`filtered`** gives the container bridge networking with an HTTP/HTTPS proxy that filters requests by hostname. Use `--allow` and `--deny` regex patterns to control which hosts are reachable. Non-HTTP protocols (raw TCP, UDP, WebSocket) are blocked.
+**`filtered`** gives the container bridge networking with an HTTP/HTTPS proxy that filters requests by hostname. Use `--allow` and `--deny` regex patterns to control which hosts are reachable. Kernel-level iptables rules enforce that the sandbox user can only reach the proxy — non-HTTP protocols (raw TCP, UDP, WebSocket) and direct connections bypassing the proxy are blocked at the kernel level.
 
 **`host`** gives the container full access to the host's network. Only use this when you trust the code or genuinely need unrestricted connectivity.
 

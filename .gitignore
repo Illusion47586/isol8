@@ -7,9 +7,13 @@ dist
 *.tgz
 
 # code coverage
-coverage/*.lcov
-coverage/coverage-summary.json
 coverage/tmp/
+*.lcov
+# ignore generated coverage reports and temporary lcov files produced by CI/tests
+coverage/*.lcov*
+coverage/lcov.info
+coverage/summary.json
+coverage/*.tmp
 
 # logs
 logs

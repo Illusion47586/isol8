@@ -8,7 +8,7 @@
  * Docker-dependent tests use the same gating pattern as integration tests.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 import { exec, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -64,7 +64,8 @@ describe("artifact integrity", () => {
       "index.js.map",
       "src/index.d.ts",
       "docker/Dockerfile",
-      "docker/proxy.mjs",
+      "docker/proxy.sh",
+      "docker/proxy-handler.sh",
       "docker/seccomp-profile.json",
       "isol8-server",
     ];
@@ -100,12 +101,15 @@ describe("artifact integrity", () => {
 
   test("docker assets are identical to source files", () => {
     const dockerfile = readFileSync(join(DIST, "docker/Dockerfile"));
-    const proxy = readFileSync(join(DIST, "docker/proxy.mjs"));
     const srcDockerfile = readFileSync(join(ROOT, "docker/Dockerfile"));
-    const srcProxy = readFileSync(join(ROOT, "docker/proxy.mjs"));
+    const proxy = readFileSync(join(DIST, "docker/proxy.sh"));
+    const srcProxy = readFileSync(join(ROOT, "docker/proxy.sh"));
+    const proxyHandler = readFileSync(join(DIST, "docker/proxy-handler.sh"));
+    const srcProxyHandler = readFileSync(join(ROOT, "docker/proxy-handler.sh"));
 
     expect(Buffer.compare(dockerfile, srcDockerfile)).toBe(0);
     expect(Buffer.compare(proxy, srcProxy)).toBe(0);
+    expect(Buffer.compare(proxyHandler, srcProxyHandler)).toBe(0);
   });
 
   test("package.json references resolve to existing files", () => {
@@ -1633,27 +1637,4 @@ describe("library bundle", () => {
 // ─── Cleanup ─────────────────────────────────────────────────────────
 
 // Cleanup any leftover containers from --persist test
-afterAll(async () => {
-  if (!hasDocker) {
-    return;
-  }
-  try {
-    const Docker = (await import("dockerode")).default;
-    const docker = new Docker();
-    const containers = await docker.listContainers({ all: true });
-    const isol8Containers = containers.filter(
-      (c) => c.Image.startsWith("isol8:") && c.Labels?.isol8 !== undefined
-    );
-    for (const c of isol8Containers) {
-      try {
-        const container = docker.getContainer(c.Id);
-        await container.stop().catch(() => {});
-        await container.remove({ force: true }).catch(() => {});
-      } catch {
-        // ignore
-      }
-    }
-  } catch {
-    // ignore
-  }
-});
+// Global cleanup is handled by tests/preload.ts via bunfig.toml

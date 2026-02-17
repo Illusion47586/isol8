@@ -94,7 +94,7 @@ Full host network access. Use only when you trust the code or need unrestricted 
 
 ### `filtered`
 
-Bridge network with an HTTP/HTTPS proxy (`proxy.mjs`) that filters requests by hostname:
+Bridge network with an HTTP/HTTPS proxy (`proxy.sh`) that filters requests by hostname:
 
 - **Whitelist** — Only matching hostnames are allowed (regex patterns)
 - **Blacklist** — Matching hostnames are blocked (regex patterns)
@@ -106,7 +106,13 @@ isol8 run script.py --net filtered \
   --allow "^api\.github\.com$"
 ```
 
-The proxy intercepts HTTP and HTTPS traffic via `HTTP_PROXY`/`HTTPS_PROXY` environment variables. The container can only reach external hosts through the proxy.
+The proxy intercepts HTTP and HTTPS traffic via `HTTP_PROXY`/`HTTPS_PROXY` environment variables.
+
+**Kernel-level enforcement:** In addition to the proxy, iptables rules are applied inside the container to ensure the `sandbox` user can **only** reach the proxy at `127.0.0.1:8118`. All other outbound traffic from the sandbox user is dropped at the kernel level. This prevents bypass via raw sockets, direct TCP connections, or any non-HTTP protocol — even if user code ignores the proxy environment variables.
+
+<Info>
+The container is given `CAP_NET_ADMIN` in filtered mode so iptables rules can be set. This capability is used only by the engine (as root) before user code runs — the sandbox user cannot modify iptables rules due to `no-new-privileges`.
+</Info>
 
 ## Secret Masking
 

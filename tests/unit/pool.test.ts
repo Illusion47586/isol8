@@ -122,8 +122,9 @@ describe("ContainerPool", () => {
     expect(container.exec).toHaveBeenCalled();
     const execCalls = (container.exec as any).mock.calls;
 
-    // First exec: kill all sandbox-user processes
+    // First exec: kill all sandbox-user processes and flush iptables rules
     expect(execCalls[0][0].Cmd[2]).toContain("pkill -9 -u sandbox");
+    expect(execCalls[0][0].Cmd[2]).toContain("/usr/sbin/iptables -F OUTPUT");
 
     // Second exec: wipe the sandbox filesystem
     expect(execCalls[1][0].Cmd[2]).toContain("rm -rf /sandbox/*");

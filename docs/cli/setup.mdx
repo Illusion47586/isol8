@@ -106,7 +106,7 @@ All base images are built from a multi-stage `Dockerfile` in the `docker/` direc
 
 - `tini` as the init process (PID 1 signal handling)
 - `curl` and `ca-certificates`
-- The HTTP/HTTPS filtering proxy (`proxy.mjs`) copied to `/usr/local/bin/`
+- The HTTP/HTTPS filtering proxy (`proxy.sh` + `proxy-handler.sh`) copied to `/usr/local/bin/`
 - `/sandbox` as the working directory
 - `tini` as the entrypoint
 
@@ -117,9 +117,9 @@ Each runtime stage extends `base` with its specific runtime binary:
 | `python` | `base` | `python3`, `py3-pip` |
 | `node` | `base` | `nodejs`, `npm` |
 | `bun` | `base` | `bash`, `unzip`, `libstdc++`, `libgcc`, then downloads Bun via install script |
-| `deno` | `denoland/deno:alpine` | `tini`, `curl`, `ca-certificates`, `proxy.mjs` |
+| `deno` | `denoland/deno:alpine` | `tini`, `curl`, `ca-certificates`, `proxy.sh`, `proxy-handler.sh` |
 | `bash` | `base` | `bash` |
 
 <Note>
-  The Deno stage uses `denoland/deno:alpine` as its base image instead of the shared `base` stage. It independently installs `tini`, `curl`, and `ca-certificates`, and copies `proxy.mjs` — mirroring the setup from `base` but starting from the official Deno Alpine image.
+  The Deno stage uses `denoland/deno:alpine` as its base image instead of the shared `base` stage. It independently installs `tini`, `curl`, and `ca-certificates`, and copies `proxy.sh` + `proxy-handler.sh` — mirroring the setup from `base` but starting from the official Deno Alpine image.
 </Note>
