@@ -132,3 +132,4 @@
 ### Features
 
 * export VERSION constant for programmatic version checking ([5e5f696](https://github.com/Illusion47586/isol8/commit/5e5f696b22db5693ab7bcf71b1c4347841545f51))
+# Dummy change for release
