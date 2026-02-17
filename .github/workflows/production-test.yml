@@ -33,12 +33,15 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
       
+      - name: Build production version
+        run: bun run build
+      
       - name: Run production tests
         run: bun run test:prod
         env:
           ISOL8_TEST_VERSION: ${{ github.event.inputs.version }}
 
-      - name: Run performance benchmarks
+      - name: Run performance benchmarks (against production build)
         if: github.event.inputs.runBenchmarks == 'true'
         run: |
           echo ""
@@ -47,7 +50,7 @@ jobs:
           echo "=========================================="
           bun run bench
 
-      - name: Run warm pool benchmarks
+      - name: Run warm pool benchmarks (against production build)
         if: github.event.inputs.runBenchmarks == 'true'
         run: |
           echo ""
