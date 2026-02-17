@@ -61,8 +61,7 @@ jobs:
           ISOL8_TEST_VERSION: ${{ github.event.inputs.version }}
 
       - name: Run performance benchmarks
-        needs: tests
-        if: github.event.inputs.runBenchmarks == 'true' && needs.tests.outputs.failed == '0'
+        if: github.event.inputs.runBenchmarks == 'true' && steps.tests.outputs.failed == '0'
         run: |
           echo ""
           echo "=========================================="
