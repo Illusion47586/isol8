@@ -6,6 +6,7 @@
  * output sanitization.
  */
 
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { PassThrough } from "node:stream";
@@ -39,7 +40,7 @@ import {
  * This bypasses the `putArchive` limitation where Docker rejects archive
  * uploads when `ReadonlyRootfs` is enabled — even to writable tmpfs mounts.
  *
- * Uses detached exec with polling to avoid Bun/dockerode hijack incompatibilities.
+ * Uses attached stdin to prevent leaking file content in process arguments (ps).
  */
 async function writeFileViaExec(
   container: Docker.Container,
@@ -47,26 +48,38 @@ async function writeFileViaExec(
   content: Buffer | string
 ): Promise<void> {
   const data = typeof content === "string" ? Buffer.from(content, "utf-8") : content;
-  const b64 = data.toString("base64");
 
-  const exec = await container.exec({
-    Cmd: ["sh", "-c", `printf '%s' '${b64}' | base64 -d > ${filePath}`],
-    User: "sandbox",
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      "docker",
+      ["exec", "-i", "-u", "sandbox", container.id, "sh", "-c", `cat > ${filePath}`],
+      {
+        stdio: ["pipe", "ignore", "pipe"],
+      }
+    );
+
+    child.on("error", (err) => {
+      reject(new Error(`Failed to spawn docker exec: ${err.message}`));
+    });
+
+    // Handle stderr to capture errors
+    let stderr = "";
+    child.stderr.on("data", (chunk) => (stderr += chunk.toString()));
+
+    // Write content to stdin
+    // Note: If data is very large, we might need to handle backpressure,
+    // but for typical source code/config files, this is fine.
+    child.stdin.write(data);
+    child.stdin.end();
+
+    child.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(`Failed to write file ${filePath}: ${stderr} (exit code ${code})`));
+      } else {
+        resolve();
+      }
+    });
   });
-
-  // Run detached — avoids hijack/stream issues with Bun
-  await exec.start({ Detach: true });
-
-  // Poll until the exec completes
-  let info = await exec.inspect();
-  while (info.Running) {
-    await new Promise((r) => setTimeout(r, 50));
-    info = await exec.inspect();
-  }
-
-  if (info.ExitCode !== 0) {
-    throw new Error(`Failed to write file ${filePath} in container (exit code ${info.ExitCode})`);
-  }
 }
 
 /**
