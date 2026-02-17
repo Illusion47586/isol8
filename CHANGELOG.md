@@ -1,3 +1,10 @@
+## [0.8.1](https://github.com/Illusion47586/isol8/compare/v0.8.0...v0.8.1) (2026-02-17)
+
+
+### Bug Fixes
+
+* enforce network filtering with iptables to prevent raw socket bypass ([#22](https://github.com/Illusion47586/isol8/issues/22)) ([d4f65c1](https://github.com/Illusion47586/isol8/commit/d4f65c18ef4208844844d77cdae5366208664462))
+
 # [0.8.0](https://github.com/Illusion47586/isol8/compare/v0.7.0...v0.8.0) (2026-02-16)
 
 
