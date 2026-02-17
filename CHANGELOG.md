@@ -1,3 +1,10 @@
+## [0.8.3](https://github.com/Illusion47586/isol8/compare/v0.8.2...v0.8.3) (2026-02-17)
+
+
+### Bug Fixes
+
+* **engine:** validate package names to prevent command injection ([#39](https://github.com/Illusion47586/isol8/issues/39)) ([094619f](https://github.com/Illusion47586/isol8/commit/094619f9378284375f1d897bb2ae0593eadd8a51)), closes [#5](https://github.com/Illusion47586/isol8/issues/5)
+
 ## [0.8.2](https://github.com/Illusion47586/isol8/compare/v0.8.1...v0.8.2) (2026-02-17)
 
 
