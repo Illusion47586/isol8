@@ -1,0 +1,34 @@
+name: Production Tests (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'isol8 version to test (default: latest)'
+        required: false
+        default: 'latest'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      
+      - name: Verify Docker is running
+        run: |
+          docker info
+          docker version
+      
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      
+      - name: Run production tests
+        run: bun run test:prod
+        env:
+          ISOL8_TEST_VERSION: ${{ github.event.inputs.version }}

@@ -41,6 +41,7 @@
     "build:server": "bun run scripts/build-server.ts",
     "build:server:all": "bun run scripts/build-server.ts --all",
     "test": "bun test",
+    "test:prod": "bun test tests/production/",
     "lint:check": "ultracite check",
     "lint:fix": "ultracite fix",
     "bench": "bunx tsx benchmarks/spawn.ts",
