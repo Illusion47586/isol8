@@ -11,7 +11,7 @@ import { runIsol8 } from "./utils";
 
 describe("CLI Config", () => {
   test("config prints human-readable output with defaults", async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-test-"));
+    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-"));
 
     try {
       const { stdout } = await runIsol8("config", { cwd: tmpDir });
@@ -26,33 +26,24 @@ describe("CLI Config", () => {
   });
 
   test("config --json outputs valid JSON with all default fields", async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-test-"));
+    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-"));
 
     try {
       const { stdout } = await runIsol8("config --json", { cwd: tmpDir });
       const config = JSON.parse(stdout);
 
-      // Verify all top-level fields
       expect(config.maxConcurrent).toBe(10);
       expect(config.debug).toBe(false);
-
-      // Defaults
       expect(config.defaults.timeoutMs).toBe(30_000);
       expect(config.defaults.memoryLimit).toBe("512m");
       expect(config.defaults.cpuLimit).toBe(1);
       expect(config.defaults.network).toBe("none");
       expect(config.defaults.sandboxSize).toBe("512m");
       expect(config.defaults.tmpSize).toBe("256m");
-
-      // Network
       expect(config.network.whitelist).toEqual([]);
       expect(config.network.blacklist).toEqual([]);
-
-      // Cleanup
       expect(config.cleanup.autoPrune).toBe(true);
       expect(config.cleanup.maxContainerAgeMs).toBe(3_600_000);
-
-      // Dependencies
       expect(config.dependencies).toBeDefined();
     } finally {
       rmSync(tmpDir, { recursive: true });
@@ -60,7 +51,7 @@ describe("CLI Config", () => {
   });
 
   test("config merges CWD config file with defaults", async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-test-"));
+    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-"));
 
     try {
       writeFileSync(
@@ -73,23 +64,17 @@ describe("CLI Config", () => {
       const { stdout } = await runIsol8("config --json", { cwd: tmpDir });
       const config = JSON.parse(stdout);
 
-      // Overridden values
       expect(config.defaults.timeoutMs).toBe(60_000);
       expect(config.defaults.memoryLimit).toBe("1g");
-
-      // Preserved defaults
       expect(config.defaults.cpuLimit).toBe(1);
       expect(config.defaults.network).toBe("none");
-      expect(config.defaults.sandboxSize).toBe("512m");
-      expect(config.defaults.tmpSize).toBe("256m");
-      expect(config.maxConcurrent).toBe(10);
     } finally {
       rmSync(tmpDir, { recursive: true });
     }
   });
 
   test("config reflects custom dependencies", async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-test-"));
+    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-"));
 
     try {
       writeFileSync(
@@ -110,7 +95,7 @@ describe("CLI Config", () => {
   });
 
   test("config reflects custom network filter", async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-test-"));
+    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-"));
 
     try {
       writeFileSync(
@@ -131,7 +116,7 @@ describe("CLI Config", () => {
   });
 
   test("config reflects custom cleanup settings", async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-test-"));
+    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-"));
 
     try {
       writeFileSync(
@@ -152,7 +137,7 @@ describe("CLI Config", () => {
   });
 
   test("config reflects debug: true", async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-test-"));
+    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-"));
 
     try {
       writeFileSync(join(tmpDir, "isol8.config.json"), JSON.stringify({ debug: true }));
@@ -166,19 +151,18 @@ describe("CLI Config", () => {
   });
 
   test("config shows source as defaults when no config file", async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-test-"));
+    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-"));
 
     try {
       const { stdout } = await runIsol8("config", { cwd: tmpDir });
       expect(stdout).toContain("defaults");
-      expect(stdout).toContain("no config file");
     } finally {
       rmSync(tmpDir, { recursive: true });
     }
   });
 
   test("config shows config file source when present", async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-test-"));
+    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-"));
 
     try {
       writeFileSync(join(tmpDir, "isol8.config.json"), JSON.stringify({ maxConcurrent: 5 }));

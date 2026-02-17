@@ -39,7 +39,7 @@ describe("Runtime: Python", () => {
   }, 30_000);
 
   test(".py file execution", async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-test-"));
+    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-"));
     const filePath = join(tmpDir, "script.py");
 
     try {
@@ -58,15 +58,21 @@ describe("Runtime: Node.js", () => {
     expect(stdout).toContain("hello node");
   }, 30_000);
 
-  test("require() works", async () => {
-    const { stdout } = await runIsol8(
-      "run -e \"const os = require('os'); console.log(os.platform())\" -r node --no-stream"
-    );
-    expect(stdout).toContain("linux");
+  test("import works", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-"));
+    const filePath = join(tmpDir, "test.js");
+
+    try {
+      writeFileSync(filePath, "import os from 'os';\nconsole.log(os.platform());");
+      const { stdout } = await runIsol8(`run ${filePath} -r node --no-stream`);
+      expect(stdout).toContain("linux");
+    } finally {
+      rmSync(tmpDir, { recursive: true });
+    }
   }, 30_000);
 
   test(".js file execution", async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-test-"));
+    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-"));
     const filePath = join(tmpDir, "script.js");
 
     try {
@@ -79,7 +85,7 @@ describe("Runtime: Node.js", () => {
   }, 30_000);
 
   test(".cjs CommonJS file", async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-test-"));
+    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-"));
     const filePath = join(tmpDir, "script.cjs");
 
     try {
@@ -99,20 +105,30 @@ describe("Runtime: Bun", () => {
   }, 30_000);
 
   test("fetch is available with network", async () => {
-    const code = `
+    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-"));
+    const filePath = join(tmpDir, "test.ts");
+
+    try {
+      writeFileSync(
+        filePath,
+        `
 try {
-  const res = await fetch('https://api.github.com');
-  console.log('fetch-ok');
+  const res = await fetch("https://api.github.com");
+  console.log("fetch-ok");
 } catch (e) {
-  console.log('fetch-failed');
+  console.log("fetch-failed");
 }
-`;
-    const { stdout } = await runIsol8(`run -e '${code}' -r bun --net host --no-stream`);
-    expect(stdout).toContain("fetch-ok");
+`
+      );
+      const { stdout } = await runIsol8(`run ${filePath} -r bun --net host --no-stream`);
+      expect(stdout).toContain("fetch-ok");
+    } finally {
+      rmSync(tmpDir, { recursive: true });
+    }
   }, 30_000);
 
   test(".ts file execution", async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-test-"));
+    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-"));
     const filePath = join(tmpDir, "script.ts");
 
     try {
@@ -137,7 +153,7 @@ describe("Runtime: Deno", () => {
   }, 30_000);
 
   test(".ts file execution", async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-test-"));
+    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-"));
     const filePath = join(tmpDir, "script.ts");
 
     try {
@@ -171,7 +187,7 @@ describe("Runtime: Bash", () => {
   }, 30_000);
 
   test(".sh file execution", async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-test-"));
+    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-"));
     const filePath = join(tmpDir, "script.sh");
 
     try {

@@ -27,7 +27,7 @@ describe("CLI Run - Basic", () => {
 
 describe("CLI Run - File Input", () => {
   test("file-based execution with auto-detected runtime", async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-test-"));
+    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-"));
     const filePath = join(tmpDir, "test.py");
 
     try {
@@ -40,7 +40,7 @@ describe("CLI Run - File Input", () => {
   }, 30_000);
 
   test("file-based execution with .js extension", async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-test-"));
+    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-"));
     const filePath = join(tmpDir, "test.js");
 
     try {
@@ -95,20 +95,29 @@ describe("CLI Run - Resource Limits", () => {
 
 describe("CLI Run - Network", () => {
   test("--net none blocks network access", async () => {
-    const code = `
+    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-"));
+    const filePath = join(tmpDir, "test.py");
+
+    try {
+      writeFileSync(
+        filePath,
+        `
 import urllib.request
 try:
     urllib.request.urlopen("https://example.com", timeout=3)
     print("success")
 except:
     print("blocked")
-`;
-    const { stdout } = await runIsol8(`run -e '${code}' -r python --net none --no-stream`);
-    expect(stdout).toContain("blocked");
+`
+      );
+      const { stdout } = await runIsol8(`run ${filePath} -r python --net none --no-stream`);
+      expect(stdout).toContain("blocked");
+    } finally {
+      rmSync(tmpDir, { recursive: true });
+    }
   }, 30_000);
 
   test("--net filtered with --allow and --deny", async () => {
-    // Verify flags are accepted and execution completes
     const proc = spawnIsol8([
       "run",
       "-e",
@@ -159,7 +168,7 @@ describe("CLI Run - Output Options", () => {
   }, 30_000);
 
   test("--out writes output to file", async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-test-"));
+    const tmpDir = mkdtempSync(join(tmpdir(), "isol8-prod-"));
     const outFile = join(tmpDir, "output.txt");
 
     try {
