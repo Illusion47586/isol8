@@ -41,20 +41,13 @@ jobs:
         env:
           ISOL8_TEST_VERSION: ${{ github.event.inputs.version }}
 
-      - name: Run performance benchmarks (against production build)
+      - name: Run performance benchmarks (via bunx isol8)
         if: github.event.inputs.runBenchmarks == 'true'
         run: |
           echo ""
           echo "=========================================="
-          echo "Running Performance Benchmarks"
+          echo "Running CLI Performance Benchmarks"
           echo "=========================================="
-          bun run bench
-
-      - name: Run warm pool benchmarks (against production build)
-        if: github.event.inputs.runBenchmarks == 'true'
-        run: |
-          echo ""
-          echo "=========================================="
-          echo "Running Warm Pool Benchmarks"
-          echo "=========================================="
-          bun run bench:pool
+          bun run bench:cli
+        env:
+          ISOL8_TEST_VERSION: ${{ github.event.inputs.version }}
