@@ -1,3 +1,11 @@
+## [0.8.2](https://github.com/Illusion47586/isol8/compare/v0.8.1...v0.8.2) (2026-02-17)
+
+
+### Bug Fixes
+
+* resolve race condition in network isolation and memory limit timeout regression ([#38](https://github.com/Illusion47586/isol8/issues/38)) ([c12245e](https://github.com/Illusion47586/isol8/commit/c12245ecb27356e04e2d9cbf9636667770c384f4))
+* **security:** prevent file content leak in writeFileViaExec ([#37](https://github.com/Illusion47586/isol8/issues/37)) ([5fe3c59](https://github.com/Illusion47586/isol8/commit/5fe3c591be9a29e529902e96867cd8d94d5d6c23))
+
 ## [0.8.1](https://github.com/Illusion47586/isol8/compare/v0.8.0...v0.8.1) (2026-02-17)
 
 
