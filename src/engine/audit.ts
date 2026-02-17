@@ -6,7 +6,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import type { AuditConfig, ExecutionAudit } from "../types";
 import { logger } from "../utils/logger";
@@ -30,6 +30,53 @@ export class AuditLogger {
       } catch (err) {
         logger.error("Failed to create audit dir:", err);
       }
+    }
+
+    // Clean up old logs based on retention policy
+    this.cleanupOldLogs();
+  }
+
+  /**
+   * Clean up audit log files older than retentionDays.
+   * Checks both the main executions.log and any rotated/archived logs.
+   */
+  private cleanupOldLogs(): void {
+    if (!this.config.enabled || this.config.retentionDays <= 0) {
+      return;
+    }
+
+    try {
+      const auditDir = join(this.auditFile, "..");
+      if (!existsSync(auditDir)) {
+        return;
+      }
+
+      const cutoffTime = Date.now() - this.config.retentionDays * 24 * 60 * 60 * 1000;
+      const files = readdirSync(auditDir);
+      let cleanedCount = 0;
+
+      for (const file of files) {
+        // Clean up old log files (executions.log and any rotated versions)
+        if (file.endsWith(".log") || file.endsWith(".jsonl")) {
+          const filePath = join(auditDir, file);
+          try {
+            const stats = statSync(filePath);
+            if (stats.mtimeMs < cutoffTime) {
+              unlinkSync(filePath);
+              cleanedCount++;
+              logger.debug(`Cleaned up old audit log: ${file}`);
+            }
+          } catch (err) {
+            logger.debug(`Failed to check/remove old log file ${file}:`, err);
+          }
+        }
+      }
+
+      if (cleanedCount > 0) {
+        logger.info(`Audit log cleanup: removed ${cleanedCount} old log files`);
+      }
+    } catch (err) {
+      logger.error("Failed to cleanup old audit logs:", err);
     }
   }
 
