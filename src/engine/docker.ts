@@ -9,7 +9,7 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { PassThrough } from "node:stream";
+import { PassThrough, type Readable } from "node:stream";
 import Docker from "dockerode";
 import { RuntimeRegistry } from "../runtime";
 import type { RuntimeAdapter } from "../runtime/adapter";
@@ -1074,12 +1074,18 @@ export class DockerIsol8 implements Isol8Engine {
       let stderr = "";
       let truncated = false;
       let settled = false;
+      let stdoutEnded = false;
+      let stderrEnded = false;
 
       const timer = setTimeout(() => {
         if (settled) {
           return;
         }
         settled = true;
+        // Destroy stream to ensure no more data comes in
+        if ((stream as Readable).destroy) {
+          (stream as Readable).destroy();
+        }
         resolve({ stdout, stderr: `${stderr}\n--- EXECUTION TIMED OUT ---`, truncated });
       }, timeoutMs);
 
@@ -1106,13 +1112,25 @@ export class DockerIsol8 implements Isol8Engine {
         }
       });
 
-      stream.on("end", () => {
+      const checkDone = () => {
         if (settled) {
           return;
         }
-        settled = true;
-        clearTimeout(timer);
-        resolve({ stdout, stderr, truncated });
+        if (stdoutEnded && stderrEnded) {
+          settled = true;
+          clearTimeout(timer);
+          resolve({ stdout, stderr, truncated });
+        }
+      };
+
+      stdoutStream.on("end", () => {
+        stdoutEnded = true;
+        checkDone();
+      });
+
+      stderrStream.on("end", () => {
+        stderrEnded = true;
+        checkDone();
       });
 
       stream.on("error", (err: Error) => {
@@ -1122,6 +1140,23 @@ export class DockerIsol8 implements Isol8Engine {
         settled = true;
         clearTimeout(timer);
         reject(err);
+      });
+
+      // Safety net: if the main stream ends but substreams don't (shouldn't happen with PassThrough but good for safety)
+      stream.on("end", () => {
+        // If main stream ends, substreams usually end too. But if they don't within a short grace period, force close.
+        if (settled) {
+          return;
+        }
+
+        // Give substreams a moment to flush
+        setTimeout(() => {
+          if (!settled) {
+            stdoutEnded = true;
+            stderrEnded = true;
+            checkDone();
+          }
+        }, 100);
       });
     });
   }
