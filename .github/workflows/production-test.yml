@@ -49,11 +49,20 @@ jobs:
           
           echo "passed=${PASS:-0}" >> $GITHUB_OUTPUT
           echo "failed=${FAIL:-0}" >> $GITHUB_OUTPUT
+          
+          # Write to job summary
+          echo "## Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Passed | ${PASS:-0} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Failed | ${FAIL:-0} |" >> $GITHUB_STEP_SUMMARY
         env:
           ISOL8_TEST_VERSION: ${{ github.event.inputs.version }}
 
       - name: Run performance benchmarks
-        if: github.event.inputs.runBenchmarks == 'true'
+        needs: tests
+        if: github.event.inputs.runBenchmarks == 'true' && needs.tests.outputs.failed == '0'
         run: |
           echo ""
           echo "=========================================="
@@ -65,7 +74,9 @@ jobs:
           echo "=========================================="
           echo "Benchmark Results Summary"
           echo "=========================================="
-          python3 scripts/parse-bench-output.py
+          python3 scripts/parse-bench-summary.py
+          
+          cat bench-summary.md >> $GITHUB_STEP_SUMMARY
         env:
           ISOL8_TEST_VERSION: ${{ github.event.inputs.version }}
 
@@ -87,3 +98,13 @@ jobs:
           echo "=========================================="
           echo "Production Tests Completed!"
           echo "=========================================="
+          
+          # Write final summary
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Workflow Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Version | ${{ github.event.inputs.version }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tests Passed | ${{ steps.tests.outputs.passed }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tests Failed | ${{ steps.tests.outputs.failed }} |" >> $GITHUB_STEP_SUMMARY
