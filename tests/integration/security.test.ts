@@ -275,29 +275,53 @@ except Exception as e:
     });
 
     // Verify the bash proxy works across runtimes, not just Python
-    // Node.js http module doesn't auto-use HTTP_PROXY, so we connect manually
     const result = await engine.execute({
       code: `
-import http from "http";
-const req = http.request({
-  hostname: '127.0.0.1',
-  port: 8118,
-  path: 'http://example.com',
-  method: 'GET',
-  headers: { 'Host': 'example.com' }
-}, (res) => {
-  if (res.statusCode === 200) {
-    console.log("node_proxy_allowed");
-  } else {
-    console.log("node_unexpected_status: " + res.statusCode);
-  }
-  res.resume();
-});
-req.on("error", (e) => console.log("node_error: " + e.message));
-req.end();
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
+const http = require("http");
+const url = "http://example.com";
+
+console.log("Starting Node.js network test...");
+console.log("HTTP_PROXY:", process.env.HTTP_PROXY);
+
+function makeRequest(retries) {
+  // Node.js http.get does not automatically respect HTTP_PROXY, so we must manually configure it.
+  // We send the request to the proxy host/port, but with the full target URL as the path.
+  const proxyUrl = new URL(process.env.HTTP_PROXY);
+  const options = {
+    hostname: proxyUrl.hostname,
+    port: proxyUrl.port,
+    path: url, // Proxy request uses full URL
+    headers: {
+      Host: "example.com"
+    },
+    timeout: 5000
+  };
+
+  const req = http.get(options, (res) => {
+    if (res.statusCode === 200) {
+      console.log("node_proxy_allowed");
+    } else {
+      console.log("node_unexpected_status: " + res.statusCode);
+    }
+    res.resume();
+  });
+
+  req.on("error", (e) => {
+    if (retries > 0) {
+      console.log("Request failed: " + e.message + ". Retrying..." + retries);
+      setTimeout(() => makeRequest(retries - 1), 1000);
+    } else {
+      console.log("node_error: " + e.message);
+    }
+  });
+}
+
+makeRequest(3);
       `,
       runtime: "node",
-      timeoutMs: 15_000,
+      timeoutMs: 30_000,
     });
 
     expect(result.stdout).toContain("node_proxy_allowed");
@@ -313,14 +337,24 @@ req.end();
     const result = await engine.execute({
       code: `
 import urllib.request
-try:
-    r = urllib.request.urlopen("http://example.com", timeout=5)
-    print("open_proxy_allowed")
-except Exception as e:
-    print(f"error: {e}")
+import time
+
+# Retry loop for potential transient network/DNS failures during startup
+max_retries = 3
+for i in range(max_retries):
+    try:
+        r = urllib.request.urlopen("http://example.com", timeout=5)
+        print("open_proxy_allowed")
+        break
+    except Exception as e:
+        if i == max_retries - 1:
+            print(f"error: {e}")
+        else:
+            print(f"Request failed: {e}. Retrying...")
+            time.sleep(1)
       `,
       runtime: "python",
-      timeoutMs: 15_000,
+      timeoutMs: 30_000,
     });
 
     expect(result.stdout).toContain("open_proxy_allowed");
