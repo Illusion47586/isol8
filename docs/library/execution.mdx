@@ -59,6 +59,10 @@ const result = await isol8.execute({
   Packages to install before execution using the runtime's package manager. The container's root filesystem is temporarily made writable and network is enabled for installation.
 </ResponseField>
 
+<ResponseField name="metadata" type="Record<string, string>">
+  Additional metadata to include in audit logs. Useful for passing context like `userId`, `tenantId`, `requestId`, etc. Only used when audit logging is enabled.
+</ResponseField>
+
 ## ExecutionResult
 
 ```typescript
@@ -159,3 +163,21 @@ print(f"Mean: {arr.mean()}, Std: {arr.std():.2f}")
 <Note>
   For faster execution, bake frequently-used packages into custom images with `isol8 setup --python numpy,pandas` instead of installing them on every run.
 </Note>
+
+### Audit Metadata
+
+When audit logging is enabled, you can include metadata with each execution request. This metadata is recorded in the audit log and is useful for tracking user context, request IDs, or tenant information.
+
+```typescript
+const result = await isol8.execute({
+  code: 'print("processing order")',
+  runtime: "python",
+  metadata: {
+    userId: "user-123",
+    tenantId: "tenant-456",
+    requestId: "req-789",
+  },
+});
+```
+
+The metadata will appear in the audit log entry under the `metadata` field.

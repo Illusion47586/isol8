@@ -173,6 +173,93 @@ Base images are built from a multi-stage Dockerfile with:
 
 Custom images (`isol8 setup --python numpy`) extend the base image with additional packages but maintain the same security posture.
 
+## Audit Logging
+
+isol8 provides comprehensive audit logging for compliance, forensics, and operational monitoring. When enabled, every execution is recorded with:
+
+### What Gets Logged
+
+| Field | Description | Privacy Level |
+|:------|:------------|:--------------|
+| `executionId` | UUID for this execution | Public |
+| `userId` | User identifier from metadata | Public |
+| `timestamp` | ISO 8601 timestamp | Public |
+| `runtime` | Runtime used (python, node, etc.) | Public |
+| `codeHash` | SHA-256 hash of source code | Public |
+| `containerId` | Docker container ID | Public |
+| `exitCode` | Process exit code | Public |
+| `durationMs` | Wall-clock execution time | Public |
+| `resourceUsage` | CPU, memory, network metrics | Public |
+| `securityEvents` | Network blocks, policy violations | Public |
+| `metadata` | Custom context (userId, tenantId) | Public |
+| `code` | Full source code | Private* |
+| `stdout` | Standard output | Private* |
+| `stderr` | Standard error | Private* |
+
+\* Code and output logging is disabled by default for privacy. Enable with `includeCode` and `includeOutput` config options.
+
+### Security Events
+
+When running in `filtered` network mode, blocked network requests are captured as security events:
+
+```json
+{
+  "type": "network_blocked",
+  "message": "Security event: network_blocked",
+  "details": {
+    "method": "CONNECT",
+    "host": "evil.com",
+    "reason": "filter_mismatch"
+  },
+  "timestamp": "2026-02-17T20:00:00Z"
+}
+```
+
+These events help detect and investigate attempts to access unauthorized resources.
+
+### Log Storage
+
+Audit logs are written as JSON Lines (JSONL) format, one JSON object per line. This format is:
+- **Append-only**: New entries are added to the end without modifying existing data
+- **Parseable**: Easy to ingest into log aggregation systems
+- **Tamper-evident**: Each entry is independent and timestamped
+
+Example log entry:
+
+```json
+{"executionId":"550e8400-e29b-41d4-a716-446655440000","userId":"user-123","timestamp":"2026-02-17T20:00:00.000Z","runtime":"python","codeHash":"a1b2c3d4...","containerId":"abc123","exitCode":0,"durationMs":82,"resourceUsage":{"cpuPercent":12.5,"memoryMB":64,"networkBytesIn":0,"networkBytesOut":0},"metadata":{"tenantId":"tenant-456"}}
+```
+
+### Retention and Cleanup
+
+Configure `retentionDays` to automatically clean up old logs:
+
+```json
+{
+  "audit": {
+    "enabled": true,
+    "retentionDays": 90
+  }
+}
+```
+
+Files older than the retention period are removed when the AuditLogger initializes.
+
+### Integration with External Systems
+
+Use `postLogScript` to forward logs to external systems:
+
+```json
+{
+  "audit": {
+    "enabled": true,
+    "postLogScript": "/usr/local/bin/send-to-cloudwatch.sh"
+  }
+}
+```
+
+The script receives the log file path as its first argument and runs asynchronously (non-blocking).
+
 ## Best Practices
 
 <Steps>
@@ -193,5 +280,11 @@ Custom images (`isol8 setup --python numpy`) extend the base image with addition
   </Step>
   <Step title="Keep timeout low">
     Set timeouts appropriate to your workload. 30 seconds is generous for most tasks.
+  </Step>
+  <Step title="Enable audit logging for production">
+    Enable audit logging in production environments to maintain execution history for compliance and debugging.
+  </Step>
+  <Step title="Review security events regularly">
+    Monitor audit logs for security events (blocked network requests) to detect potential abuse or misconfiguration.
   </Step>
 </Steps>

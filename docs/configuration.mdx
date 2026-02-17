@@ -144,6 +144,60 @@ Security computing mode profile configuration.
   - `path/to/profile.json`: Path to a custom seccomp profile JSON file.
 </ResponseField>
 
+### audit
+
+Audit logging configuration for execution provenance and compliance tracking.
+
+<ResponseField name="audit.enabled" type="boolean" default="false">
+  Enable audit logging. When enabled, every execution is recorded with metadata including code hash, timestamps, and resource usage.
+</ResponseField>
+
+<ResponseField name="audit.destination" type="string" default="filesystem">
+  Destination for audit logs. Options:
+  - `filesystem` or `file`: Write to log files (default)
+  - `stdout`: Print to console
+</ResponseField>
+
+<ResponseField name="audit.logDir" type="string">
+  Custom directory for audit log files. Defaults to `./.isol8_audit` in the current working directory, or the value of `ISOL8_AUDIT_DIR` environment variable.
+</ResponseField>
+
+<ResponseField name="audit.postLogScript" type="string">
+  Path to a script that runs after each audit log entry is written. The script receives the log file path as its first argument. Useful for integrating with external systems like CloudWatch, Splunk, or custom log aggregators.
+</ResponseField>
+
+<ResponseField name="audit.trackResources" type="boolean" default="true">
+  Track resource usage (CPU percentage, memory MB, network bytes) during execution. Adds slight overhead but useful for billing and monitoring.
+</ResponseField>
+
+<ResponseField name="audit.retentionDays" type="number" default="90">
+  Number of days to retain audit log files. Files older than this are automatically cleaned up when the AuditLogger initializes.
+</ResponseField>
+
+<ResponseField name="audit.includeCode" type="boolean" default="false">
+  Include the full source code in audit logs. Disabled by default for privacy. Enable only when you need complete code provenance.
+</ResponseField>
+
+<ResponseField name="audit.includeOutput" type="boolean" default="false">
+  Include stdout and stderr in audit logs. Disabled by default for privacy. Useful for debugging and compliance scenarios.
+</ResponseField>
+
+**Example audit configuration:**
+
+```json
+{
+  "audit": {
+    "enabled": true,
+    "logDir": "/var/log/isol8",
+    "postLogScript": "/usr/local/bin/send-to-cloudwatch.sh",
+    "trackResources": true,
+    "retentionDays": 90,
+    "includeCode": false,
+    "includeOutput": false
+  }
+}
+```
+
 ## JSON Schema
 
 A JSON Schema file is available at `schema/isol8.config.schema.json`. Reference it in your config file for editor autocompletion:
