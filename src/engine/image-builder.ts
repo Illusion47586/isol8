@@ -16,13 +16,16 @@ import type { Isol8Config } from "../types";
  *
  * When running from source (`src/engine/image-builder.ts`), the path is
  * `../../docker` relative to this file. When running from the bundled CLI
- * (`dist/cli.js`), it is `../docker`. We try both and use whichever exists.
+ * (`dist/cli.js`), it is `./docker` (same directory). We try both and use
+ * whichever exists.
  */
 function resolveDockerDir(): string {
-  const fromBundled = new URL("../docker", import.meta.url).pathname;
+  // Try production/bundled path first: dist/cli.js -> ./docker
+  const fromBundled = new URL("./docker", import.meta.url).pathname;
   if (existsSync(fromBundled)) {
     return fromBundled;
   }
+  // Fallback to dev path: src/engine/image-builder.ts -> ../../docker
   return new URL("../../docker", import.meta.url).pathname;
 }
 

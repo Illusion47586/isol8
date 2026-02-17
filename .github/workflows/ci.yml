@@ -87,7 +87,7 @@ jobs:
         run: node dist/cli.js setup
 
       - name: Test Coverage
-        run: bun test
+        run: bun test tests/unit tests/integration
 
       - name: Download Main Branch Coverage
         if: github.event_name == 'pull_request'
