@@ -15,6 +15,7 @@ Secure code execution engine for AI agents. Run untrusted Python, Node.js, Bun, 
 - **Fast** — warm container pool for sub-100ms execution latency
 - **Security first** — read-only rootfs, `no-new-privileges`, PID/memory/CPU limits
 - **Network control** — `none` (default), `host`, or `filtered` (HTTP/HTTPS proxy with regex whitelist/blacklist)
+- **Secure File I/O** — streaming file content avoids process argument leaks
 - **File I/O** — upload files into and download files from sandboxes
 -   **Runtime packages** — install pip/npm/bun packages on-the-fly (`--install`)
 -   **Modern Node.js** — defaults to ESM (`.mjs`), supports CommonJS (`.cjs`)

@@ -145,6 +145,14 @@ When a timeout is reached:
 
 This prevents runaway code from consuming resources indefinitely.
 
+## Secure File I/O
+
+All file writing operations (`writeFileViaExec`, `putFile`) use a secure streaming mechanism to transfer content into the container.
+
+- **Stdin Streaming**: File content is streamed directly to the container's standard input.
+- **No Argument Leaks**: Content is never passed as command-line arguments, preventing exposure in process listings (`ps`).
+- **Binary Safety**: Handles binary data correctly without encoding overhead.
+
 ## Docker Image Security
 
 Base images are built from a multi-stage Dockerfile with:
