@@ -78,6 +78,8 @@ flowchart TD
 
 When you provide package flags (or have `dependencies` in your config file), isol8 builds a custom image tagged `isol8:<runtime>-custom`. These custom images are **automatically preferred** over base images via the `resolveImage()` logic — if `isol8:python-custom` exists, all Python executions use it without any additional flags.
 
+Package names are validated to prevent command injection. Allowed characters are alphanumeric, `-`, `_`, `.`, `/`, `@`, and `=`.
+
 For example, after running:
 
 ```bash

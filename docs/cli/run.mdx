@@ -48,7 +48,7 @@ If the extension doesn't match any registered adapter, the CLI exits with an err
 </ResponseField>
 
 <ResponseField name="--install" type="string">
-  Install a package before execution using the runtime's package manager. Repeatable — use `--install pkg1 --install pkg2` for multiple packages.
+  Install a package before execution using the runtime's package manager. Repeatable — use `--install pkg1 --install pkg2` for multiple packages. Package names are validated to prevent command injection (allowed: alphanumeric, `-`, `_`, `.`, `/`, `@`, `=`).
 </ResponseField>
 
 ### Execution

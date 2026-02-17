@@ -153,6 +153,13 @@ All file writing operations (`writeFileViaExec`, `putFile`) use a secure streami
 - **No Argument Leaks**: Content is never passed as command-line arguments, preventing exposure in process listings (`ps`).
 - **Binary Safety**: Handles binary data correctly without encoding overhead.
 
+## Input Validation
+
+isol8 validates all user-provided inputs to prevent injection attacks.
+
+- **Package Names**: Package names passed to `--install` or setup commands are strictly validated against an allowlist of characters (`a-z`, `0-9`, `-`, `_`, `.`, `/`, `@`, `=`) to prevent command injection in shell-based package managers.
+- **File Paths**: File paths are sanitized to prevent directory traversal attacks, ensuring they remain within the `/sandbox` or `/tmp` directories.
+
 ## Docker Image Security
 
 Base images are built from a multi-stage Dockerfile with:
