@@ -2,7 +2,7 @@
  * Pluggable audit logger for execution provenance.
  *
  * Records ExecutionAudit objects to various destinations based on configuration.
- * Supports filesystem logging initially, with extensibility for cloud services.
+ * Supports filesystem and stdout logging, with extensibility for cloud services.
  */
 
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
@@ -34,7 +34,7 @@ export class AuditLogger {
   /**
    * Record an audit entry based on the current configuration.
    */
-  record(audit: ExecutionAudit) {
+  record(audit: ExecutionAudit): void {
     if (!this.config.enabled) {
       return; // Don't record if audit is disabled
     }
@@ -46,8 +46,8 @@ export class AuditLogger {
       const line = `${JSON.stringify(filteredAudit)}\n`;
 
       switch (this.config.destination) {
-        case "filesystem":
         case "file":
+        case "filesystem":
           appendFileSync(this.auditFile, line, { encoding: "utf-8" });
           break;
         case "stdout":
@@ -79,12 +79,20 @@ export class AuditLogger {
       containerId: audit.containerId,
       exitCode: audit.exitCode,
       durationMs: audit.durationMs,
-      resourceUsage: audit.resourceUsage,
-      securityEvents: audit.securityEvents,
-      metadata: audit.metadata,
     };
 
-    // Conditionally add optional fields based on config
+    // Add optional fields if present
+    if (audit.resourceUsage !== undefined) {
+      result.resourceUsage = audit.resourceUsage;
+    }
+    if (audit.securityEvents !== undefined) {
+      result.securityEvents = audit.securityEvents;
+    }
+    if (audit.metadata !== undefined) {
+      result.metadata = audit.metadata;
+    }
+
+    // Conditionally add privacy-sensitive fields based on config
     if (this.config.includeCode && audit.code !== undefined) {
       (result as ExecutionAudit & { code?: string }).code = audit.code;
     }

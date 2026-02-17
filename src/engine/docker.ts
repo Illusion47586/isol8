@@ -25,6 +25,7 @@ import type {
   StreamEvent,
 } from "../types";
 import { logger } from "../utils/logger";
+import { AuditLogger } from "./audit";
 import { Semaphore } from "./concurrency";
 import { ContainerPool } from "./pool";
 import {
@@ -365,9 +366,9 @@ export class DockerIsol8 implements Isol8Engine {
   private readonly semaphore: Semaphore;
   private readonly sandboxSize: string;
   private readonly tmpSize: string;
-  // No, I'll just add security field
   private readonly security: SecurityConfig;
   private readonly persist: boolean;
+  private readonly auditLogger?: AuditLogger;
 
   private container: Docker.Container | null = null;
   private persistentRuntime: RuntimeAdapter | null = null;
@@ -395,6 +396,11 @@ export class DockerIsol8 implements Isol8Engine {
     this.tmpSize = options.tmpSize ?? "256m";
     this.persist = options.persist ?? false;
     this.security = options.security ?? { seccomp: "strict" };
+
+    // Initialize audit logger if audit config is provided
+    if (options.audit) {
+      this.auditLogger = new AuditLogger(options.audit);
+    }
 
     if (options.debug) {
       logger.setDebug(true);
@@ -440,12 +446,57 @@ export class DockerIsol8 implements Isol8Engine {
    */
   async execute(req: ExecutionRequest): Promise<ExecutionResult> {
     await this.semaphore.acquire();
+    const startTime = Date.now();
     try {
-      return this.mode === "persistent"
-        ? await this.executePersistent(req)
-        : await this.executeEphemeral(req);
+      const result =
+        this.mode === "persistent"
+          ? await this.executePersistent(req)
+          : await this.executeEphemeral(req);
+
+      // Record audit log if audit logger is configured
+      if (this.auditLogger) {
+        await this.recordAudit(req, result, startTime);
+      }
+
+      return result;
     } finally {
       this.semaphore.release();
+    }
+  }
+
+  /**
+   * Record an audit entry for the execution.
+   */
+  private async recordAudit(
+    req: ExecutionRequest,
+    result: ExecutionResult,
+    startTime: number
+  ): Promise<void> {
+    try {
+      // Calculate code hash using Web Crypto API
+      const enc = new TextEncoder();
+      const data = enc.encode(req.code);
+      const digest = await crypto.subtle.digest("SHA-256", data);
+      const codeHash = Array.from(new Uint8Array(digest))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+
+      const audit = {
+        executionId: result.executionId,
+        userId: req.metadata?.userId || "",
+        timestamp: new Date(startTime).toISOString(),
+        runtime: result.runtime,
+        codeHash,
+        containerId: result.containerId || "",
+        exitCode: result.exitCode,
+        durationMs: result.durationMs,
+        metadata: req.metadata,
+      };
+
+      // Apply privacy filtering and record
+      this.auditLogger!.record(audit);
+    } catch (err) {
+      logger.error("Failed to record audit log:", err);
     }
   }
 

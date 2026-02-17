@@ -244,6 +244,9 @@ export interface Isol8Options {
 
   /** Security settings. */
   security?: SecurityConfig;
+
+  /** Audit logging configuration. */
+  audit?: AuditConfig;
 }
 
 /**

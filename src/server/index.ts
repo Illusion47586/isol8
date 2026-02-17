@@ -10,7 +10,7 @@ import { Hono } from "hono";
 import { loadConfig } from "../config";
 import { Semaphore } from "../engine/concurrency";
 import type { DockerIsol8 } from "../engine/docker";
-import type { ExecutionAudit, ExecutionRequest, Isol8Options } from "../types";
+import type { ExecutionRequest, Isol8Options } from "../types";
 import { logger } from "../utils/logger";
 import { VERSION } from "../version";
 import { authMiddleware } from "./auth";
@@ -98,6 +98,7 @@ export async function createServer(options: ServerOptions) {
       tmpSize: config.defaults.tmpSize,
       ...body.options,
       mode: body.sessionId ? "persistent" : "ephemeral",
+      audit: config.audit,
     };
 
     let engine: DockerIsol8;
@@ -126,41 +127,6 @@ export async function createServer(options: ServerOptions) {
       await globalSemaphore.acquire();
       try {
         const result = await engine.execute(body.request);
-        // Record audit log if audit is enabled in config
-        if (config.audit.enabled) {
-          const { AuditLogger } = await import("./audit");
-          const auditLogger = new AuditLogger(config.audit);
-
-          // Use Web Crypto (available in Bun) instead of Node crypto
-          const enc = new TextEncoder();
-          const data = enc.encode(body.request.code);
-          const digest = await crypto.subtle.digest("SHA-256", data);
-          const codeHash = Array.from(new Uint8Array(digest))
-            .map((b) => b.toString(16).padStart(2, "0"))
-            .join("");
-
-          const audit: ExecutionAudit = {
-            executionId: result.executionId,
-            userId: body.sessionId || "", // Default to empty string if no session ID
-            timestamp: result.timestamp,
-            runtime: result.runtime,
-            codeHash,
-            containerId: result.containerId || "", // Default to empty string if no container ID
-            exitCode: result.exitCode,
-            durationMs: result.durationMs,
-          };
-
-          // Include optional fields based on config
-          if (config.audit.includeCode) {
-            audit.code = body.request.code;
-          }
-          if (config.audit.includeOutput) {
-            audit.stdout = result.stdout;
-            audit.stderr = result.stderr;
-          }
-
-          auditLogger.record(audit);
-        }
         logger.debug(
           `[Server] Execution completed: exitCode=${result.exitCode} duration=${result.durationMs}ms`
         );
