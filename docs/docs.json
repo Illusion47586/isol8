@@ -13,7 +13,7 @@
     "og:site_name": "isol8 Documentation",
     "og:title": "isol8 - Secure Code Execution Engine",
     "og:description": "Secure code execution engine for running untrusted code inside Docker containers with strict resource limits, network controls, and output sanitization.",
-    "og:url": "https://isol8.illusion47586.dev",
+    "og:url": "https://github.com/Illusion47586/isol8",
     "twitter:title": "isol8 - Secure Code Execution Engine",
     "twitter:description": "Secure code execution engine for running untrusted code inside Docker containers.",
     "twitter:card": "summary_large_image"

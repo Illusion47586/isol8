@@ -1,6 +1,8 @@
 ---
 title: "Runtimes"
 description: "Detailed reference for every supported language runtime — execution commands, file extensions, Docker images, permissions, and behavioral nuances."
+og:title: "Supported Runtimes - isol8"
+og:description: "Reference guide for isol8 runtimes: Python, Node.js, Bun, Deno, and Bash. Learn about execution commands, images, and capabilities."
 ---
 
 isol8 supports five language runtimes. Each runtime is implemented as a **RuntimeAdapter** — a small object that specifies the Docker image, the shell command to execute code, and the default file extension. Adapters are registered at import time in the `RuntimeRegistry`.
