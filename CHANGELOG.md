@@ -1,3 +1,10 @@
+# [0.9.0](https://github.com/Illusion47586/isol8/compare/v0.8.3...v0.9.0) (2026-02-17)
+
+
+### Features
+
+* Add execution audit logs and provenance tracking ([#41](https://github.com/Illusion47586/isol8/issues/41)) ([527061b](https://github.com/Illusion47586/isol8/commit/527061b837b41bb4aaca0ee7808017b938627a4c)), closes [#9](https://github.com/Illusion47586/isol8/issues/9) [#9](https://github.com/Illusion47586/isol8/issues/9) [#9](https://github.com/Illusion47586/isol8/issues/9) [#9](https://github.com/Illusion47586/isol8/issues/9)
+
 ## [0.8.3](https://github.com/Illusion47586/isol8/compare/v0.8.2...v0.8.3) (2026-02-17)
 
 
