@@ -71,6 +71,10 @@ if [ "$method" = "CONNECT" ]; then
 
   if ! is_allowed "$host"; then
     msg="isol8: CONNECT to ${host} blocked by network filter"
+    # Log security event
+    if [ -d "/tmp/isol8-proxy" ]; then
+      printf '{"type":"network_blocked","timestamp":"%s","details":{"method":"CONNECT","host":"%s","reason":"filter_mismatch"}}\n' "$(date -Iseconds)" "$host" >> /tmp/isol8-proxy/security-events.jsonl
+    fi
     printf "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s" \
       "${#msg}" "$msg"
     exit 0
@@ -96,6 +100,10 @@ port="${hostport##*:}"
 
 if ! is_allowed "$host"; then
   msg="isol8: request to ${host} blocked by network filter"
+  # Log security event
+  if [ -d "/tmp/isol8-proxy" ]; then
+    printf '{"type":"network_blocked","timestamp":"%s","details":{"method":"%s","host":"%s","reason":"filter_mismatch"}}\n' "$(date -Iseconds)" "$method" "$host" >> /tmp/isol8-proxy/security-events.jsonl
+  fi
   printf "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s" \
     "${#msg}" "$msg"
   exit 0
