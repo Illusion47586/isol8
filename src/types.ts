@@ -79,6 +79,12 @@ export interface ExecutionRequest {
    * e.g. `["numpy", "pandas"]` for Python or `["lodash"]` for Node.
    */
   installPackages?: string[];
+
+  /**
+   * Additional metadata to include in audit logs (userId, tenantId, etc.).
+   * Passed through to audit logs when audit logging is enabled.
+   */
+  metadata?: Record<string, string>;
 }
 
 /**
@@ -147,23 +153,26 @@ export interface SecurityEvent {
  */
 export interface ExecutionAudit {
   executionId: string;
-  userId?: string;
+  userId: string; // Required field as per issue
   timestamp: string;
   runtime: Runtime;
   codeHash: string; // SHA256 of input code
-  containerId?: string;
+  containerId: string; // Required field as per issue
   exitCode: number;
-  durationMs?: number;
+  durationMs: number; // Required field as per issue
   resourceUsage?: {
-    cpuPercent?: number;
-    memoryMB?: number;
-    networkBytesOut?: number;
+    // Initially optional, can be enhanced later
+    cpuPercent: number;
+    memoryMB: number;
+    networkBytesOut: number;
   };
-  securityEvents?: SecurityEvent[];
+  securityEvents?: SecurityEvent[]; // Initially optional, can be enhanced later
   // Optional fields that may be omitted by configuration for privacy
   code?: string;
   stdout?: string;
   stderr?: string;
+  // Additional metadata passed by client
+  metadata?: Record<string, string>;
 }
 
 // ─── Isol8 ───
@@ -355,6 +364,20 @@ export interface SecurityConfig {
   customProfilePath?: string;
 }
 
+/** Configuration for audit logging. */
+export interface AuditConfig {
+  /** Enable audit logging. @default false */
+  enabled: boolean;
+  /** Destination for audit logs (filesystem, cloudwatch, etc.) @default "filesystem" */
+  destination: "filesystem" | "cloudwatch" | "s3" | string;
+  /** Retention period for audit logs in days @default 90 */
+  retentionDays: number;
+  /** Whether to include the source code in audit logs @default false */
+  includeCode: boolean;
+  /** Whether to include output (stdout/stderr) in audit logs @default false */
+  includeOutput: boolean;
+}
+
 /**
  * Top-level configuration schema for isol8.
  *
@@ -382,6 +405,9 @@ export interface Isol8Config {
 
   /** Security settings. */
   security: SecurityConfig;
+
+  /** Audit logging configuration. */
+  audit: AuditConfig;
 
   /** Enable debug logging. @default false */
   debug: boolean;
@@ -415,4 +441,7 @@ export interface Isol8UserConfig {
 
   /** Security settings. */
   security?: SecurityConfig;
+
+  /** Audit logging configuration. */
+  audit?: Partial<AuditConfig>;
 }

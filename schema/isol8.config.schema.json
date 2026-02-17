@@ -52,6 +52,38 @@
           "description": "JSON Schema URI for editor validation/completion.",
           "type": "string"
         },
+        "audit": {
+          "additionalProperties": false,
+          "description": "Audit logging configuration.",
+          "properties": {
+            "destination": {
+              "default": "filesystem",
+              "description": "Destination for audit logs (filesystem, cloudwatch, etc.)",
+              "type": "string"
+            },
+            "enabled": {
+              "default": false,
+              "description": "Enable audit logging.",
+              "type": "boolean"
+            },
+            "includeCode": {
+              "default": false,
+              "description": "Whether to include the source code in audit logs",
+              "type": "boolean"
+            },
+            "includeOutput": {
+              "default": false,
+              "description": "Whether to include output (stdout/stderr) in audit logs",
+              "type": "boolean"
+            },
+            "retentionDays": {
+              "default": 90,
+              "description": "Retention period for audit logs in days",
+              "type": "number"
+            }
+          },
+          "type": "object"
+        },
         "cleanup": {
           "additionalProperties": false,
           "description": "Container cleanup and lifecycle settings. (Partial override allowed).",

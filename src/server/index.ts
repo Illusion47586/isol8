@@ -126,9 +126,11 @@ export async function createServer(options: ServerOptions) {
       await globalSemaphore.acquire();
       try {
         const result = await engine.execute(body.request);
-        // Record audit log if enabled via environment variable
-        try {
-          const { auditLogger } = await import("./audit");
+        // Record audit log if audit is enabled in config
+        if (config.audit.enabled) {
+          const { AuditLogger } = await import("./audit");
+          const auditLogger = new AuditLogger(config.audit);
+
           // Use Web Crypto (available in Bun) instead of Node crypto
           const enc = new TextEncoder();
           const data = enc.encode(body.request.code);
@@ -136,27 +138,28 @@ export async function createServer(options: ServerOptions) {
           const codeHash = Array.from(new Uint8Array(digest))
             .map((b) => b.toString(16).padStart(2, "0"))
             .join("");
+
           const audit: ExecutionAudit = {
             executionId: result.executionId,
-            userId: body.sessionId ?? undefined,
+            userId: body.sessionId || "", // Default to empty string if no session ID
             timestamp: result.timestamp,
             runtime: result.runtime,
             codeHash,
-            containerId: result.containerId,
+            containerId: result.containerId || "", // Default to empty string if no container ID
             exitCode: result.exitCode,
             durationMs: result.durationMs,
           };
-          // include code/output only when explicitly allowed
-          if (process.env.ISOL8_AUDIT_INCLUDE_CODE === "1") {
+
+          // Include optional fields based on config
+          if (config.audit.includeCode) {
             audit.code = body.request.code;
           }
-          if (process.env.ISOL8_AUDIT_INCLUDE_OUTPUT === "1") {
+          if (config.audit.includeOutput) {
             audit.stdout = result.stdout;
             audit.stderr = result.stderr;
           }
+
           auditLogger.record(audit);
-        } catch (err) {
-          logger.debug("Audit logging failed:", err instanceof Error ? err.message : String(err));
         }
         logger.debug(
           `[Server] Execution completed: exitCode=${result.exitCode} duration=${result.durationMs}ms`
