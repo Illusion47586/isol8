@@ -10,7 +10,7 @@ import { Hono } from "hono";
 import { loadConfig } from "../config";
 import { Semaphore } from "../engine/concurrency";
 import type { DockerIsol8 } from "../engine/docker";
-import type { ExecutionRequest, Isol8Options } from "../types";
+import type { ExecutionAudit, ExecutionRequest, Isol8Options } from "../types";
 import { logger } from "../utils/logger";
 import { VERSION } from "../version";
 import { authMiddleware } from "./auth";
@@ -126,6 +126,38 @@ export async function createServer(options: ServerOptions) {
       await globalSemaphore.acquire();
       try {
         const result = await engine.execute(body.request);
+        // Record audit log if enabled via environment variable
+        try {
+          const { auditLogger } = await import("./audit");
+          // Use Web Crypto (available in Bun) instead of Node crypto
+          const enc = new TextEncoder();
+          const data = enc.encode(body.request.code);
+          const digest = await crypto.subtle.digest("SHA-256", data);
+          const codeHash = Array.from(new Uint8Array(digest))
+            .map((b) => b.toString(16).padStart(2, "0"))
+            .join("");
+          const audit: ExecutionAudit = {
+            executionId: result.executionId,
+            userId: body.sessionId ?? undefined,
+            timestamp: result.timestamp,
+            runtime: result.runtime,
+            codeHash,
+            containerId: result.containerId,
+            exitCode: result.exitCode,
+            durationMs: result.durationMs,
+          };
+          // include code/output only when explicitly allowed
+          if (process.env.ISOL8_AUDIT_INCLUDE_CODE === "1") {
+            audit.code = body.request.code;
+          }
+          if (process.env.ISOL8_AUDIT_INCLUDE_OUTPUT === "1") {
+            audit.stdout = result.stdout;
+            audit.stderr = result.stderr;
+          }
+          auditLogger.record(audit);
+        } catch (err) {
+          logger.debug("Audit logging failed:", err instanceof Error ? err.message : String(err));
+        }
         logger.debug(
           `[Server] Execution completed: exitCode=${result.exitCode} duration=${result.durationMs}ms`
         );

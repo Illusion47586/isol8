@@ -132,6 +132,40 @@ export interface StreamEvent {
   data: string;
 }
 
+/**
+ * Security events raised during execution (policy violations, alerts).
+ */
+export interface SecurityEvent {
+  type: string;
+  message: string;
+  details?: Record<string, unknown>;
+  timestamp: string;
+}
+
+/**
+ * Audit record for an execution. Stored in immutable append-only logs.
+ */
+export interface ExecutionAudit {
+  executionId: string;
+  userId?: string;
+  timestamp: string;
+  runtime: Runtime;
+  codeHash: string; // SHA256 of input code
+  containerId?: string;
+  exitCode: number;
+  durationMs?: number;
+  resourceUsage?: {
+    cpuPercent?: number;
+    memoryMB?: number;
+    networkBytesOut?: number;
+  };
+  securityEvents?: SecurityEvent[];
+  // Optional fields that may be omitted by configuration for privacy
+  code?: string;
+  stdout?: string;
+  stderr?: string;
+}
+
 // ─── Isol8 ───
 
 /**
