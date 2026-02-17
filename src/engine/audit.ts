@@ -5,6 +5,7 @@
  * Supports filesystem and stdout logging, with extensibility for cloud services.
  */
 
+import { spawn } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { AuditConfig, ExecutionAudit } from "../types";
@@ -18,7 +19,8 @@ export class AuditLogger {
     this.config = config;
 
     // Set up audit file path based on config
-    const auditDir = process.env.ISOL8_AUDIT_DIR ?? join(process.cwd(), "./.isol8_audit");
+    const auditDir =
+      config.logDir ?? process.env.ISOL8_AUDIT_DIR ?? join(process.cwd(), "./.isol8_audit");
     this.auditFile = join(auditDir, "executions.log");
 
     // Create audit directory if it doesn't exist
@@ -60,8 +62,40 @@ export class AuditLogger {
       }
 
       logger.debug("Audit record written:", audit.executionId);
+
+      // Run post-log script if configured
+      if (this.config.postLogScript) {
+        this.runPostLogScript();
+      }
     } catch (err) {
       logger.error("Failed to write audit record:", err);
+    }
+  }
+
+  /**
+   * Run the configured post-log script.
+   * The script receives the audit file path as its first argument.
+   */
+  private runPostLogScript(): void {
+    if (!this.config.postLogScript) {
+      return;
+    }
+
+    try {
+      // Spawn script with file path as argument, detached so it doesn't block
+      const child = spawn(this.config.postLogScript, [this.auditFile], {
+        detached: true,
+        stdio: "ignore",
+      });
+
+      child.on("error", (err) => {
+        logger.error("Failed to run post-log script:", err);
+      });
+
+      // Unref so parent can exit without waiting for child
+      child.unref();
+    } catch (err) {
+      logger.error("Failed to spawn post-log script:", err);
     }
   }
 

@@ -124,6 +124,23 @@ export interface ExecutionResult {
    * Only populated when {@link ExecutionRequest.outputPaths} is specified.
    */
   files?: Record<string, string>;
+
+  /**
+   * Resource usage metrics collected during execution.
+   * Only populated when audit logging with trackResources is enabled.
+   */
+  resourceUsage?: {
+    /** CPU usage as percentage (0-100 * num_cores) */
+    cpuPercent: number;
+    /** Current memory usage in megabytes */
+    memoryMB: number;
+    /** Peak memory usage in megabytes (if tracked) */
+    peakMemoryMB?: number;
+    /** Bytes received during execution */
+    networkBytesIn: number;
+    /** Bytes sent during execution */
+    networkBytesOut: number;
+  };
 }
 
 /**
@@ -161,9 +178,15 @@ export interface ExecutionAudit {
   exitCode: number;
   durationMs: number; // Required field as per issue
   resourceUsage?: {
-    // Initially optional, can be enhanced later
+    /** CPU usage as percentage (0-100 * num_cores) */
     cpuPercent: number;
+    /** Current memory usage in megabytes */
     memoryMB: number;
+    /** Peak memory usage in megabytes (if tracked) */
+    peakMemoryMB?: number;
+    /** Bytes received during execution */
+    networkBytesIn: number;
+    /** Bytes sent during execution */
     networkBytesOut: number;
   };
   securityEvents?: SecurityEvent[]; // Initially optional, can be enhanced later
@@ -371,8 +394,14 @@ export interface SecurityConfig {
 export interface AuditConfig {
   /** Enable audit logging. @default false */
   enabled: boolean;
-  /** Destination for audit logs (filesystem, cloudwatch, etc.) @default "filesystem" */
-  destination: "filesystem" | "cloudwatch" | "s3" | string;
+  /** Destination for audit logs (filesystem, stdout) @default "filesystem" */
+  destination: "filesystem" | "stdout" | string;
+  /** Custom directory for audit log files @default undefined (uses ./.isol8_audit) */
+  logDir?: string;
+  /** Script to run after each log entry (receives file path as argument) @default undefined */
+  postLogScript?: string;
+  /** Track resource usage (CPU, memory, network) @default true */
+  trackResources: boolean;
   /** Retention period for audit logs in days @default 90 */
   retentionDays: number;
   /** Whether to include the source code in audit logs @default false */

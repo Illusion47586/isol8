@@ -40,6 +40,9 @@ const DEFAULT_CONFIG: Isol8Config = {
   audit: {
     enabled: false,
     destination: "filesystem",
+    logDir: undefined,
+    postLogScript: undefined,
+    trackResources: true,
     retentionDays: 90,
     includeCode: false,
     includeOutput: false,

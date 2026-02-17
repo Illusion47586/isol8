@@ -58,7 +58,7 @@
           "properties": {
             "destination": {
               "default": "filesystem",
-              "description": "Destination for audit logs (filesystem, cloudwatch, etc.)",
+              "description": "Destination for audit logs (filesystem, stdout)",
               "type": "string"
             },
             "enabled": {
@@ -76,10 +76,25 @@
               "description": "Whether to include output (stdout/stderr) in audit logs",
               "type": "boolean"
             },
+            "logDir": {
+              "default": "undefined (uses ./.isol8_audit)",
+              "description": "Custom directory for audit log files",
+              "type": "string"
+            },
+            "postLogScript": {
+              "default": "undefined",
+              "description": "Script to run after each log entry (receives file path as argument)",
+              "type": "string"
+            },
             "retentionDays": {
               "default": 90,
               "description": "Retention period for audit logs in days",
               "type": "number"
+            },
+            "trackResources": {
+              "default": true,
+              "description": "Track resource usage (CPU, memory, network)",
+              "type": "boolean"
             }
           },
           "type": "object"

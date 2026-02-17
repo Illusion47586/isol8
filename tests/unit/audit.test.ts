@@ -35,6 +35,7 @@ describe("AuditLogger", () => {
     const config: AuditConfig = {
       enabled: false,
       destination: "filesystem",
+      trackResources: true,
       retentionDays: 90,
       includeCode: false,
       includeOutput: false,
@@ -67,6 +68,7 @@ describe("AuditLogger", () => {
     const config: AuditConfig = {
       enabled: true,
       destination: "filesystem",
+      trackResources: true,
       retentionDays: 90,
       includeCode: false,
       includeOutput: false,
@@ -111,6 +113,7 @@ describe("AuditLogger", () => {
     const config: AuditConfig = {
       enabled: true,
       destination: "filesystem",
+      trackResources: true,
       retentionDays: 90,
       includeCode: false,
       includeOutput: false,
@@ -157,6 +160,7 @@ describe("AuditLogger", () => {
     const config: AuditConfig = {
       enabled: true,
       destination: "filesystem",
+      trackResources: true,
       retentionDays: 90,
       includeCode: true,
       includeOutput: true,
@@ -199,6 +203,7 @@ describe("AuditLogger", () => {
     const config: AuditConfig = {
       enabled: true,
       destination: "stdout",
+      trackResources: true,
       retentionDays: 90,
       includeCode: false,
       includeOutput: false,

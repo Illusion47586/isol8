@@ -28,6 +28,7 @@ import { logger } from "../utils/logger";
 import { AuditLogger } from "./audit";
 import { Semaphore } from "./concurrency";
 import { ContainerPool } from "./pool";
+import { type ContainerResourceUsage, calculateResourceDelta, getContainerStats } from "./stats";
 import {
   createTarBuffer,
   extractFromTar,
@@ -490,6 +491,7 @@ export class DockerIsol8 implements Isol8Engine {
         containerId: result.containerId || "",
         exitCode: result.exitCode,
         durationMs: result.durationMs,
+        resourceUsage: result.resourceUsage,
         metadata: req.metadata,
       };
 
@@ -679,6 +681,16 @@ export class DockerIsol8 implements Isol8Engine {
     // Acquire a pre-warmed container from the pool
     const container = await this.pool.acquire(image);
 
+    // Collect baseline stats if resource tracking is enabled
+    let startStats: ContainerResourceUsage | undefined;
+    if (this.auditLogger) {
+      try {
+        startStats = await getContainerStats(container);
+      } catch (err) {
+        logger.debug("Failed to collect baseline stats:", err);
+      }
+    }
+
     try {
       // Start proxy for filtered network mode
       if (this.network === "filtered") {
@@ -739,6 +751,17 @@ export class DockerIsol8 implements Isol8Engine {
 
       const inspectResult = await exec.inspect();
 
+      // Collect final stats and calculate resource usage delta
+      let resourceUsage: ExecutionResult["resourceUsage"];
+      if (startStats) {
+        try {
+          const endStats = await getContainerStats(container);
+          resourceUsage = calculateResourceDelta(startStats, endStats);
+        } catch (err) {
+          logger.debug("Failed to collect final stats:", err);
+        }
+      }
+
       return {
         stdout: this.postProcessOutput(stdout, truncated),
         stderr: this.postProcessOutput(stderr, false),
@@ -749,6 +772,7 @@ export class DockerIsol8 implements Isol8Engine {
         runtime: req.runtime,
         timestamp: new Date().toISOString(),
         containerId: container.id,
+        ...(resourceUsage ? { resourceUsage } : {}),
         ...(req.outputPaths ? { files: await this.retrieveFiles(container, req.outputPaths) } : {}),
       };
     } finally {
@@ -839,6 +863,23 @@ export class DockerIsol8 implements Isol8Engine {
 
     const inspectResult = await exec.inspect();
 
+    // Collect resource stats if tracking is enabled
+    let resourceUsage: ExecutionResult["resourceUsage"];
+    if (this.auditLogger) {
+      try {
+        const endStats = await getContainerStats(this.container!);
+        // For persistent mode, we don't have baseline, so use current values
+        resourceUsage = {
+          cpuPercent: endStats.cpuPercent,
+          memoryMB: endStats.memoryMB,
+          networkBytesIn: endStats.networkBytesIn,
+          networkBytesOut: endStats.networkBytesOut,
+        };
+      } catch (err) {
+        logger.debug("Failed to collect resource stats:", err);
+      }
+    }
+
     return {
       stdout: this.postProcessOutput(stdout, truncated),
       stderr: this.postProcessOutput(stderr, false),
@@ -849,6 +890,7 @@ export class DockerIsol8 implements Isol8Engine {
       runtime: req.runtime,
       timestamp: new Date().toISOString(),
       containerId: this.container?.id,
+      ...(resourceUsage ? { resourceUsage } : {}),
       ...(req.outputPaths
         ? { files: await this.retrieveFiles(this.container!, req.outputPaths) }
         : {}),
