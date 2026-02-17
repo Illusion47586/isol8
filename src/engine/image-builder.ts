@@ -154,8 +154,12 @@ async function buildCustomImage(
   const dockerfileContent = `FROM isol8:${runtime}\n${installCmd}\n`;
 
   // Build using dockerode with an inline tar containing just the Dockerfile
-  const { createTarBuffer } = await import("./utils");
+  // Build using dockerode with an inline tar containing just the Dockerfile
+  const { createTarBuffer, validatePackageName } = await import("./utils");
   const { Readable } = await import("node:stream");
+
+  // Validate all packages before building
+  packages.forEach(validatePackageName);
 
   const tarBuffer = createTarBuffer("Dockerfile", dockerfileContent);
 

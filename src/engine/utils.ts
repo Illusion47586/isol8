@@ -186,3 +186,21 @@ export function extractFromTar(tarBuffer: Buffer, targetPath: string): Buffer {
 
   throw new Error(`File "${targetPath}" not found in tar archive`);
 }
+
+/**
+ * Validates a package name to prevent command injection.
+ * allow alphanumeric, dash, underscore, dot, @, / (for scoped packages), and = (for versions)
+ *
+ * @param name - The package name to validate.
+ * @returns The name if valid.
+ * @throws {Error} If the name contains invalid characters.
+ */
+export function validatePackageName(name: string): string {
+  // Allow @scope/pkg, pkg@version, pkg==version, pkg-name, pkg_name, pkg.name
+  if (!/^[@a-zA-Z0-9_./\-=]+$/.test(name)) {
+    throw new Error(
+      `Invalid package name: "${name}". Only alphanumeric, -, _, ., /, @, and = are allowed.`
+    );
+  }
+  return name;
+}
