@@ -1,0 +1,202 @@
+---
+title: "Data and persistence"
+description: "Detailed guide to persistent execution, state sharing, file movement, session lifecycle, and when to choose ephemeral vs persistent mode."
+icon: "database"
+---
+
+Persistence is useful when one execution depends on artifacts created by a previous execution.
+
+If you do not need cross-run state, prefer ephemeral mode for isolation and simplicity.
+
+<Info>
+  On remote execution, persistence is controlled by `sessionId`. Without `sessionId`, requests run as ephemeral executions.
+</Info>
+
+## Ephemeral vs persistent
+
+| Mode | State between runs | Performance profile | Best for |
+|:--|:--|:--|:--|
+| `ephemeral` | none | < 150ms (warm pool) | isolated one-off tasks |
+| `persistent` | yes | ~300ms (cold), ~120ms (warm) | multi-step workflows |
+
+<Note>
+  Ephemeral mode performance depends on your `poolStrategy`. The default `fast` strategy uses a background cleanup loop to ensure instant availability.
+</Note>
+
+## What persists in persistent mode
+
+Inside the same container, subsequent runs can reuse:
+
+- files under `/sandbox`
+- installed dependencies from previous operations
+- runtime artifacts generated during prior executions
+
+Persistent containers are runtime-bound. Use one session/engine per runtime.
+
+## CLI usage
+
+<CodeGroup>
+```bash Command
+isol8 run \
+  --persistent \
+  -e "x = 10" \
+  --runtime python
+
+isol8 run \
+  --persistent \
+  -e "print(x + 5)" \
+  --runtime python
+```
+
+```text Expected output
+15
+```
+</CodeGroup>
+
+`--persist` is separate from `--persistent`:
+
+- `--persistent`: reuse container across runs.
+- `--persist`: keep container alive after completion for manual inspection.
+
+## Library usage
+
+<CodeGroup>
+```typescript Input
+const isol8 = new DockerIsol8({ mode: "persistent" });
+await isol8.start();
+
+await isol8.execute({ code: "x = 40", runtime: "python" });
+await isol8.execute({ code: "print(x + 2)", runtime: "python" });
+
+await isol8.stop();
+```
+
+```text Expected output
+Second execute call prints 42 by reusing state from the first call.
+```
+</CodeGroup>
+
+## API session usage
+
+Use `sessionId` with `POST /execute`.
+
+```json
+{
+  "sessionId": "session-123",
+  "request": {
+    "code": "x = 123",
+    "runtime": "python"
+  }
+}
+```
+
+Reuse same `sessionId` for follow-up calls, then delete explicitly:
+
+```bash
+curl -X DELETE http://localhost:3000/session/session-123 \
+  -H "Authorization: Bearer $ISOL8_API_KEY"
+```
+
+<Note>
+  `RemoteIsol8.stop()` also deletes the remote session when `sessionId` is configured.
+</Note>
+
+## File movement patterns
+
+### Inject files before execution
+
+```typescript
+await isol8.execute({
+  code: 'print(open("/sandbox/data.txt").read())',
+  runtime: "python",
+  files: {
+    "/sandbox/data.txt": "hello",
+  },
+});
+```
+
+### Retrieve files after execution
+
+<CodeGroup>
+```typescript Input
+const result = await isol8.execute({
+  code: 'open("/sandbox/out.txt", "w").write("done")',
+  runtime: "python",
+  outputPaths: ["/sandbox/out.txt"],
+});
+```
+
+```typescript Expected output
+result.files?.["/sandbox/out.txt"]; // base64 encoded "done"
+```
+</CodeGroup>
+
+### Direct file API in active session
+
+- `POST /file` upload base64 content
+- `GET /file` download base64 content
+
+<Warning>
+  File APIs require an active persistent context. In remote mode, `putFile`/`getFile` throw if `sessionId` is missing.
+</Warning>
+
+## Session lifecycle and pruning
+
+Server-side session cleanup is controlled by:
+
+- `cleanup.autoPrune`
+- `cleanup.maxContainerAgeMs`
+
+If idle sessions are being removed earlier than expected, increase `maxContainerAgeMs` or disable auto-pruning.
+
+## Choosing the right mode
+
+Choose `ephemeral` when:
+
+- workloads are independent
+- isolation between requests is a priority
+- you need predictable clean-state semantics
+
+Choose `persistent` when:
+
+- workflows are iterative/multi-step
+- file reuse is central to task flow
+- setup cost should be amortized across related runs
+
+## FAQ
+
+<Accordion title="What is the difference between `--persistent` and `--persist`?">
+  `--persistent` enables state reuse across runs. `--persist` keeps the container alive after execution for inspection/debugging.
+</Accordion>
+
+<Accordion title="Can I switch runtime inside one persistent session?">
+  No. A persistent container is runtime-bound. Create a new session/engine for a different runtime.
+</Accordion>
+
+<Accordion title="How do I clean up remote persistent sessions?">
+  Call `DELETE /session/{id}` directly, or use `RemoteIsol8.stop()` when your client was created with `sessionId`.
+</Accordion>
+
+## Troubleshooting quick checks
+
+- **State not retained between runs**: ensure `--persistent` (CLI) or `sessionId` (API/RemoteIsol8) is set.
+- **`File operations require a sessionId`**: create `RemoteIsol8` with `sessionId` before `putFile`/`getFile`.
+- **Session disappears unexpectedly**: check `cleanup.autoPrune` and `cleanup.maxContainerAgeMs` in config.
+- **Runtime switch error in persistent mode**: use separate sessions per runtime.
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Remote server and client" icon="server" href="/remote">
+    Session-based remote execution and file workflow patterns.
+  </Card>
+  <Card title="Execution guide" icon="terminal" href="/execution">
+    Execution lifecycle, mode behavior, and streaming details.
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/troubleshooting">
+    Diagnose common persistence and session failures.
+  </Card>
+  <Card title="Library reference" icon="book-open" href="/library">
+    `putFile`/`getFile` and persistent session usage from the SDK.
+  </Card>
+</CardGroup>

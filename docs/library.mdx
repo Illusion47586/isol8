@@ -1,0 +1,364 @@
+---
+title: "Library reference"
+description: "Detailed TypeScript API guide for DockerIsol8 and RemoteIsol8, with option-by-option descriptions and lifecycle behavior."
+icon: "book-open"
+---
+
+isol8 exposes two main classes:
+
+- `DockerIsol8` for local execution
+- `RemoteIsol8` for remote HTTP execution
+
+Both implement `Isol8Engine`.
+
+<Info>
+  Use `DockerIsol8` for local in-process execution. Use `RemoteIsol8` when execution is handled by an `isol8 serve` instance over HTTP.
+</Info>
+
+## Installation
+
+<CodeGroup>
+```bash npm
+npm install isol8
+```
+
+```bash bun
+bun add isol8
+```
+</CodeGroup>
+
+## DockerIsol8
+
+<CodeGroup>
+```typescript Input
+import { DockerIsol8 } from "isol8";
+
+const isol8 = new DockerIsol8({
+  mode: "ephemeral",
+  network: "none",
+  timeoutMs: 30000,
+});
+
+await isol8.start();
+const result = await isol8.execute({ code: "print(1)", runtime: "python" });
+await isol8.stop();
+```
+
+```typescript Expected output
+result.stdout === "1\n";
+result.exitCode === 0;
+```
+</CodeGroup>
+
+### Constructor options (`Isol8Options`)
+
+<ResponseField name="mode" type="'ephemeral' | 'persistent'" default="ephemeral">
+  Execution mode. Ephemeral uses warm pool containers. Persistent reuses one container.
+</ResponseField>
+
+<ResponseField name="network" type="'none' | 'host' | 'filtered'" default="none">
+  Network policy for execution container.
+</ResponseField>
+
+<Warning>
+  `network: "host"` gives untrusted code full network egress. Prefer `none` or `filtered` for most workloads.
+</Warning>
+
+<ResponseField name="networkFilter" type="{ whitelist: string[]; blacklist: string[] }">
+  Filter rules used only when `network` is `"filtered"`.
+</ResponseField>
+
+<ResponseField name="cpuLimit" type="number" default="1">
+  CPU limit as fraction/cores.
+</ResponseField>
+
+<ResponseField name="memoryLimit" type="string" default="512m">
+  Memory cap for container.
+</ResponseField>
+
+<ResponseField name="pidsLimit" type="number" default="64">
+  Maximum process count in container.
+</ResponseField>
+
+<ResponseField name="readonlyRootFs" type="boolean" default="true">
+  Mount root filesystem read-only.
+</ResponseField>
+
+<ResponseField name="maxOutputSize" type="number" default="1048576">
+  Output truncation threshold in bytes.
+</ResponseField>
+
+<ResponseField name="secrets" type="Record<string, string>" default="{}">
+  Secret env variables; values are masked in stdout/stderr post-processing.
+</ResponseField>
+
+<ResponseField name="timeoutMs" type="number" default="30000">
+  Default timeout applied when request timeout is omitted.
+</ResponseField>
+
+<ResponseField name="image" type="string">
+  Override runtime image selection.
+</ResponseField>
+
+<ResponseField name="sandboxSize" type="string" default="512m">
+  Size of `/sandbox` tmpfs mount.
+</ResponseField>
+
+<ResponseField name="tmpSize" type="string" default="256m">
+  Size of `/tmp` tmpfs mount.
+</ResponseField>
+
+<ResponseField name="debug" type="boolean" default="false">
+  Enable internal debug logs.
+</ResponseField>
+
+<ResponseField name="persist" type="boolean" default="false">
+  Keep container running after execution completes (debug/inspection use case).
+</ResponseField>
+
+<ResponseField name="logNetwork" type="boolean" default="false">
+  Include network request logs in result when filtered mode is used.
+</ResponseField>
+
+<ResponseField name="security" type="SecurityConfig">
+  Seccomp behavior (`strict`, `unconfined`, `custom`).
+</ResponseField>
+
+<ResponseField name="audit" type="AuditConfig">
+  Audit logging configuration.
+</ResponseField>
+
+<ResponseField name="poolStrategy" type="'fast' | 'secure'" default="fast">
+  Strategies for managing the ephemeral container pool.
+  - `fast`: Dual-pool system (clean/dirty) with background cleanup. Use for high-throughput.
+  - `secure`: Synchronous cleanup before every acquisition. Use for maximum isolation assurance.
+</ResponseField>
+
+<ResponseField name="poolSize" type="number | { clean: number; dirty: number }" default="{ clean: 1, dirty: 1 }">
+  Warm pool size config.
+</ResponseField>
+
+## RemoteIsol8
+
+```typescript
+import { RemoteIsol8 } from "isol8";
+
+const isol8 = new RemoteIsol8(
+  {
+    host: "http://localhost:3000",
+    apiKey: "my-secret-key",
+    sessionId: "session-123", // optional
+  },
+  {
+    network: "none",
+    memoryLimit: "512m",
+  }
+);
+```
+
+<Note>
+  `RemoteIsol8.start()` performs a `/health` check. `RemoteIsol8.stop()` deletes the remote session only when `sessionId` is set.
+</Note>
+
+<ResponseField name="host" type="string" required>
+  Base URL of remote server.
+</ResponseField>
+
+<ResponseField name="apiKey" type="string" required>
+  Bearer token for authentication.
+</ResponseField>
+
+<ResponseField name="sessionId" type="string">
+  Optional persistent session identifier.
+</ResponseField>
+
+<ResponseField name="options" type="Isol8Options">
+  Engine options sent with remote execution requests.
+</ResponseField>
+
+## Isol8Engine methods
+
+<ResponseField name="start()" type="Promise<void>">
+  Initializes engine (or checks remote health).
+</ResponseField>
+
+<ResponseField name="stop()" type="Promise<void>">
+  Stops local resources or deletes remote session if used.
+</ResponseField>
+
+<ResponseField name="execute(req)" type="Promise<ExecutionResult>">
+  Runs code and returns full result.
+</ResponseField>
+
+<ResponseField name="executeStream(req)" type="AsyncIterable<StreamEvent>">
+  Streams `stdout`, `stderr`, `exit`, and `error` events.
+</ResponseField>
+
+<ResponseField name="putFile(path, content)" type="Promise<void>">
+  Upload file into active persistent/session container.
+</ResponseField>
+
+<ResponseField name="getFile(path)" type="Promise<Buffer>">
+  Download file from active persistent/session container.
+</ResponseField>
+
+<Note>
+  File methods require stateful execution context: local persistent mode or a remote client with `sessionId`.
+</Note>
+
+## ExecutionRequest fields
+
+<ResponseField name="code" type="string" required>
+  Source code to execute.
+</ResponseField>
+
+<ResponseField name="runtime" type="Runtime" required>
+  Runtime selection.
+</ResponseField>
+
+<ResponseField name="timeoutMs" type="number">
+  Per-request timeout override.
+</ResponseField>
+
+<ResponseField name="env" type="Record<string, string>">
+  Extra environment variables.
+</ResponseField>
+
+<ResponseField name="fileExtension" type="string">
+  Optional script extension override.
+</ResponseField>
+
+<ResponseField name="stdin" type="string">
+  Stdin payload.
+</ResponseField>
+
+<ResponseField name="files" type="Record<string, string | Buffer>">
+  Files to inject before execution.
+</ResponseField>
+
+<ResponseField name="outputPaths" type="string[]">
+  Files to retrieve after execution.
+</ResponseField>
+
+<ResponseField name="installPackages" type="string[]">
+  Runtime-specific packages to install pre-run.
+</ResponseField>
+
+<ResponseField name="metadata" type="Record<string, string>">
+  Metadata to attach to audit records.
+</ResponseField>
+
+## ExecutionResult fields
+
+<ResponseField name="stdout" type="string">
+  Captured standard output.
+</ResponseField>
+
+<ResponseField name="stderr" type="string">
+  Captured standard error.
+</ResponseField>
+
+<ResponseField name="exitCode" type="number">
+  Process exit code.
+</ResponseField>
+
+<ResponseField name="durationMs" type="number">
+  Wall time for execution.
+</ResponseField>
+
+<ResponseField name="truncated" type="boolean">
+  Whether output exceeded `maxOutputSize`.
+</ResponseField>
+
+<ResponseField name="executionId" type="string">
+  Unique execution identifier.
+</ResponseField>
+
+<ResponseField name="runtime" type="Runtime">
+  Runtime used for this execution.
+</ResponseField>
+
+<ResponseField name="timestamp" type="string">
+  ISO timestamp.
+</ResponseField>
+
+<ResponseField name="containerId" type="string">
+  Container ID when available.
+</ResponseField>
+
+<ResponseField name="files" type="Record<string, string>">
+  Base64 file map for requested `outputPaths`.
+</ResponseField>
+
+<ResponseField name="resourceUsage" type="object">
+  CPU/memory/network usage metrics (when enabled).
+</ResponseField>
+
+<ResponseField name="networkLogs" type="NetworkLogEntry[]">
+  Request logs in filtered mode (when enabled).
+</ResponseField>
+
+## Cleanup helper
+
+<CodeGroup>
+```typescript Input
+import { DockerIsol8 } from "isol8";
+
+const result = await DockerIsol8.cleanup();
+console.log(result.removed, result.failed, result.errors);
+```
+
+```text Expected output
+Logs counts of removed and failed isol8 containers plus any error messages.
+```
+</CodeGroup>
+
+<ResponseField name="removed" type="number">
+  Number of containers removed.
+</ResponseField>
+
+<ResponseField name="failed" type="number">
+  Number of removals that failed.
+</ResponseField>
+
+<ResponseField name="errors" type="string[]">
+  Error list for failed removals.
+</ResponseField>
+
+## FAQ
+
+<Accordion title="When should I switch from DockerIsol8 to RemoteIsol8?">
+  Use `DockerIsol8` for local workflows and single-node apps. Use `RemoteIsol8` when execution is centralized behind `isol8 serve`, shared across services, or isolated from app hosts.
+</Accordion>
+
+<Accordion title="Do I always need to call start() and stop()?">
+  Yes. `start()` initializes the engine or verifies remote health; `stop()` ensures cleanup (and session deletion for remote clients with `sessionId`).
+</Accordion>
+
+<Accordion title="Why do file operations fail in remote mode without sessionId?">
+  `putFile` and `getFile` require a persistent remote session. Set `sessionId` when constructing `RemoteIsol8`.
+</Accordion>
+
+## Troubleshooting quick checks
+
+- **`Remote server health check failed`**: verify host URL, server status, and API key.
+- **`File operations require a sessionId`**: set `sessionId` for `RemoteIsol8` before using `putFile`/`getFile`.
+- **No streamed events from `executeStream`**: confirm server supports `/execute/stream` and the request is valid.
+- **Unexpected truncation**: increase `maxOutputSize` in constructor options.
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Execution guide" icon="terminal" href="/execution">
+    Lifecycle, modes, streaming, and result semantics.
+  </Card>
+  <Card title="Passing values" icon="sliders" href="/passing-values">
+    Map every library option to CLI, config, and API equivalents.
+  </Card>
+  <Card title="How to CLI" icon="square-terminal" href="/cli">
+    Command-line behavior and flag-by-flag details.
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/troubleshooting">
+    Diagnose runtime, network, and session issues quickly.
+  </Card>
+</CardGroup>

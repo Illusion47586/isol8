@@ -1,0 +1,33 @@
+---
+title: "Delete session"
+description: "Stop and remove a persistent session container by ID."
+api: "DELETE /session/{id}"
+icon: "trash"
+---
+
+Deletes a persistent session and stops its container.
+
+<ParamField path="id" type="string" required>
+  Persistent session ID to destroy.
+</ParamField>
+
+<ResponseField name="ok" type="boolean">
+  Always `true` after delete handling.
+</ResponseField>
+
+<RequestExample>
+```bash
+curl -X DELETE http://localhost:3000/session/session-123 \
+  -H "Authorization: Bearer $ISOL8_API_KEY"
+```
+</RequestExample>
+
+<ResponseExample>
+```json
+{ "ok": true }
+```
+</ResponseExample>
+
+<Note>
+  This endpoint is idempotent. It returns `{ "ok": true }` even when the session does not exist.
+</Note>

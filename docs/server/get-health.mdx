@@ -1,0 +1,33 @@
+---
+title: "Health"
+description: "Health check endpoint for isol8 server status and version."
+api: "GET /health"
+authMethod: "none"
+playground: "simple"
+icon: "heart-pulse"
+---
+
+Returns server liveness and running version.
+
+<ResponseField name="status" type="string">
+  Always `"ok"` when the server is healthy.
+</ResponseField>
+
+<ResponseField name="version" type="string">
+  Server version string.
+</ResponseField>
+
+<RequestExample>
+```bash
+curl http://localhost:3000/health
+```
+</RequestExample>
+
+<ResponseExample>
+```json
+{
+  "status": "ok",
+  "version": "0.1.0"
+}
+```
+</ResponseExample>

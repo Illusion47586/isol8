@@ -1,453 +1,152 @@
 ---
 title: "Architecture"
-description: "Deep dive into isol8's internal architecture: container pool, execution pipeline, concurrency model, and network filtering."
-og:title: "Architecture & Design - isol8"
-og:description: "Explore the internal architecture of isol8. Learn how the container pool, execution pipeline, and concurrency model work under the hood."
+description: "How isol8 is structured internally: engines, server sessions, runtime adapters, container pools, and security/data pipelines."
+icon: "sitemap"
 ---
 
-This page covers the internal design of isol8 in detail. It is intended for contributors, advanced users, and anyone who wants to understand exactly what happens under the hood.
-
-## System Overview
-
-```mermaid
-flowchart TB
-    subgraph Interfaces["Client Interfaces"]
-        CLI["CLI (isol8 run)"]
-        LIB["TypeScript Library (DockerIsol8)"]
-        HTTP["HTTP Server (isol8 serve)"]
-        REMOTE["Remote Client (RemoteIsol8)"]
-    end
-
-    subgraph Core["Engine Core"]
-        SEM["Concurrency Semaphore"]
-        REG["Runtime Registry"]
-        IB["Image Builder"]
-    end
-
-    subgraph Execution["Execution Layer"]
-        EPH["Ephemeral Path"]
-        PER["Persistent Path"]
-        STR["Streaming Path"]
-        POOL["Container Pool"]
-    end
-
-    subgraph Container["Docker Container"]
-        TINI["tini (PID 1)"]
-        SANDBOX["/sandbox (tmpfs)"]
-        PROXY["proxy.sh (filtered mode)"]
-    end
-
-    subgraph Post["Output Pipeline"]
-        TRUNC["Truncate"]
-        MASK["Mask Secrets"]
-        TRIM["Trim Whitespace"]
-    end
-
-    CLI --> SEM
-    LIB --> SEM
-    HTTP --> SEM
-    REMOTE -->|HTTP| HTTP
-
-    SEM --> REG
-    REG --> EPH
-    REG --> PER
-    REG --> STR
-    EPH <--> POOL
-    IB -.->|builds images| Container
-
-    EPH --> Container
-    PER --> Container
-    STR --> Container
-
-    Container --> Post
-```
-
-## Execution Modes
-
-isol8 supports three execution paths, each with different container lifecycle behavior.
-
-### Ephemeral Execution
-
-The default mode. A container is borrowed from the warm pool, code runs, output is collected, and the container is returned to the pool with its `/sandbox` wiped clean.
-
-```mermaid
-sequenceDiagram
-    participant Caller
-    participant Engine as DockerIsol8
-    participant Sem as Semaphore
-    participant Pool as ContainerPool
-    participant Docker
-
-    Caller->>Engine: execute(request)
-    Engine->>Sem: acquire()
-    Sem-->>Engine: permit granted
-    Engine->>Pool: acquire(image)
-    alt Warm container available
-        Pool-->>Engine: existing container
-    else Pool empty
-        Pool->>Docker: createContainer()
-        Docker-->>Pool: new container
-        Pool-->>Engine: new container
-    end
-    Engine->>Docker: exec(write code to /sandbox)
-    Engine->>Docker: exec(run code with timeout)
-    Docker-->>Engine: stdout + stderr + exit code
-    Engine->>Engine: postProcessOutput (mask, truncate, trim)
-    Engine->>Pool: release(container)
-    Pool->>Docker: exec(pkill -9 -u sandbox)
-    Pool->>Docker: exec(rm -rf /sandbox/*)
-    Engine->>Sem: release()
-    Engine-->>Caller: ExecutionResult
-```
-
-**Key details:**
-- The semaphore limits concurrent executions (default: 10, configurable via `maxConcurrent`)
-- Code is written to `/sandbox/code.<ext>` via `docker exec` using base64 encoding (avoids tar/putArchive issues with read-only root filesystems)
-- Commands are wrapped with `timeout -s KILL <seconds>` for hard enforcement
-- On release, the pool first kills all user processes (`pkill -9 -u sandbox`) then wipes the filesystem (`rm -rf /sandbox/*`) before returning the container. This prevents background processes from persisting across executions.
-
-### Persistent Execution
-
-A single container is created on first use and reused across all subsequent `execute()` calls on that `DockerIsol8` instance. State (files, packages, environment) persists between runs.
-
-```mermaid
-sequenceDiagram
-    participant Caller
-    participant Engine as DockerIsol8
-    participant Sem as Semaphore
-    participant Docker
-
-    Caller->>Engine: execute(request)
-    Engine->>Sem: acquire()
-
-    alt First call (no container)
-        Engine->>Docker: createContainer()
-        Docker-->>Engine: container
-        Engine->>Docker: startContainer()
-        Note over Engine: Container stays alive
-    else Subsequent calls
-        Note over Engine: Reuse existing container
-    end
-
-    Engine->>Docker: exec(write code)
-    Engine->>Docker: exec(run code)
-    Docker-->>Engine: stdout + stderr + exit code
-    Engine->>Engine: postProcessOutput
-    Engine->>Sem: release()
-    Engine-->>Caller: ExecutionResult
-```
-
-**Key details:**
-- Each persistent `DockerIsol8` instance is locked to **one runtime**. Attempting to switch runtimes throws an error.
-- The container is not destroyed until `stop()` is called
-- `putFile()` and `getFile()` are only available in persistent mode
-- The pool is **not used** in persistent mode
-
-### Streaming Execution
-
-`executeStream()` creates a **fresh container every time** (bypasses the pool entirely) and yields `StreamEvent` objects as an async iterable.
-
-```mermaid
-sequenceDiagram
-    participant Caller
-    participant Engine as DockerIsol8
-    participant Sem as Semaphore
-    participant Docker
-
-    Caller->>Engine: executeStream(request)
-    Engine->>Sem: acquire()
-    Engine->>Docker: createContainer()
-    Engine->>Docker: startContainer()
-    Engine->>Docker: exec(write code)
-    Engine->>Docker: exec(run code)
-
-    loop Until process exits
-        Docker-->>Engine: stdout/stderr chunk
-        Engine-->>Caller: StreamEvent {type, data}
-    end
-
-    Docker-->>Engine: exit code
-    Engine-->>Caller: StreamEvent {type: "exit", data: exitCode}
-    Engine->>Docker: stopContainer()
-    Engine->>Docker: removeContainer()
-    Engine->>Sem: release()
-```
-
-**Key details:**
-- A new container is created and destroyed per call (no pool reuse)
-- Output is streamed chunk-by-chunk via an internal queue mechanism
-- The Docker exec stream is demultiplexed (stdout vs stderr headers) and bridged to an async generator
-- Timeout is enforced via the `timeout` command wrapper; if triggered, a stderr event is emitted before the kill
-- On the HTTP server, streaming always forces ephemeral mode (ignores `sessionId`)
-
-## Container Pool
-
-The `ContainerPool` keeps pre-started containers warm for fast ephemeral execution, reducing cold-start latency from ~200-400ms to ~55-95ms.
-
-```mermaid
-stateDiagram-v2
-    [*] --> Empty: Pool created
-    Empty --> Warming: warm(image) called
-    Warming --> Ready: Containers pre-created
-    Ready --> Ready: acquire() / release()
-    Ready --> Draining: drain() called
-    Draining --> [*]: All containers removed
-
-    state Ready {
-        [*] --> Idle
-        Idle --> InUse: acquire()
-        InUse --> Cleaning: release()
-        Cleaning --> Idle: processes killed + /sandbox wiped
-        InUse --> Replenishing: Pool below size
-        Replenishing --> Idle: Background create
-    }
-```
-
-| Property | Value | Notes |
-|:---------|:------|:------|
-| Pool size | 2 | Hardcoded, not configurable |
-| Per-image pools | Yes | Each Docker image gets its own pool |
-| Replenishment | Background | Fire-and-forget, deduplicated via `replenishing` Set |
-| Cleanup on release | `pkill -9 -u sandbox` then `rm -rf /sandbox/*` | Kill user processes, then wipe filesystem |
-| Overflow handling | Destroy | If pool is full on release, container is force-removed |
-
-### Pool Lifecycle
-
-1. **`warm(image)`** -- Pre-creates containers up to `poolSize` for a given image. Called lazily on first `execute()`.
-2. **`acquire(image)`** -- Returns a container from the pool if available, otherwise creates a new one. Triggers background replenishment.
-3. **`release(container, image)`** -- Kills all user processes (`pkill -9 -u sandbox`), wipes `/sandbox`, and returns the container to the pool. If the pool is already at capacity, the container is destroyed instead.
-4. **`drain()`** -- Force-removes all pooled containers across all images. Called by `stop()`.
-
-## Concurrency Model
-
-All execution paths go through a counting `Semaphore` that limits the maximum number of concurrent container operations.
-
-```mermaid
-flowchart LR
-    R1[Request 1] --> SEM
-    R2[Request 2] --> SEM
-    R3[Request 3] --> SEM
-    R4[Request 4] --> SEM
-
-    SEM{Semaphore}
-
-    SEM -->|permit| E1[Execute]
-    SEM -->|permit| E2[Execute]
-    SEM -.->|queued| Q[Wait Queue]
-    Q -.->|next permit| E3[Execute]
-```
-
-- **Default limit:** 10 concurrent operations
-- **Configurable:** via `maxConcurrent` in config or `DockerIsol8Options`
-- **Queuing:** Callers exceeding the limit are queued and resolved FIFO when a permit is released
-- **Server double-gating:** The HTTP server creates its own semaphore (`maxConcurrent`) in addition to the engine's semaphore -- both are set to the same value by default
-
-## Network Modes
-
-isol8 supports three network configurations per container.
-
-### `none` (Default)
-
-No network access. The container is created with `NetworkMode: "none"`. This is the most secure option and the default for both CLI and library usage.
-
-### `host`
-
-Full host network access. The container shares the host's network stack via `NetworkMode: "host"`. Use only when the executed code needs unrestricted internet access.
-
-### `filtered`
-
-HTTP/HTTPS traffic is routed through a filtering proxy (`proxy.sh` + `proxy-handler.sh`) running inside the container. Kernel-level iptables rules enforce that the `sandbox` user can **only** reach the proxy — all other outbound traffic is dropped.
-
-```mermaid
-sequenceDiagram
-    participant Code as User Code
-    participant IPT as iptables (kernel)
-    participant Proxy as proxy.sh (127.0.0.1:8118)
-    participant Internet
-
-    Note over Code: HTTP_PROXY and HTTPS_PROXY<br/>env vars set automatically
-
-    Code->>IPT: HTTP request to api.example.com
-    IPT->>IPT: Check: uid 100 → only 127.0.0.1:8118 allowed
-    IPT->>Proxy: Forward to proxy (allowed)
-    Proxy->>Proxy: Check hostname against blacklist
-    Proxy->>Proxy: Check hostname against whitelist
-
-    alt Allowed
-        Proxy->>Internet: Forward request
-        Internet-->>Proxy: Response
-        Proxy-->>Code: Response
-    else Blocked
-        Proxy-->>Code: 403 Forbidden
-    end
-
-    Code->>IPT: Raw TCP to external host
-    IPT-->>Code: DROP (blocked by iptables)
-```
-
-**iptables enforcement:**
-
-Before user code runs, iptables OUTPUT chain rules are set (as root) inside the container:
-
-1. **Allow loopback** — all traffic on `lo` interface is permitted
-2. **Allow established** — responses to existing connections are permitted
-3. **Allow proxy** — sandbox user (uid 100) can reach `127.0.0.1:8118`
-4. **Drop all other** — all other outbound traffic from uid 100 is dropped
-
-This prevents bypass via raw sockets, direct TCP connections, or any non-HTTP protocol. The container is given `CAP_NET_ADMIN` to set these rules.
-
-**Proxy details:**
-- Runs on `127.0.0.1:8118` inside the container (configurable via `ISOL8_PROXY_PORT`)
-- Reads `ISOL8_WHITELIST` and `ISOL8_BLACKLIST` environment variables (JSON arrays of regex strings)
-- **Blacklist-first evaluation:** if a hostname matches any blacklist pattern, it is blocked regardless of whitelist
-- **Empty whitelist = allow all:** if no whitelist patterns are provided, all non-blacklisted hostnames are allowed
-- **HTTPS tunneling:** uses HTTP CONNECT method; the proxy establishes a TCP tunnel but cannot inspect encrypted traffic
-- The proxy is started inside the container via `docker exec` and isol8 polls until it's ready before running user code
-
-## Docker Image Architecture
-
-### Build Process
+This page explains how isol8 is assembled under the hood so you can reason about behavior, performance, and operational tradeoffs.
+
+## Core building blocks
+
+| Layer | Key implementation | Responsibility |
+|:--|:--|:--|
+| Public engine contract | `Isol8Engine` in `src/types.ts` | common `start/stop/execute/executeStream/putFile/getFile` interface |
+| Local engine | `DockerIsol8` in `src/engine/docker.ts` | Docker-backed execution, pooling, security controls |
+| Remote engine | `RemoteIsol8` in `src/client/remote.ts` | HTTP client for remote server execution |
+| Runtime selection | `RuntimeRegistry` in `src/runtime/adapter.ts` + `src/runtime/index.ts` | runtime adapter lookup and file extension detection |
+| HTTP server | `createServer()` in `src/server/index.ts` | `/execute`, `/execute/stream`, session + file endpoints |
+| Concurrency control | `Semaphore` in `src/engine/concurrency.ts` | caps parallel execution both engine-side and server-side |
+
+## Diagram 1: Request path by interface
 
 ```mermaid
 flowchart TD
-    DF["docker/Dockerfile"]
-
-    DF --> BASE["base stage (Alpine 3.21)"]
-    BASE --> PY["python stage"]
-    BASE --> NODE["node stage"]
-    BASE --> BUN["bun stage"]
-    BASE --> BASH["bash stage"]
-    DENO_EXT["denoland/deno:alpine"] --> DENO["deno stage"]
-
-    PY --> PYI["isol8:python"]
-    NODE --> NODEI["isol8:node"]
-    BUN --> BUNI["isol8:bun"]
-    DENO --> DENOI["isol8:deno"]
-    BASH --> BASHI["isol8:bash"]
-
-    PYI --> PYC["isol8:python-custom"]
-    NODEI --> NODEC["isol8:node-custom"]
-    BUNI --> BUNC["isol8:bun-custom"]
-    DENOI --> DENOC["isol8:deno-custom"]
-    BASHI --> BASHC["isol8:bash-custom"]
+  A["CLI (isol8 run)"] --> D["DockerIsol8"]
+  B["Library (DockerIsol8)"] --> D
+  C["Library (RemoteIsol8)"] --> E["HTTP Server"]
+  E --> D
+  D --> F["RuntimeRegistry"]
+  D --> G["ContainerPool (ephemeral path)"]
+  D --> H["Persistent container (session path)"]
 ```
 
-### Base Stage
+## Execution model
 
-All runtimes (except Deno) share a common `base` stage:
+isol8 uses one engine abstraction with three execution paths:
 
-| Component | Details |
-|:----------|:--------|
-| OS | Alpine 3.21 |
-| Init system | tini (PID 1, proper signal handling) |
-| Non-root user | `sandbox` (uid 100, gid 101) |
-| Network proxy | `proxy.sh` + `proxy-handler.sh` copied to `/usr/local/bin/` |
-| Working directory | `/sandbox` |
-| Additional packages | `curl`, `ca-certificates`, `iptables` |
+- **Ephemeral (`mode: "ephemeral"`)**: container acquired from warm pool, executed, then released back for cleanup/reuse.
+- **Persistent (`mode: "persistent"`)**: one long-lived container per session/engine, state preserved across calls.
+- **Streaming (`executeStream`)**: creates an ephemeral-style container for that stream execution and yields chunked events.
+
+<Info>
+  In server mode, persistent behavior is keyed by `sessionId`. If `sessionId` is absent, the request is treated as ephemeral.
+</Info>
+
+## Diagram 2: Ephemeral pool lifecycle
+
+```mermaid
+flowchart TD
+  A["Request enters engine"] --> B["Acquire container from pool"]
+  B --> C["Inject code/files and optional package install"]
+  C --> D["Execute with limits + timeout"]
+  D --> E["Collect stdout/stderr + optional output files"]
+  E --> F["Truncate output + mask secrets"]
+  F --> G["Release container to pool"]
+  G --> H["Background cleanup and re-warm"]
+```
+
+## Pool and concurrency architecture
+
+### Container pool
+
+`ContainerPool` maintains pre-started containers to reduce startup overhead:
+
+- **`poolStrategy: "fast"`** (default): dual-pool behavior (`clean` + `dirty`), background cleanup.
+- **`poolStrategy: "secure"`**: cleanup in acquire path.
+- **`poolSize`**: number or `{ clean, dirty }` depending on strategy.
+
+### Semaphores
+
+- `DockerIsol8` uses an internal semaphore with `maxConcurrent`.
+- The HTTP server also applies a global semaphore (`config.maxConcurrent`) before execution.
+- Effect: protects host resources and creates predictable queueing under load.
+
+## Runtime adapter architecture
+
+Runtime behavior is delegated to adapters:
+
+- each adapter provides image + command generation + default file extension
+- registry loads built-ins (Python, Node, Bun, Deno, Bash)
+- CLI file-based runs can auto-detect runtime via registry rules
+
+This keeps engine orchestration generic while runtime specifics stay isolated in adapter modules.
+
+## Server session architecture
+
+`src/server/index.ts` keeps a `Map<sessionId, SessionState>` for persistent sessions:
+
+- create/reuse session engines on `/execute` with `sessionId`
+- update `lastAccessedAt` on execute/file operations
+- `DELETE /session/:id` explicitly tears down session containers
+- optional auto-prune removes stale inactive sessions when enabled by config cleanup policy
 
 <Note>
-  The Deno stage does **not** extend `base`. It uses `denoland/deno:alpine` as its base image and re-applies the base setup (tini, proxy, workdir, sandbox user, entrypoint) manually. This is because Deno's official Alpine image has its own specific setup requirements.
+  File endpoints (`/file`) require `sessionId` because file I/O is tied to an active persistent container.
 </Note>
 
-### Custom Images
+## Security and output pipeline placement
 
-When packages are specified via `isol8 setup --python numpy,pandas` or the `dependencies` config field, custom images are built by layering a `RUN <install-command>` on top of the base image:
+Inside the engine execution path:
 
-```dockerfile
-FROM isol8:python
-RUN pip install --no-cache-dir --break-system-packages numpy pandas
-```
+1. container/network/security options are applied (`network`, seccomp mode, readonly rootfs, limits)
+2. code runs as `sandbox` user with timeout enforcement
+3. stdout/stderr are captured and bounded (`maxOutputSize`)
+4. secret values are masked from text output
+5. optional network logs/audit metadata are attached when enabled
 
-The `resolveImage()` function automatically prefers custom images (`isol8:python-custom`) over base images when they exist.
+## Audit and observability hooks
 
-## Container Hardening
+When audit config is enabled:
 
-Every container is created with the following security constraints applied via `buildHostConfig()`:
+- `AuditLogger` records execution provenance
+- optional resource tracking (CPU/memory/network) is captured
+- optional network request logs are collected in filtered mode (`logNetwork`)
+- privacy switches control code/output inclusion
 
-| Control | Setting | Purpose |
-|:--------|:--------|:--------|
-| Read-only root FS | `ReadonlyRootfs: true` | Prevents writes outside tmpfs mounts |
-| Sandbox tmpfs | `/sandbox` (default 512MB) | Writable workspace for code and files |
-| Tmp tmpfs | `/tmp` (default 256MB) | Temporary files |
-| Non-root user | `User: "sandbox"` | Code runs as unprivileged `sandbox` user (uid 100) |
-| Memory limit | Default 512MB | Hard cap, container killed if exceeded |
-| CPU quota | Default 0.5 cores | Expressed as NanoCPUs |
-| PID limit | Default 100 | Prevents fork bombs |
-| Security opts | `no-new-privileges` | Prevents privilege escalation |
-| Network capability | `CAP_NET_ADMIN` (filtered mode only) | Allows iptables rules to enforce proxy-only access |
-| Stop timeout | 2 seconds | Hardcoded; container force-killed after |
+## FAQ
 
-## Output Pipeline
+<Accordion title="Why both a container pool and semaphores?">
+  The pool reduces container startup overhead. The semaphore controls total parallelism to protect host capacity. They solve different problems.
+</Accordion>
 
-Every execution result passes through a three-stage output pipeline before being returned to the caller:
+<Accordion title="Does RemoteIsol8 execute code differently?">
+  It sends the same `ExecutionRequest` shape to the server. Execution still happens in `DockerIsol8` on the server side.
+</Accordion>
 
-```mermaid
-flowchart LR
-    RAW["Raw stdout/stderr"] --> TRUNC["truncateOutput()"]
-    TRUNC --> MASK["maskSecrets()"]
-    MASK --> TRIM["trim()"]
-    TRIM --> RESULT["Final output"]
-```
+<Accordion title="When should I use persistent mode?">
+  Use it when state must persist across calls (files, installed packages, incremental workflows). Use ephemeral for independent runs and higher isolation between tasks.
+</Accordion>
 
-1. **Truncate** -- If output exceeds `maxOutputSize` (default 1MB), it is byte-aware truncated with a summary suffix indicating the total size and truncation point.
-2. **Mask secrets** -- All values passed via the `secrets` option are replaced with `***` using string replacement. This runs on both stdout and stderr.
-3. **Trim** -- Leading and trailing whitespace is removed.
+## Troubleshooting
 
-## File Transfer
+- **Session state not persisting**: ensure you pass a stable `sessionId` for every related API call.
+- **High queue latency**: inspect `maxConcurrent` and host resource saturation before raising pool sizes.
+- **Runtime mismatch errors**: verify adapter registration and selected runtime/file extension combination.
+- **Missing network logs**: network logs require `network: "filtered"` and `logNetwork: true`.
 
-Files are transferred between the host and containers using `docker exec` with base64 encoding (not the Docker `putArchive`/`getArchive` API). This approach works reliably with read-only root filesystems.
+## Related pages
 
-- **Write:** `echo '<base64>' | base64 -d > /sandbox/file.txt` via `docker exec`
-- **Read:** `base64 /sandbox/file.txt` via `docker exec`, then decode on the host side
-
-The `createTarBuffer()` and `extractFromTar()` utilities in `engine/utils.ts` build minimal POSIX tar archives (512-byte header blocks with proper checksums and ustar magic) for the per-request `files` and `outputPaths` fields.
-
-## Standalone Server Binary
-
-The `isol8 serve` command runs the server as a pre-compiled standalone binary that embeds the Bun runtime. This eliminates the need to install Bun to use the server.
-
-```mermaid
-flowchart LR
-    CLI["isol8 serve<br/>(Node.js CLI)"]
-    CHECK{"Bun runtime<br/>available?"}
-    DEV["In-process<br/>Bun.serve()"]
-    DL["Download binary<br/>from GitHub Releases"]
-    CACHE["~/.isol8/bin/<br/>isol8-server"]
-    SPAWN["Spawn child<br/>process"]
-    SERVER["isol8-server<br/>(compiled binary)"]
-
-    CLI --> CHECK
-    CHECK -->|Yes| DEV
-    CHECK -->|No| DL
-    DL --> CACHE
-    CACHE --> SPAWN
-    SPAWN --> SERVER
-```
-
-**Two modes:**
-
-1. **Dev mode** — when running under Bun (e.g. `bun run dev -- serve`), the server starts directly in-process via `Bun.serve()`. Detected by checking `globalThis.Bun`.
-2. **Built CLI mode** — when running under Node.js (the distributed npm package), the CLI downloads a compiled binary from GitHub Releases on first use and spawns it as a child process. The binary is cached at `~/.isol8/bin/isol8-server`.
-
-Binaries are named `isol8-server-{os}-{arch}` (e.g. `isol8-server-darwin-arm64`, `isol8-server-linux-x64`) and compiled with `bun build --compile` from `src/server/standalone.ts`.
-
-### Lazy Imports
-
-Both `src/server/standalone.ts` and `src/server/index.ts` use dynamic `await import()` to defer loading of `dockerode` and its transitive dependencies (`ssh2` → `protobufjs` → `long`). This is critical because:
-
-1. The `long` polyfill crashes on Linux x64 when compiled with `bun build --compile --bytecode`
-2. By lazy-importing, `--version` and `--help` always work even if Docker is unavailable
-3. `createServer()` is `async` to support this pattern
-
-```typescript
-// src/server/standalone.ts — lazy-imports after arg parsing
-const { createServer } = await import("./index");
-const server = await createServer({ port, apiKey, debug });
-
-// src/server/index.ts — lazy-imports inside createServer()
-export async function createServer(options: ServerOptions) {
-  const { DockerIsol8 } = await import("../engine/docker");
-  await import("../runtime");
-  // ...
-}
-```
+<CardGroup cols={2}>
+  <Card title="Execution guide" icon="terminal" href="/execution">
+    Detailed request lifecycle, mode behavior, and streaming semantics.
+  </Card>
+  <Card title="Security model and network controls" icon="shield-check" href="/security">
+    Isolation boundaries, filtered egress enforcement, and seccomp behavior.
+  </Card>
+  <Card title="Performance tuning" icon="gauge-high" href="/performance">
+    Pool sizing, concurrency tuning, and latency optimization loop.
+  </Card>
+  <Card title="Remote server and client" icon="server" href="/remote">
+    Deploy and operate the HTTP service with session lifecycle controls.
+  </Card>
+</CardGroup>

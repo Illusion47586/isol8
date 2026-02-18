@@ -1,0 +1,89 @@
+---
+title: "Execute"
+description: "Run code and return buffered execution results."
+api: "POST /execute"
+icon: "square-terminal"
+---
+
+Runs one execution request and returns complete `stdout`/`stderr` and metadata.
+
+## Body
+
+<ParamField body="request" type="ExecutionRequest" required>
+  Execution payload including `code` and `runtime` plus optional per-request fields.
+</ParamField>
+
+<ParamField body="options" type="Isol8Options">
+  Optional engine-level overrides merged over server defaults.
+</ParamField>
+
+<ParamField body="sessionId" type="string">
+  Optional persistent session key. If provided, server creates/reuses a persistent session.
+</ParamField>
+
+## Success response
+
+<ResponseField name="stdout" type="string">
+  Captured standard output.
+</ResponseField>
+
+<ResponseField name="stderr" type="string">
+  Captured standard error.
+</ResponseField>
+
+<ResponseField name="exitCode" type="number">
+  Process exit code.
+</ResponseField>
+
+<ResponseField name="durationMs" type="number">
+  Execution duration in milliseconds.
+</ResponseField>
+
+<ResponseField name="truncated" type="boolean">
+  Whether output was truncated by max output limits.
+</ResponseField>
+
+<ResponseField name="executionId" type="string">
+  Unique execution identifier.
+</ResponseField>
+
+<ResponseField name="runtime" type="string">
+  Runtime used for this execution.
+</ResponseField>
+
+<ResponseField name="timestamp" type="string">
+  ISO timestamp for execution completion.
+</ResponseField>
+
+<RequestExample>
+```bash
+curl -X POST http://localhost:3000/execute \
+  -H "Authorization: Bearer $ISOL8_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "request": {
+      "runtime": "python",
+      "code": "print(2 ** 10)"
+    },
+    "options": {
+      "network": "none",
+      "timeoutMs": 30000
+    }
+  }'
+```
+</RequestExample>
+
+<ResponseExample>
+```json
+{
+  "stdout": "1024\n",
+  "stderr": "",
+  "exitCode": 0,
+  "durationMs": 82,
+  "truncated": false,
+  "executionId": "550e8400-e29b-41d4-a716-446655440000",
+  "runtime": "python",
+  "timestamp": "2026-02-19T12:00:00.000Z"
+}
+```
+</ResponseExample>

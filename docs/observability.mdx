@@ -1,0 +1,175 @@
+---
+title: "Observability and audit"
+description: "Detailed observability guide for isol8: debug logging, audit records, resource telemetry, and network-level execution insights."
+icon: "eye"
+---
+
+Observability is how you answer "what happened?" after code execution completes. isol8 provides layered visibility:
+
+- debug logs for engine internals
+- execution audit records
+- resource usage metrics
+- optional network request logs
+
+## Debug logging
+
+### CLI
+
+```bash
+isol8 run script.py --debug
+isol8 serve \
+  --debug \
+  --key my-key
+```
+
+### Library
+
+```typescript
+new DockerIsol8({ debug: true });
+```
+
+Debug logs are useful for:
+
+- pool acquisition/release behavior
+- container lifecycle operations
+- persist/cleanup decisions
+- request-level execution timing signals
+
+<Tip>
+  Use `--debug` first when triaging behavior differences. It is the fastest way to inspect mode selection, pool behavior, and runtime lifecycle decisions.
+</Tip>
+
+## Audit logging
+
+Enable in config:
+
+```json
+{
+  "audit": {
+    "enabled": true,
+    "destination": "filesystem",
+    "logDir": "./.isol8_audit",
+    "trackResources": true,
+    "retentionDays": 30
+  }
+}
+```
+
+<Info>
+  `audit.destination` currently supports `filesystem` and `stdout`.
+  The default log file path is `./.isol8_audit/executions.log` unless `audit.logDir` (or `ISOL8_AUDIT_DIR`) is set.
+</Info>
+
+### What gets recorded
+
+Audit records can include:
+
+- execution identifiers and timestamps
+- runtime, exit code, duration
+- code hash
+- metadata (when provided)
+- security/network events
+- resource usage metrics
+
+Depending on `includeCode` and `includeOutput`, source and output may also be persisted.
+
+<Warning>
+  `includeCode` and `includeOutput` are privacy-sensitive. Keep both disabled unless you explicitly need forensic capture and have strict retention/access controls.
+</Warning>
+
+## Resource usage telemetry
+
+When resource tracking is enabled, `ExecutionResult` may include:
+
+- `resourceUsage.cpuPercent`
+- `resourceUsage.memoryMB`
+- `resourceUsage.networkBytesIn`
+- `resourceUsage.networkBytesOut`
+
+Use this for:
+
+- anomaly detection (sudden memory spikes)
+- capacity planning (baseline CPU/memory per workload)
+- policy tuning (timeouts and limits)
+
+## Network logs
+
+When both conditions are true:
+
+- `network = "filtered"`
+- `logNetwork = true`
+
+`ExecutionResult.networkLogs` can include per-request allow/block entries.
+
+This is especially useful when debugging allowlist/denylist policy behavior.
+
+<Note>
+  `networkLogs` are only returned when both `network: "filtered"` and `logNetwork: true` are set.
+</Note>
+
+## Retention and privacy guidance
+
+- Keep `includeCode` and `includeOutput` disabled by default.
+- Configure retention (`retentionDays`) for compliance requirements.
+- Restrict filesystem permissions on audit directories.
+- Use metadata carefully (avoid PII unless required).
+
+## Quick verification
+
+<CodeGroup>
+```bash Command
+isol8 config --json
+isol8 run script.py --debug
+```
+
+```text Expected behavior
+Config output shows effective audit settings.
+Debug execution logs internal lifecycle details to stderr/stdout.
+```
+</CodeGroup>
+
+## Example incident workflow
+
+1. Re-run failing task with `--debug`.
+2. Inspect `exitCode`, `stderr`, `durationMs`, and `truncated`.
+3. Review `resourceUsage` for saturation.
+4. If filtered mode is used, inspect `networkLogs` for blocked hosts.
+5. Correlate with audit entries by `executionId`.
+
+## FAQ
+
+<Accordion title="Why do I not see `resourceUsage` in ExecutionResult?">
+  `resourceUsage` is only populated when audit logging with `trackResources` is enabled.
+</Accordion>
+
+<Accordion title="Why are `networkLogs` missing even with filtered mode?">
+  You need both `network: "filtered"` and `logNetwork: true`. If either is missing, network logs are omitted.
+</Accordion>
+
+<Accordion title="Where are filesystem audit logs written by default?">
+  By default, logs are written under `./.isol8_audit` in the current working directory, unless overridden by `audit.logDir` or `ISOL8_AUDIT_DIR`.
+</Accordion>
+
+## Troubleshooting quick checks
+
+- **No audit records written**: verify `audit.enabled: true` and a supported `audit.destination`.
+- **Expected code/output not in audit**: check `audit.includeCode` / `audit.includeOutput`.
+- **Old logs not deleted**: ensure `audit.retentionDays > 0` and log directory permissions allow cleanup.
+- **Missing network diagnostics**: ensure both `network: "filtered"` and `logNetwork: true`.
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Configuration reference" icon="gear" href="/configuration">
+    Full `audit` config fields, defaults, and precedence.
+  </Card>
+  <Card title="Security and network" icon="shield" href="/security">
+    Understand filtered networking, allow/deny rules, and security tradeoffs.
+  </Card>
+  <Card title="Execution guide" icon="terminal" href="/execution">
+    Execution result fields, streaming behavior, and output semantics.
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/troubleshooting">
+    Diagnose runtime, logging, and server failures.
+  </Card>
+</CardGroup>

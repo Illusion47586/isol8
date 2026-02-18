@@ -1,0 +1,281 @@
+---
+title: "How to CLI"
+sidebarTitle: "How to CLI"
+description: "Detailed command-line guide for isol8 with flag-by-flag behavior for run, setup, serve, config, and cleanup commands."
+icon: "terminal"
+---
+
+This page is a flag-by-flag reference for the `isol8` CLI.
+
+## Global option
+
+<ResponseField name="--debug" type="flag">
+  Enables debug logs for CLI internals and engine operations.
+</ResponseField>
+
+## `isol8 run`
+
+```bash
+isol8 run [file] [options]
+```
+
+<Info>
+  `isol8 run` streams output by default. Use `--no-stream` only when you want buffered output after execution completes.
+</Info>
+
+### Input and runtime flags
+
+<ResponseField name="[file]" type="argument">
+  Script file path. Runtime is auto-detected from extension unless `--runtime` is provided.
+</ResponseField>
+
+<ResponseField name="-e, --eval <code>" type="string">
+  Inline code to execute.
+</ResponseField>
+
+<ResponseField name="-r, --runtime <name>" type="python | node | bun | deno | bash">
+  Force runtime instead of extension-based detection.
+</ResponseField>
+
+<ResponseField name="--stdin <data>" type="string">
+  Explicit stdin payload for the execution process.
+</ResponseField>
+
+### Security and resource flags
+
+<ResponseField name="--net <mode>" type="none | host | filtered" default="none">
+  Sets the network egress mode for the container.
+  - `none`: Blocks all network access (default).
+  - `filtered`: Routes traffic through a proxy with whitelist/blacklist enforcement.
+  - `host`: Allows full host network access (use with extreme caution).
+</ResponseField>
+
+<Warning>
+  `--net host` gives untrusted code full outbound network access. Prefer `none` (default) or `filtered` for most workloads.
+</Warning>
+
+<ResponseField name="--allow <regex>" type="repeatable">
+  Adds a regex pattern to the whitelist in `filtered` mode. Only hostnames matching at least one allow pattern will be permitted.
+</ResponseField>
+
+<ResponseField name="--deny <regex>" type="repeatable">
+  Blacklist pattern for filtered mode.
+</ResponseField>
+
+<ResponseField name="--timeout <ms>" type="number">
+  Execution timeout in milliseconds.
+</ResponseField>
+
+<ResponseField name="--memory <size>" type="string">
+  Memory limit (`512m`, `1g`, etc.).
+</ResponseField>
+
+<ResponseField name="--cpu <limit>" type="number">
+  CPU limit as fraction/cores.
+</ResponseField>
+
+<ResponseField name="--pids-limit <n>" type="number" default="64">
+  Maximum number of processes.
+</ResponseField>
+
+<ResponseField name="--writable" type="flag">
+  Disables read-only rootfs (`readonlyRootFs=false`).
+</ResponseField>
+
+<ResponseField name="--max-output <bytes>" type="number" default="1048576">
+  Maximum output size before truncation.
+</ResponseField>
+
+<ResponseField name="--sandbox-size <size>" type="string" default="512m">
+  `/sandbox` tmpfs size.
+</ResponseField>
+
+<ResponseField name="--tmp-size <size>" type="string" default="256m">
+  `/tmp` tmpfs size.
+</ResponseField>
+
+### State and behavior flags
+
+<ResponseField name="--persistent" type="flag">
+  Use persistent mode (`mode=persistent`).
+</ResponseField>
+
+<ResponseField name="--persist" type="flag">
+  Keep container alive after execution finishes.
+</ResponseField>
+
+<ResponseField name="--no-stream" type="flag">
+  Disable realtime streaming and use buffered `execute()` path.
+</ResponseField>
+
+<ResponseField name="--install <package>" type="repeatable">
+  Install package before execution.
+</ResponseField>
+
+<ResponseField name="--secret <KEY=VALUE>" type="repeatable">
+  Inject secret env vars and mask values in output.
+</ResponseField>
+
+<ResponseField name="--out <file>" type="string">
+  Write stdout to local file.
+</ResponseField>
+
+<ResponseField name="--image <name>" type="string">
+  Override runtime image.
+</ResponseField>
+
+<ResponseField name="--log-network" type="flag">
+  Enable network request logs in results (filtered mode).
+</ResponseField>
+
+<ResponseField name="--pool-strategy <mode>" type="fast | secure" default="fast">
+  Ephemeral container pool strategy.
+</ResponseField>
+
+<ResponseField name="--pool-size <size>" type="number | clean,dirty" default="1,1">
+  Pool size. Examples: `2` or `2,2`.
+</ResponseField>
+
+### Remote execution flags
+
+<ResponseField name="--host <url>" type="string">
+  Execute against remote `isol8 serve` instance.
+</ResponseField>
+
+<ResponseField name="--key <key>" type="string">
+  API key for remote execution (`ISOL8_API_KEY` fallback).
+</ResponseField>
+
+### Examples
+
+```bash
+# Inline Python
+isol8 run \
+  -e "print(2 ** 10)" \
+  --runtime python
+
+# Filtered networking
+isol8 run \
+  task.py \
+  --net filtered \
+  --allow "^api\.openai\.com$"
+
+# Persistent mode
+isol8 run \
+  --persistent \
+  -e "x = 42" \
+  --runtime python
+
+# Remote execution
+isol8 run \
+  script.py \
+  --host http://localhost:3000 \
+  --key my-key
+```
+
+## `isol8 setup`
+
+```bash
+isol8 setup [options]
+```
+
+<ResponseField name="--python <a,b,c>" type="string">
+  Comma-separated Python dependencies for custom image.
+</ResponseField>
+
+<ResponseField name="--node <a,b,c>" type="string">
+  Comma-separated Node dependencies for custom image.
+</ResponseField>
+
+<ResponseField name="--bun <a,b,c>" type="string">
+  Comma-separated Bun dependencies for custom image.
+</ResponseField>
+
+<ResponseField name="--deno <a,b,c>" type="string">
+  Comma-separated Deno modules to pre-cache.
+</ResponseField>
+
+<ResponseField name="--bash <a,b,c>" type="string">
+  Comma-separated apk packages for bash runtime.
+</ResponseField>
+
+<ResponseField name="--force" type="flag">
+  Force rebuild even when hashes indicate cache hit.
+</ResponseField>
+
+## `isol8 serve`
+
+```bash
+isol8 serve --key <api-key> [options]
+```
+
+<ResponseField name="-p, --port <port>" type="number" default="3000">
+  Port for server listener.
+</ResponseField>
+
+<ResponseField name="-k, --key <key>" type="string">
+  API key for bearer auth. If omitted, `ISOL8_API_KEY` environment variable is used.
+</ResponseField>
+
+<ResponseField name="--update" type="flag">
+  Force re-download of standalone server binary.
+</ResponseField>
+
+<ResponseField name="--debug" type="flag">
+  Enable debug logs for server internals.
+</ResponseField>
+
+## `isol8 config`
+
+```bash
+isol8 config [options]
+```
+
+<ResponseField name="--json" type="flag">
+  Print resolved config as JSON.
+</ResponseField>
+
+## `isol8 cleanup`
+
+```bash
+isol8 cleanup [options]
+```
+
+<ResponseField name="--force" type="flag">
+  Skip confirmation prompt.
+</ResponseField>
+
+## FAQ
+
+<Accordion title="What is the difference between `--persistent` and `--persist`?">
+  `--persistent` sets execution mode to persistent (reuses container state across runs). `--persist` keeps the container alive after a run for inspection/debugging.
+</Accordion>
+
+<Accordion title="Do I need `--key` for `isol8 serve` every time?">
+  No. `isol8 serve` accepts `--key`, but it can also read the API key from `ISOL8_API_KEY`.
+</Accordion>
+
+<Accordion title="Why does `isol8 run` print output in real time?">
+  Streaming is the default behavior. Use `--no-stream` if you want buffered output only after the run completes.
+</Accordion>
+
+## Troubleshooting quick checks
+
+- **`[ERR] API key required` on `serve` or remote `run`**: pass `--key` or set `ISOL8_API_KEY`.
+- **Runtime not detected from file extension**: pass `--runtime <name>` explicitly.
+- **No output appears while command runs**: check if `--no-stream` is enabled.
+- **Filtered mode still blocks host**: verify `--allow` regex matches hostname exactly.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Passing values" icon="sliders" href="/passing-values">
+    Map each CLI flag to config, API, and library equivalents.
+  </Card>
+  <Card title="Configuration reference" icon="settings" href="/configuration">
+    Full config schema, defaults, and precedence rules.
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/troubleshooting">
+    Diagnose and fix common CLI/runtime failures quickly.
+  </Card>
+</CardGroup>

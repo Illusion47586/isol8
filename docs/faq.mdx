@@ -1,206 +1,344 @@
 ---
 title: "FAQ"
-description: "Frequently asked questions about isol8 flags, modes, and behaviors"
-og:title: "Frequently Asked Questions - isol8"
-og:description: "Common questions about isol8: persistent vs ephemeral mode, debugging flags, network configuration, and troubleshooting tips."
+description: "Detailed answers to common isol8 questions across execution modes, sessions, networking, runtimes, limits, remote API, and config behavior."
+icon: "circle-question"
 ---
 
-## Flags and Modes
-
-### What is the difference between `--persistent` and `--persist`?
-
-These are two separate flags that control different things:
-
-| Flag | Purpose | Scope |
-|:-----|:--------|:------|
-| `--persistent` | Keep a container alive **between** runs for stateful workflows | Execution mode |
-| `--persist` | Keep the container running **after** execution for debugging | Post-execution cleanup |
-
-**`--persistent`** sets the execution mode to `persistent`. The container is reused across multiple `execute()` calls, preserving filesystem state, environment variables, and installed packages between runs. This is for workflows where you need to build up state incrementally (e.g., write a file in one execution and read it in the next).
-
-**`--persist`** prevents the container from being cleaned up after execution finishes. This is a debugging tool — it lets you `docker exec` into the container after your code has run to inspect the filesystem, check logs, or diagnose issues. Without `--persist`, ephemeral containers are returned to the pool and wiped, and persistent containers are stopped when `stop()` is called.
-
-You can use both together: `--persistent --persist` gives you a stateful session whose container remains running even after `stop()`.
-
-### What is the difference between `--persist` and `cleanup.autoPrune`?
-
-These operate at completely different levels:
-
-| Setting | Level | Controls |
-|:--------|:------|:---------|
-| `--persist` | Engine (per-execution) | Whether a container is cleaned up after a single execution |
-| `cleanup.autoPrune` | Config (server-level) | Whether `isol8 serve` periodically prunes idle sessions |
-
-**`--persist`** (or `persist: true` in the library) is an engine-level option. It affects the container used for a specific execution. When `true`, the container is left running after the code finishes. Default: `false`.
-
-**`cleanup.autoPrune`** is a config-level option under the `cleanup` section. It only affects the HTTP server (`isol8 serve`). When `true`, the server periodically scans for idle sessions older than `cleanup.maxContainerAgeMs` (default: 1 hour) and removes them. Default: `true`.
-
-Setting `persist: true` does **not** prevent server-side auto-pruning. If you need a container to survive indefinitely on the server, you should also set `cleanup.autoPrune: false` in your config or increase `maxContainerAgeMs`.
-
-### What does `--debug` do?
-
-`--debug` enables verbose internal logging from the isol8 engine. When set, internal operations are printed to the console with a `[DEBUG]` prefix:
-
-- Container pool operations (acquire, release, replenish)
-- Container lifecycle events (create, start, stop, remove)
-- Persist/cleanup decisions
-- Image resolution
-
-`--debug` does **not** affect the output of your executed code. It only controls isol8's own internal logs. Without `--debug`, these logs are completely suppressed.
-
-```bash
-# See what isol8 is doing internally
-isol8 run -e "print('hello')" --runtime python --debug
-```
-
-### How do `--persist` and `--debug` interact?
-
-They are independent flags:
-
-| `--persist` | `--debug` | Behavior |
-|:------------|:----------|:---------|
-| `false` | `false` | Default. Containers are cleaned up silently. |
-| `false` | `true` | Containers are cleaned up, but you see internal logs about the cleanup. |
-| `true` | `false` | Containers are left running, but you get no internal logs. |
-| `true` | `true` | Containers are left running, and you see internal logs about the persist decision. |
-
-### What is the difference between `ephemeral` and `persistent` mode?
-
-| Aspect | Ephemeral | Persistent |
-|:-------|:----------|:-----------|
-| Container lifecycle | Fresh container per execution (from warm pool) | Same container reused across executions |
-| State preservation | None — `/sandbox` is wiped between runs | Full — files and env persist |
-| Runtime switching | Each execution can use a different runtime | Locked to one runtime per container |
-| Performance | ~125-145ms (warm pool) | ~250-300ms first run, then ~120ms |
-| Use case | Stateless one-off executions | Multi-step workflows, REPL-like sessions |
-
-Ephemeral mode (default) draws from a warm container pool. After execution, the container's `/sandbox` directory is wiped and the container is returned to the pool for reuse by the next execution. This is fast and secure — each execution starts with a clean slate.
-
-Persistent mode creates a dedicated container that lives across multiple `execute()` calls. Files written in one execution are visible in the next. The container is only destroyed when `stop()` is called (or when the server prunes it if `cleanup.autoPrune` is enabled).
-
-<Warning>
-Persistent containers are locked to a single runtime. Attempting to run Python after Node.js on the same persistent container throws an error. Create a separate `DockerIsol8` instance for each runtime you need.
-</Warning>
-
-## Networking
-
-### When should I use `none` vs `filtered` vs `host` network mode?
-
-| Mode | Security | Use case |
-|:-----|:---------|:---------|
-| `none` | Highest | Default. Code that doesn't need network access. |
-| `filtered` | Medium | Code that needs specific API endpoints (e.g., OpenAI, GitHub). |
-| `host` | Lowest | Code that needs unrestricted network access. Use with trusted code only. |
-
-**`none`** (default) disables all network access. The container has no network interface. DNS, HTTP, TCP — nothing works. This is the most secure option.
-
-**`filtered`** gives the container bridge networking with an HTTP/HTTPS proxy that filters requests by hostname. Use `--allow` and `--deny` regex patterns to control which hosts are reachable. Kernel-level iptables rules enforce that the sandbox user can only reach the proxy — non-HTTP protocols (raw TCP, UDP, WebSocket) and direct connections bypassing the proxy are blocked at the kernel level.
-
-**`host`** gives the container full access to the host's network. Only use this when you trust the code or genuinely need unrestricted connectivity.
-
-### Why does `--net` in the CLI ignore the config file default?
-
-The `--net` flag has a Commander-level default of `"none"`, which means it always has a value when the CLI runs. This effectively overrides the `defaults.network` setting from your config file. To use a different network mode, pass `--net` explicitly:
-
-```bash
-isol8 run script.py --net filtered --allow "^api\.example\.com$"
-```
-
-This is a deliberate safety choice — network access should be an explicit opt-in, not something silently inherited from a config file.
-
-## Runtimes
-
-### Why do `.ts` files run with Bun instead of Deno?
-
-Both Bun and Deno can execute TypeScript, but `.ts` files default to **Bun** because it is registered first in the runtime adapter registry. To run TypeScript with Deno, either:
-
-- Use the `.mts` file extension, or
-- Pass `--runtime deno` explicitly
-
-```bash
-# Runs with Bun (default for .ts)
-isol8 run script.ts
-
-# Runs with Deno
-isol8 run script.mts
-isol8 run script.ts --runtime deno
-```
-
-### Why can't I use `-e` (inline code) with Deno?
-
-Deno does not support inline code execution. The Deno adapter requires a file path — it throws an error if no file is provided:
-
-```
-Error: Deno adapter requires a file path — inline code is not supported.
-```
-
-To run Deno code, provide it as a file (via the `files` field in `ExecutionRequest` or by passing a file argument to the CLI).
-
-### Why does my persistent container reject a different runtime?
-
-Persistent containers are created with a specific runtime's Docker image (e.g., `isol8:python`). Each image only contains its own language toolchain. A Python container doesn't have Node.js installed, so attempting to switch runtimes fails:
-
-```
-Error: Cannot switch runtime from "python" to "node". Each persistent
-container supports a single runtime. Create a new Isol8 instance for
-a different runtime.
-```
-
-Create a separate `DockerIsol8` instance (or a separate persistent session on the server) for each runtime you need.
-
-## Resource Limits
-
-### Why do packages fail with "Operation not permitted"?
-
-Packages that include native extensions (like numpy, pandas, or scipy) compile and install shared library files (`.so`). These files need to be **executable**, which means they must be installed in a directory that allows execution.
-
-isol8 installs packages to `/sandbox` (which has the `exec` flag), not `/tmp` (which has `noexec`). The default `/sandbox` size is 512MB, which is sufficient for most packages. If installation fails with "No space left on device" or "Operation not permitted", increase the sandbox size:
-
-```bash
-isol8 run -e "import numpy" --runtime python --install numpy --sandbox-size 1g
-```
-
-### What is the difference between `--sandbox-size` and `--tmp-size`?
-
-| Mount | Default | Execution | Purpose |
-|:------|:--------|:----------|:--------|
-| `/sandbox` | 512MB | Allowed | Working directory, package installations, user files |
-| `/tmp` | 256MB | Blocked (`noexec`) | Temporary files, package manager caches |
-
-`/sandbox` is where your code runs, packages are installed, and output files are written. It allows execution of shared libraries.
-
-`/tmp` is for temporary files that programs create during execution. The `noexec` flag on `/tmp` is a security measure — it prevents untrusted code from downloading and executing arbitrary binaries in the temp directory.
-
-### Why was my output truncated?
-
-Output (stdout + stderr) is capped at `maxOutputSize` (default: 1MB / 1,048,576 bytes). When output exceeds this limit, it is truncated and `result.truncated` is set to `true`. This prevents memory exhaustion from programs that produce excessive output (e.g., infinite loops printing to stdout).
-
-Increase the limit with `--max-output`:
-
-```bash
-isol8 run generate_report.py --max-output 10485760  # 10MB
-```
-
-## Secrets
-
-### How does secret masking work?
-
-When you pass `--secret KEY=VALUE`, isol8:
-
-1. Injects `KEY` as an environment variable inside the container
-2. Scans all stdout and stderr for any occurrence of `VALUE`
-3. Replaces every occurrence with `***`
-
-```bash
-isol8 run -e "import os; print(os.environ['TOKEN'])" \
-  --runtime python --secret TOKEN=sk-abc123
-# stdout: ***
-```
-
-Masking happens **after** code execution, on the collected output. The code itself has full access to the secret value — only the output seen by the caller is sanitized. This prevents accidental leakage in logs, AI agent responses, or user-facing output.
-
-### Can secrets leak through file outputs?
-
-Secret masking only applies to stdout and stderr. If your code writes a secret value to a file and you retrieve that file via `getFile()`, the secret will **not** be masked in the file contents. Only the streamed/collected text output is sanitized.
-
-To avoid this, do not write secrets to files that you intend to retrieve, or implement your own masking on retrieved file contents.
+This FAQ is grounded in current code behavior (`src/`, `src/types.ts`, and `schema/isol8.config.schema.json`).
+
+## Core behavior and defaults
+
+<AccordionGroup>
+  <Accordion title="What are the default execution settings if I do not configure anything?">
+    Defaults are conservative:
+    - `timeoutMs: 30000`
+    - `memoryLimit: "512m"`
+    - `cpuLimit: 1`
+    - `network: "none"`
+    - `sandboxSize: "512m"`
+    - `tmpSize: "256m"`
+    - `maxConcurrent: 10`
+  </Accordion>
+
+  <Accordion title="Where does isol8 load config from?">
+    First match wins:
+    1. `./isol8.config.json` in current working directory
+    2. `~/.isol8/config.json`
+    3. built-in defaults
+  </Accordion>
+
+  <Accordion title="Does my config fully replace defaults?">
+    No. User config is deep-merged with defaults. You can override only the keys you need.
+  </Accordion>
+
+  <Accordion title="How can I inspect the effective configuration?">
+    Use:
+    ```bash
+    isol8 config --json
+    ```
+    This is the best way to confirm what values are actually active.
+  </Accordion>
+
+  <Accordion title="What wins if the same setting is provided in config and request/CLI?">
+    Request/CLI values override config defaults for that execution. Config remains the baseline.
+  </Accordion>
+
+  <Accordion title="Does isol8 require Bun to run CLI and remote server?">
+    Not always. The built CLI can run under Node, and `isol8 serve` in built mode downloads a standalone server binary that embeds Bun.
+  </Accordion>
+</AccordionGroup>
+
+## Setup and build behavior
+
+<AccordionGroup>
+  <Accordion title="What does `isol8 setup` actually do?">
+    It checks Docker connectivity, builds base runtime images, and can build custom images with configured dependencies.
+  </Accordion>
+
+  <Accordion title="When should I rebuild images with `--force`?">
+    Use `--force` after Dockerfile/runtime dependency changes, or when troubleshooting stale image behavior.
+  </Accordion>
+
+  <Accordion title="Why does `isol8 serve` ask about updating binaries?">
+    Built CLI checks standalone server binary version against CLI version. If mismatched, it prompts to update.
+  </Accordion>
+
+  <Accordion title="Can I force standalone server binary refresh?">
+    Yes:
+    ```bash
+    isol8 serve --update
+    ```
+  </Accordion>
+
+  <Accordion title="What if my platform is unsupported for standalone server binary?">
+    CLI fails with an unsupported platform error for unknown OS/arch combinations.
+  </Accordion>
+</AccordionGroup>
+
+## Execution modes, lifecycle, and persistence
+
+<AccordionGroup>
+  <Accordion title="What is the difference between `--persistent` and `--persist`?">
+    - `--persistent`: selects persistent execution mode (reuse one container state for that engine/session).
+    - `--persist`: keep container(s) running after execution for inspection/debugging.
+    They control different concerns and can be combined.
+  </Accordion>
+
+  <Accordion title="Does `--persistent` on CLI keep state across multiple separate `isol8 run` commands?">
+    Not by default. Each CLI invocation creates a new process and a new engine lifecycle, then stops it in `finally`.
+    For true cross-call persistence, use remote API/library with a stable `sessionId`.
+  </Accordion>
+
+  <Accordion title="Can I switch runtime inside one persistent container (Python -> Node)?">
+    No. Persistent containers are runtime-bound. Switching runtime in the same persistent engine throws an error.
+  </Accordion>
+
+  <Accordion title="When does a persistent session get deleted on remote server?">
+    - explicit `DELETE /session/:id`
+    - auto-prune if enabled and session is idle past `cleanup.maxContainerAgeMs`
+  </Accordion>
+
+  <Accordion title="Does auto-prune delete active sessions mid-execution?">
+    No. Active sessions are skipped while executing (`isActive` check).
+  </Accordion>
+</AccordionGroup>
+
+## Streaming and output behavior
+
+<AccordionGroup>
+  <Accordion title="Is streaming enabled by default in CLI?">
+    Yes. `isol8 run` streams output by default. Use `--no-stream` to wait for final result.
+  </Accordion>
+
+  <Accordion title="What event types are emitted in streaming mode?">
+    `stdout`, `stderr`, `exit`, `error`.
+  </Accordion>
+
+  <Accordion title="Can I stream and still save final stdout to `--out` file in one command?">
+    `--out` writing is part of non-streaming result handling path. If you need predictable captured output file, use `--no-stream`.
+  </Accordion>
+
+  <Accordion title="Why was my output truncated?">
+    Output is capped by `maxOutputSize` (default `1MB`). If exceeded, output is truncated and marked.
+  </Accordion>
+
+  <Accordion title="Does secret masking apply in streamed output too?">
+    Yes. Secret value masking is applied in both collected output and streaming output pipelines.
+  </Accordion>
+
+  <Accordion title="Are file contents also auto-masked like stdout/stderr?">
+    No. Masking is text-output masking. Retrieved file contents are returned as-is.
+  </Accordion>
+</AccordionGroup>
+
+## Networking and security
+
+<AccordionGroup>
+  <Accordion title="What is the difference between `none`, `filtered`, and `host` network modes?">
+    - `none`: outbound network blocked (default, safest)
+    - `filtered`: proxy + hostname policy + iptables enforcement
+    - `host`: unrestricted host networking (use only for trusted workloads)
+  </Accordion>
+
+  <Accordion title="In filtered mode, which wins: allowlist or denylist?">
+    Denylist/blacklist wins. Matching blocked hosts are denied even if also allowed by whitelist.
+  </Accordion>
+
+  <Accordion title="Why do my filtered requests get blocked even with an allow pattern?">
+    Common causes:
+    - regex mismatch against actual hostname
+    - blacklist also matches
+    - request host differs from what you expected
+  </Accordion>
+
+  <Accordion title="Does filtered mode rely only on proxy env vars?">
+    No. It also applies in-container iptables rules so uid 100 traffic is restricted to proxy path.
+  </Accordion>
+
+  <Accordion title="What does seccomp `strict`/`unconfined`/`custom` mean?">
+    - `strict`: attempt to apply default profile
+    - `unconfined`: no seccomp filter
+    - `custom`: use profile from `security.customProfilePath`
+  </Accordion>
+
+  <Accordion title="What happens if the default seccomp profile cannot be loaded?">
+    isol8 logs a warning and runs without seccomp filter in that case.
+  </Accordion>
+
+  <Accordion title="Can I configure seccomp from `isol8 run` flags directly?">
+    No direct `run` seccomp flag currently. Use config (`security.*`) or API/library `options.security`.
+  </Accordion>
+
+  <Accordion title="Why do I not see network logs even with `--log-network`?">
+    Network logs require filtered mode. `--log-network` only works when network mode is `filtered`.
+  </Accordion>
+</AccordionGroup>
+
+## Runtimes, files, and package installs
+
+<AccordionGroup>
+  <Accordion title="How is runtime auto-detected from filename?">
+    Runtime registry maps extensions to adapters. Examples:
+    - `.py` -> python
+    - `.mjs` / `.js` / `.cjs` -> node
+    - `.ts` -> bun
+    - `.mts` -> deno
+    - `.sh` -> bash
+  </Accordion>
+
+  <Accordion title="Why does `.ts` default to Bun and not Deno?">
+    Bun is mapped to `.ts`. Deno uses `.mts` to avoid extension collisions.
+  </Accordion>
+
+  <Accordion title="Can Deno run inline `-e` code in current adapter?">
+    Deno adapter currently requires a file path and does not support inline command path.
+  </Accordion>
+
+  <Accordion title="How do I choose ESM vs CJS for Node?">
+    Use `fileExtension` (library/API) or file suffix in CLI input:
+    - `.mjs` for ESM
+    - `.cjs` for CJS
+    Node adapter supports both.
+  </Accordion>
+
+  <Accordion title="Where are runtime package installs written?">
+    Package installs are placed under `/sandbox` user directories (e.g. Python user base, npm/bun globals), not `/tmp`.
+  </Accordion>
+
+  <Accordion title="Can I inject files and retrieve files in one execution?">
+    Yes in API/library via `files` and `outputPaths`. CLI currently does not expose full generic `files/outputPaths` request fields.
+  </Accordion>
+
+  <Accordion title="Why does `putFile`/`getFile` fail with 'No active container' in local engine?">
+    Local file APIs require persistent mode and at least one execution to create/activate the container.
+  </Accordion>
+
+  <Accordion title="Why not install packages in `/tmp`?">
+    `/tmp` is mounted `noexec`. Native extensions often require executable paths, so `/sandbox` is used.
+  </Accordion>
+
+  <Accordion title="Why do package names sometimes fail validation?">
+    install package names are validated to reduce injection risk. Invalid characters are rejected.
+  </Accordion>
+</AccordionGroup>
+
+## Resource limits and performance
+
+<AccordionGroup>
+  <Accordion title="What does `cpuLimit: 1` mean?">
+    One full CPU core worth of quota (`NanoCpus` mapping inside Docker host config).
+  </Accordion>
+
+  <Accordion title="What happens on timeout?">
+    Command is wrapped with timeout enforcement and will be terminated when limit is exceeded.
+  </Accordion>
+
+  <Accordion title="What memory format is accepted for limits?">
+    Formats like `512m`, `1g`, `256k`, or raw bytes are accepted. Invalid format throws a parse error.
+  </Accordion>
+
+  <Accordion title="How should I choose sandbox and tmp sizes?">
+    - increase `sandboxSize` for larger user files/package footprints
+    - keep `tmpSize` sufficient for temporary build/runtime caches
+  </Accordion>
+
+  <Accordion title="What do `poolStrategy` and `poolSize` control?">
+    - `poolStrategy: "fast"` (default): clean/dirty pools with background cleanup
+    - `poolStrategy: "secure"`: cleanup in acquire path
+    - `poolSize`: warm pool capacity
+  </Accordion>
+
+  <Accordion title="Does background pool cleanup matter for one-shot CLI runs?">
+    Usually not much. One-shot CLI exits and calls `engine.stop()`, which drains/removes pool containers. Background cleaning is most useful for long-lived processes (`serve`, long-running app instance).
+  </Accordion>
+</AccordionGroup>
+
+## Remote server and API
+
+<AccordionGroup>
+  <Accordion title="Why do I get 401 vs 403 from remote server?">
+    - `401`: missing `Authorization` header
+    - `403`: header present but API key invalid
+  </Accordion>
+
+  <Accordion title="Does `/health` require auth?">
+    No. `/health` is intentionally unauthenticated for liveness checks.
+  </Accordion>
+
+  <Accordion title="Do file upload/download APIs require sessionId?">
+    Yes. File operations are tied to persistent sessions. Without `sessionId`, they fail.
+  </Accordion>
+
+  <Accordion title="Does `/execute/stream` support persistent sessions?">
+    Not currently. Server streaming path is forced to ephemeral mode.
+  </Accordion>
+
+  <Accordion title="Can I override server defaults per request in remote mode?">
+    Yes. Send `options` in request envelope; they are merged over server defaults for that execution.
+  </Accordion>
+
+  <Accordion title="What does `RemoteIsol8.start()` do?">
+    It performs a health check against `/health` to verify remote server reachability.
+  </Accordion>
+
+  <Accordion title="What does `RemoteIsol8.stop()` do?">
+    If `sessionId` is configured, it calls `DELETE /session/{id}`. Without sessionId it is effectively a no-op cleanup.
+  </Accordion>
+</AccordionGroup>
+
+## Audit logging and observability
+
+<AccordionGroup>
+  <Accordion title="When are audit logs written?">
+    Only when `audit.enabled` is true.
+  </Accordion>
+
+  <Accordion title="What audit destinations are supported?">
+    `filesystem` (or `file`) and `stdout` are implemented.
+  </Accordion>
+
+  <Accordion title="Can I keep audit logs but exclude sensitive fields?">
+    Yes. Use:
+    - `audit.includeCode: false`
+    - `audit.includeOutput: false`
+    and keep metadata/codeHash/duration-level provenance.
+  </Accordion>
+
+  <Accordion title="Can I run custom automation after each audit entry?">
+    Yes. `audit.postLogScript` executes after writes and receives audit file path.
+  </Accordion>
+
+  <Accordion title="When do network logs appear in execution result?">
+    Only when both are true:
+    - network mode is `filtered`
+    - `logNetwork` is enabled
+  </Accordion>
+
+  <Accordion title="How do I reduce audit data retention risk?">
+    Keep `audit.includeCode=false` and `audit.includeOutput=false`, and set reasonable `retentionDays`.
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting quick map
+
+- Runtime detection errors: see `/runtimes` and pass explicit runtime.
+- Session/file 404s: verify stable `sessionId` and that session was created.
+- Unexpected network blocks: verify allow/deny regex and network mode.
+- Missing logs/metrics: verify feature flags (`audit.enabled`, `logNetwork`, etc).
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Troubleshooting" icon="wrench" href="/troubleshooting">
+    Symptom-driven diagnostics and concrete recovery steps.
+  </Card>
+  <Card title="Configuration reference" icon="gear" href="/configuration">
+    Full defaults, schema keys, and safe override patterns.
+  </Card>
+  <Card title="Execution guide" icon="terminal" href="/execution">
+    Request lifecycle, mode behavior, and streaming semantics.
+  </Card>
+  <Card title="Remote server and client" icon="server" href="/remote">
+    API auth, session lifecycle, and file endpoint behavior.
+  </Card>
+</CardGroup>

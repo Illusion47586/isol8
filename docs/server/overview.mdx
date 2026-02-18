@@ -1,85 +1,108 @@
 ---
-title: "Server Overview"
-description: "Deploy isol8 as a remote execution service"
-og:title: "Server Deployment - isol8"
-og:description: "Run isol8 as a standalone HTTP server. Expose code execution as a service for your applications."
+title: "Server overview"
+description: "Run isol8 as an authenticated HTTP execution service with concurrency control, persistent sessions, file APIs, streaming, and auto-pruning."
+icon: "server"
 ---
 
-The isol8 server exposes a REST API for remote code execution. Start it with:
+The isol8 server exposes remote code execution over HTTP for centralized infrastructure.
+
+## Start server
 
 ```bash
-isol8 serve --port 3000 --key my-secret-key
+isol8 serve --port 3000 --key "$ISOL8_API_KEY"
 ```
 
-The server runs as a standalone compiled binary that embeds the Bun runtime — no Bun installation is required. The first time you run `isol8 serve`, the CLI downloads the binary for your platform from GitHub Releases and caches it at `~/.isol8/bin/isol8-server`. Use `--update` to force a re-download. Use `--debug` to enable verbose logging of requests, sessions, and engine lifecycle.
+## What the server provides
 
-## Authentication
+- authenticated execution APIs (`/execute`, `/execute/stream`)
+- optional persistent sessions via `sessionId`
+- file upload/download for active sessions
+- global concurrency control via semaphore (`maxConcurrent`)
+- idle session cleanup (`cleanup.autoPrune` + `cleanup.maxContainerAgeMs`)
 
-All endpoints except `GET /health` require a Bearer token:
+## Authentication model
 
+- `GET /health` is public
+- all other routes require `Authorization: Bearer <api-key>`
+- missing header -> `401`
+- invalid token -> `403`
+
+## Execution architecture
+
+```mermaid
+flowchart TD
+  A["Client"] --> B["Hono server"]
+  B --> C["Auth middleware"]
+  C --> D["Global semaphore"]
+  D --> E["DockerIsol8 engine"]
+  E --> F["Sandbox container(s)"]
 ```
-Authorization: Bearer <your-api-key>
+
+## Request envelope
+
+`POST /execute` and `POST /execute/stream` accept:
+
+```json
+{
+  "request": {
+    "code": "print('ok')",
+    "runtime": "python"
+  },
+  "options": {
+    "timeoutMs": 30000,
+    "network": "none"
+  },
+  "sessionId": "optional-session-id"
+}
 ```
 
-The API key is set via `--key` flag or `$ISOL8_API_KEY` environment variable.
+### Behavior rules
 
-## Architecture
+- no `sessionId`: ephemeral execution (fresh engine lifecycle)
+- with `sessionId`: server creates/reuses persistent session
+- `options` merge over server config defaults
+- audit settings are applied from server config
 
+## Auto-pruning and idle session cleanup
+
+When `cleanup.autoPrune` is enabled:
+
+- cleanup sweep runs every `60_000` ms
+- sessions idle longer than `cleanup.maxContainerAgeMs` are stopped and removed
+- active sessions are skipped while currently executing
+- `lastAccessedAt` is updated on execute and file upload/download calls
+
+Default values:
+
+- `cleanup.autoPrune`: `true`
+- `cleanup.maxContainerAgeMs`: `3_600_000` (1 hour)
+
+```json
+{
+  "cleanup": {
+    "autoPrune": true,
+    "maxContainerAgeMs": 1800000
+  }
+}
 ```
-Client → HTTP Request → isol8 Server → Docker Engine → Container
-                                     ↓
-                              Global Semaphore
-                           (limits concurrency)
-```
-
-Key behaviors:
-
-- **Ephemeral requests** create a new `DockerIsol8` engine per request, using the warm container pool
-- **Session-based requests** (with `sessionId`) reuse a persistent `DockerIsol8` instance stored in memory
-- **Config defaults** from `isol8.config.json` are merged into every request
-- **Global semaphore** limits concurrent container executions (default: 10, configurable via `maxConcurrent`)
-- **Auto-pruning** periodically removes stale containers when enabled
 
 <Warning>
-  The auto-prune mechanism only runs while the server process is active. If `isol8 serve` stops or crashes, the in-memory session tracking is lost and the auto-pruner stops. Any containers running at that time will remain as orphans. Use the `isol8 cleanup` CLI command to remove orphaned containers.
+  Auto-pruning depends on the server process being alive. If the process is terminated, in-memory session tracking stops; use `isol8 cleanup` to remove any orphaned containers.
 </Warning>
 
-## Endpoints Overview
+## Related pages
 
-| Method | Path | Description |
-|:-------|:-----|:------------|
-| `GET` | `/health` | Health check (no auth) |
-| `POST` | `/execute` | Execute code, return full result |
-| `POST` | `/execute/stream` | Execute code, stream output via SSE |
-| `POST` | `/file` | Upload a file to a session container |
-| `GET` | `/file` | Download a file from a session container |
-| `DELETE` | `/session/:id` | Destroy a persistent session |
-
-See [Endpoints](/server/endpoints) for full request/response schemas.
-
-## Remote Client
-
-Use `RemoteIsol8` to connect to a server from your TypeScript application:
-
-```typescript
-import { RemoteIsol8 } from "isol8";
-
-const isol8 = new RemoteIsol8(
-  {
-    host: "http://localhost:3000",
-    apiKey: "my-secret-key",
-    sessionId: "optional-session-id",
-  },
-  { network: "none", memoryLimit: "512m" }
-);
-
-await isol8.start();
-const result = await isol8.execute({
-  code: 'print("remote execution")',
-  runtime: "python",
-});
-console.log(result.stdout);
-await isol8.stop();
-```
-
-`RemoteIsol8` implements the same `Isol8Engine` interface as `DockerIsol8`, so you can swap between local and remote execution without changing your application code.
+<CardGroup cols={2}>
+  <Card title="Server routes" icon="route" href="/server/routes">
+    Full endpoint-by-endpoint request and response reference.
+  </Card>
+  <Card title="Remote server and client" icon="server" href="/remote">
+    Practical remote usage patterns with CLI, API, and library examples.
+  </Card>
+  <Card title="Configuration reference" icon="gear" href="/configuration">
+    Defaults and cleanup settings that affect server behavior.
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/troubleshooting">
+    Diagnose auth, session, and remote execution issues.
+  </Card>
+</CardGroup>

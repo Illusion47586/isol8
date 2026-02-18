@@ -1,12 +1,12 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
+  "theme": "almond",
   "name": "isol8",
   "description": "Secure code execution engine for AI agents. Run untrusted code in Docker containers with strict resource limits, network controls, and output sanitization.",
   "colors": {
-    "primary": "#0E7C6B",
-    "light": "#55D3B9",
-    "dark": "#0A5C50"
+    "primary": "#FC642D",
+    "light": "#FE9D7A",
+    "dark": "#C83F0F"
   },
   "favicon": "/favicon.png",
   "metadata": {
@@ -17,6 +17,14 @@
     "twitter:title": "isol8 - Secure Code Execution Engine",
     "twitter:description": "Secure code execution engine for AI agents. Run untrusted code in Docker containers.",
     "twitter:card": "summary_large_image"
+  },
+  "api": {
+    "mdx": {
+      "server": "http://localhost:3000",
+      "auth": {
+        "method": "bearer"
+      }
+    }
   },
   "navbar": {
     "links": [
@@ -35,70 +43,78 @@
         "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting Started",
-            "pages": ["index", "quickstart"]
+            "group": "Get Started",
+            "pages": ["index", "safety-for-humans", "quickstart"]
           },
           {
-            "group": "CLI",
+            "group": "Core Concepts",
             "pages": [
-              "cli/run",
-              "cli/setup",
-              "cli/serve",
-              "cli/config",
-              "cli/cleanup"
+              "execution",
+              "runtimes",
+              "security",
+              "persistence",
+              "packages"
             ]
           },
           {
-            "group": "TypeScript Library",
-            "pages": [
-              "library/overview",
-              "library/execution",
-              "library/streaming",
-              "library/file-io"
-            ]
+            "group": "Deployment & Ops",
+            "pages": ["remote", "observability", "architecture", "performance"]
           },
           {
             "group": "Reference",
             "pages": [
+              "passing-values",
               "configuration",
               "remote-code",
-              "runtimes",
-              "benchmarks",
-              "architecture",
-              "security",
-              "faq"
-            ]
-          }
-        ]
-      },
-      {
-        "tab": "Cookbook",
-        "groups": [
-          {
-            "group": "Use Cases",
-            "pages": [
-              "cookbook/ai-agents",
-              "cookbook/education",
-              "cookbook/data-processing",
-              "cookbook/ci-testing",
-              "cookbook/web-scraping",
-              "cookbook/multi-runtime",
-              "cookbook/remote-execution",
-              "cookbook/debugging"
+              "cli",
+              "library"
             ]
           },
           {
-            "group": "Operations",
-            "pages": ["cookbook/audit-logs"]
+            "group": "Help",
+            "pages": ["troubleshooting", "faq"]
           }
         ]
       },
       {
-        "tab": "API Reference",
+        "tab": "Server",
         "groups": [
           {
-            "group": "HTTP Server",
-            "pages": ["server/overview", "server/endpoints"]
+            "group": "Overview",
+            "pages": ["server/overview", "server/routes"]
+          },
+          {
+            "group": "Endpoints",
+            "pages": [
+              "server/get-health",
+              "server/post-execute",
+              "server/post-execute-stream",
+              "server/post-file",
+              "server/get-file",
+              "server/delete-session"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Guides",
+        "groups": [
+          {
+            "group": "Application Patterns",
+            "pages": [
+              "guides/ai-agents",
+              "guides/data-processing",
+              "guides/web-scraping",
+              "guides/education"
+            ]
+          },
+          {
+            "group": "Engineering Workflows",
+            "pages": ["guides/ci-testing", "guides/debugging"]
+          },
+          {
+            "group": "Runtime Orchestration",
+            "pages": ["guides/multi-runtime"]
           }
         ]
       }

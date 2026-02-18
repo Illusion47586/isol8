@@ -1,0 +1,54 @@
+---
+title: "Execute stream"
+description: "Run code and stream output as Server-Sent Events."
+api: "POST /execute/stream"
+icon: "radio"
+---
+
+Streams execution events as SSE frames.
+
+<ParamField body="request" type="ExecutionRequest" required>
+  Execution request with `code` and `runtime`.
+</ParamField>
+
+<ParamField body="options" type="Isol8Options">
+  Optional execution options merged over defaults.
+</ParamField>
+
+<Note>
+  Streaming endpoint uses ephemeral execution lifecycle.
+</Note>
+
+<ResponseField name="type" type="string">
+  Event kind: `stdout`, `stderr`, `exit`, or `error`.
+</ResponseField>
+
+<ResponseField name="data" type="string">
+  Event payload content.
+</ResponseField>
+
+<RequestExample>
+```bash
+curl -N -X POST http://localhost:3000/execute/stream \
+  -H "Authorization: Bearer $ISOL8_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "request": {
+      "runtime": "python",
+      "code": "import time\nfor i in range(3):\n print(i)\n time.sleep(1)"
+    }
+  }'
+```
+</RequestExample>
+
+<ResponseExample>
+```text
+data: {"type":"stdout","data":"0\n"}
+
+data: {"type":"stdout","data":"1\n"}
+
+data: {"type":"stdout","data":"2\n"}
+
+data: {"type":"exit","data":"0"}
+```
+</ResponseExample>
