@@ -1,0 +1,215 @@
+---
+title: "FAQ"
+description: "Frequently asked questions about isol8 flags, modes, and behaviors"
+icon: "circle-question"
+---
+
+## Flags and Modes
+
+<AccordionGroup>
+  <Accordion title="What is the difference between --persistent and --persist?">
+    These are two separate flags that control different things:
+
+    | Flag | Purpose | Scope |
+    |:-----|:--------|:------|
+    | `--persistent` | Keep a container alive **between** runs for stateful workflows | Execution mode |
+    | `--persist` | Keep the container running **after** execution for debugging | Post-execution cleanup |
+
+    **`--persistent`** sets the execution mode to `persistent`. The container is reused across multiple `execute()` calls, preserving filesystem state, environment variables, and installed packages between runs. This is for workflows where you need to build up state incrementally (e.g., write a file in one execution and read it in the next).
+
+    **`--persist`** prevents the container from being cleaned up after execution finishes. This is a debugging tool — it lets you `docker exec` into the container after your code has run to inspect the filesystem, check logs, or diagnose issues. Without `--persist`, ephemeral containers are returned to the pool and wiped, and persistent containers are stopped when `stop()` is called.
+
+    You can use both together: `--persistent --persist` gives you a stateful session whose container remains running even after `stop()`.
+  </Accordion>
+
+  <Accordion title="What is the difference between --persist and cleanup.autoPrune?">
+    These operate at completely different levels:
+
+    | Setting | Level | Controls |
+    |:--------|:------|:---------|
+    | `--persist` | Engine (per-execution) | Whether a container is cleaned up after a single execution |
+    | `cleanup.autoPrune` | Config (server-level) | Whether `isol8 serve` periodically prunes idle sessions |
+
+    **`--persist`** (or `persist: true` in the library) is an engine-level option. It affects the container used for a specific execution. When `true`, the container is left running after the code finishes. Default: `false`.
+
+    **`cleanup.autoPrune`** is a config-level option under the `cleanup` section. It only affects the HTTP server (`isol8 serve`). When `true`, the server periodically scans for idle sessions older than `cleanup.maxContainerAgeMs` (default: 1 hour) and removes them. Default: `true`.
+
+    Setting `persist: true` does **not** prevent server-side auto-pruning. If you need a container to survive indefinitely on the server, you should also set `cleanup.autoPrune: false` in your config or increase `maxContainerAgeMs`.
+  </Accordion>
+
+  <Accordion title="What does --debug do?">
+    `--debug` enables verbose internal logging from the isol8 engine. When set, internal operations are printed to the console with a `[DEBUG]` prefix:
+
+    - Container pool operations (acquire, release, replenish)
+    - Container lifecycle events (create, start, stop, remove)
+    - Persist/cleanup decisions
+    - Image resolution
+
+    `--debug` does **not** affect the output of your executed code. It only controls isol8's own internal logs. Without `--debug`, these logs are completely suppressed.
+
+    ```bash
+    # See what isol8 is doing internally
+    isol8 run -e "print('hello')" --runtime python --debug
+    ```
+  </Accordion>
+
+  <Accordion title="How do --persist and --debug interact?">
+    They are independent flags:
+
+    | `--persist` | `--debug` | Behavior |
+    |:------------|:----------|:---------|
+    | `false` | `false` | Default. Containers are cleaned up silently. |
+    | `false` | `true` | Containers are cleaned up, but you see internal logs about the cleanup. |
+    | `true` | `false` | Containers are left running, but you get no internal logs. |
+    | `true` | `true` | Containers are left running, and you see internal logs about the persist decision. |
+  </Accordion>
+
+  <Accordion title="What is the difference between ephemeral and persistent mode?">
+    | Aspect | Ephemeral | Persistent |
+    |:-------|:----------|:-----------|
+    | Container lifecycle | Fresh container per execution (from warm pool) | Same container reused across executions |
+    | State preservation | None — `/sandbox` is wiped between runs | Full — files and env persist |
+    | Runtime switching | Each execution can use a different runtime | Locked to one runtime per container |
+    | Performance | ~125-145ms (warm pool) | ~250-300ms first run, then ~120ms |
+    | Use case | Stateless one-off executions | Multi-step workflows, REPL-like sessions |
+
+    Ephemeral mode (default) draws from a warm container pool. After execution, the container's `/sandbox` directory is wiped and the container is returned to the pool for reuse by the next execution. This is fast and secure — each execution starts with a clean slate.
+
+    Persistent mode creates a dedicated container that lives across multiple `execute()` calls. Files written in one execution are visible in the next. The container is only destroyed when `stop()` is called (or when the server prunes it if `cleanup.autoPrune` is enabled).
+
+    <Warning>
+    Persistent containers are locked to a single runtime. Attempting to run Python after Node.js on the same persistent container throws an error. Create a separate `DockerIsol8` instance for each runtime you need.
+    </Warning>
+  </Accordion>
+</AccordionGroup>
+
+## Networking
+
+<AccordionGroup>
+  <Accordion title="When should I use none vs filtered vs host network mode?">
+    | Mode | Security | Use case |
+    |:-----|:---------|:---------|
+    | `none` | Highest | Default. Code that doesn't need network access. |
+    | `filtered` | Medium | Code that needs specific API endpoints (e.g., OpenAI, GitHub). |
+    | `host` | Lowest | Code that needs unrestricted network access. Use with trusted code only. |
+
+    **`none`** (default) disables all network access. The container has no network interface. DNS, HTTP, TCP — nothing works. This is the most secure option.
+
+    **`filtered`** gives the container bridge networking with an HTTP/HTTPS proxy that filters requests by hostname. Use `--allow` and `--deny` regex patterns to control which hosts are reachable. Kernel-level iptables rules enforce that the sandbox user can only reach the proxy — non-HTTP protocols (raw TCP, UDP, WebSocket) and direct connections bypassing the proxy are blocked at the kernel level.
+
+    **`host`** gives the container full access to the host's network. Only use this when you trust the code or genuinely need unrestricted connectivity.
+  </Accordion>
+
+  <Accordion title="Why does --net in the CLI ignore the config file default?">
+    The `--net` flag has a Commander-level default of `"none"`, which means it always has a value when the CLI runs. This effectively overrides the `defaults.network` setting from your config file. To use a different network mode, pass `--net` explicitly:
+
+    ```bash
+    isol8 run script.py --net filtered --allow "^api\.example\.com$"
+    ```
+
+    This is a deliberate safety choice — network access should be an explicit opt-in, not something silently inherited from a config file.
+  </Accordion>
+</AccordionGroup>
+
+## Runtimes
+
+<AccordionGroup>
+  <Accordion title="Why do .ts files run with Bun instead of Deno?">
+    Both Bun and Deno can execute TypeScript, but `.ts` files default to **Bun** because it is registered first in the runtime adapter registry. To run TypeScript with Deno, either:
+
+    - Use the `.mts` file extension, or
+    - Pass `--runtime deno` explicitly
+
+    ```bash
+    # Runs with Bun (default for .ts)
+    isol8 run script.ts
+
+    # Runs with Deno
+    isol8 run script.mts
+    isol8 run script.ts --runtime deno
+    ```
+  </Accordion>
+
+  <Accordion title="Why can't I use -e (inline code) with Deno?">
+    Deno does not support inline code execution. The Deno adapter requires a file path — it throws an error if no file is provided:
+
+    ```
+    Error: Deno adapter requires a file path — inline code is not supported.
+    ```
+
+    To run Deno code, provide it as a file (via the `files` field in `ExecutionRequest` or by passing a file argument to the CLI).
+  </Accordion>
+
+  <Accordion title="Why does my persistent container reject a different runtime?">
+    Persistent containers are created with a specific runtime's Docker image (e.g., `isol8:python`). Each image only contains its own language toolchain. A Python container doesn't have Node.js installed, so attempting to switch runtimes fails:
+
+    ```
+    Error: Cannot switch runtime from "python" to "node". Each persistent
+    container supports a single runtime. Create a new Isol8 instance for
+    a different runtime.
+    ```
+
+    Create a separate `DockerIsol8` instance (or a separate persistent session on the server) for each runtime you need.
+  </Accordion>
+</AccordionGroup>
+
+## Resource Limits
+
+<AccordionGroup>
+  <Accordion title="Why do packages fail with 'Operation not permitted'?">
+    Packages that include native extensions (like numpy, pandas, or scipy) compile and install shared library files (`.so`). These files need to be **executable**, which means they must be installed in a directory that allows execution.
+
+    isol8 installs packages to `/sandbox` (which has the `exec` flag), not `/tmp` (which has `noexec`). The default `/sandbox` size is 512MB, which is sufficient for most packages. If installation fails with "No space left on device" or "Operation not permitted", increase the sandbox size:
+
+    ```bash
+    isol8 run -e "import numpy" --runtime python --install numpy --sandbox-size 1g
+    ```
+  </Accordion>
+
+  <Accordion title="What is the difference between --sandbox-size and --tmp-size?">
+    | Mount | Default | Execution | Purpose |
+    |:------|:--------|:----------|:--------|
+    | `/sandbox` | 512MB | Allowed | Working directory, package installations, user files |
+    | `/tmp` | 256MB | Blocked (`noexec`) | Temporary files, package manager caches |
+
+    `/sandbox` is where your code runs, packages are installed, and output files are written. It allows execution of shared libraries.
+
+    `/tmp` is for temporary files that programs create during execution. The `noexec` flag on `/tmp` is a security measure — it prevents untrusted code from downloading and executing arbitrary binaries in the temp directory.
+  </Accordion>
+
+  <Accordion title="Why was my output truncated?">
+    Output (stdout + stderr) is capped at `maxOutputSize` (default: 1MB / 1,048,576 bytes). When output exceeds this limit, it is truncated and `result.truncated` is set to `true`. This prevents memory exhaustion from programs that produce excessive output (e.g., infinite loops printing to stdout).
+
+    Increase the limit with `--max-output`:
+
+    ```bash
+    isol8 run generate_report.py --max-output 10485760  # 10MB
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Secrets
+
+<AccordionGroup>
+  <Accordion title="How does secret masking work?">
+    When you pass `--secret KEY=VALUE`, isol8:
+
+    1. Injects `KEY` as an environment variable inside the container
+    2. Scans all stdout and stderr for any occurrence of `VALUE`
+    3. Replaces every occurrence with `***`
+
+    ```bash
+    isol8 run -e "import os; print(os.environ['TOKEN'])" 
+      --runtime python --secret TOKEN=sk-abc123
+    # stdout: ***
+    ```
+
+    Masking happens **after** code execution, on the collected output. The code itself has full access to the secret value — only the output seen by the caller is sanitized. This prevents accidental leakage in logs, AI agent responses, or user-facing output.
+  </Accordion>
+
+  <Accordion title="Can secrets leak through file outputs?">
+    Secret masking only applies to stdout and stderr. If your code writes a secret value to a file and you retrieve that file via `getFile()`, the secret will **not** be masked in the file contents. Only the streamed/collected text output is sanitized.
+
+    To avoid this, do not write secrets to files that you intend to retrieve, or implement your own masking on retrieved file contents.
+  </Accordion>
+</AccordionGroup>

@@ -1,0 +1,231 @@
+---
+title: "Multi-Runtime Workflows"
+description: "Combine multiple language runtimes in a single workflow for polyglot pipelines"
+icon: "layer-group"
+---
+
+isol8 supports Python, Node.js, Bun, Deno, and Bash. You can chain executions across different runtimes in a single workflow, using each language for what it does best.
+
+## Language-Specific Strengths
+
+| Runtime | Best for |
+|:--------|:---------|
+| Python | Data analysis, ML, scientific computing, scripting |
+| Node.js | JSON processing, API integrations, npm ecosystem |
+| Bun | TypeScript, fast startup, modern JS |
+| Bash | File operations, system commands, piping |
+| Deno | Secure TypeScript, URL imports |
+
+## Polyglot Pipeline
+
+Use Bash to prepare data, Python to analyze it, and Node.js to format the output:
+
+```typescript
+import { DockerIsol8 } from "isol8";
+
+const isol8 = new DockerIsol8({ mode: "ephemeral", network: "none" });
+await isol8.start();
+
+// Step 1: Generate raw data with Bash
+const step1 = await isol8.execute({
+  code: `
+for i in $(seq 1 100); do
+  echo "$i,$((RANDOM % 1000)),$((RANDOM % 5 + 1))"
+done
+`,
+  runtime: "bash",
+});
+
+// Step 2: Analyze with Python (pass data via stdin)
+const step2 = await isol8.execute({
+  code: `
+import csv, json, sys, io
+
+reader = csv.reader(io.StringIO(sys.stdin.read()))
+rows = [(int(r[0]), int(r[1]), int(r[2])) for r in reader]
+
+stats = {
+    "count": len(rows),
+    "avg_value": sum(r[1] for r in rows) / len(rows),
+    "max_value": max(r[1] for r in rows),
+    "rating_distribution": {}
+}
+
+for _, _, rating in rows:
+    stats["rating_distribution"][str(rating)] = 
+        stats["rating_distribution"].get(str(rating), 0) + 1
+
+json.dump(stats, sys.stdout)
+`,
+  runtime: "python",
+  stdin: step1.stdout,
+});
+
+// Step 3: Format report with Node.js
+const step3 = await isol8.execute({
+  code: `
+const stats = JSON.parse(require("fs").readFileSync("/dev/stdin", "utf8"));
+
+console.log("=== Data Analysis Report ===");
+console.log(`Total records: \${stats.count}`);
+console.log(`Average value: \${stats.avg_value.toFixed(2)}`);
+console.log(`Maximum value: \${stats.max_value}`);
+console.log("
+Rating distribution:");
+Object.entries(stats.rating_distribution)
+  .sort(([a], [b]) => Number(a) - Number(b))
+  .forEach(([rating, count]) => {
+    const bar = "█".repeat(Math.round(count / 2));
+    console.log(`  \${rating} stars: \${bar} (\${count})`);
+  });
+`,
+  runtime: "node",
+  stdin: step2.stdout,
+});
+
+console.log(step3.stdout);
+```
+
+## Runtime Auto-Detection via CLI
+
+The CLI auto-detects the runtime from the file extension:
+
+```bash
+# Each file uses its natural runtime
+isol8 run generate.sh        # Bash
+isol8 run analyze.py         # Python
+isol8 run format.js          # Node.js
+isol8 run transform.ts       # Bun
+isol8 run validate.mts       # Deno
+```
+
+## Comparing Implementations
+
+Run the same algorithm in multiple languages and compare results:
+
+```typescript
+const algorithms = {
+  python: `
+import time, json
+start = time.time()
+n = 35
+def fib(n):
+    if n <= 1: return n
+    return fib(n-1) + fib(n-2)
+result = fib(n)
+elapsed = time.time() - start
+print(json.dumps({"result": result, "ms": round(elapsed * 1000, 2)}))
+`,
+  node: `
+const start = Date.now();
+function fib(n) { return n <= 1 ? n : fib(n-1) + fib(n-2); }
+const result = fib(35);
+console.log(JSON.stringify({ result, ms: Date.now() - start }));
+`,
+  bun: `
+const start = Bun.nanoseconds();
+function fib(n: number): number { return n <= 1 ? n : fib(n-1) + fib(n-2); }
+const result = fib(35);
+console.log(JSON.stringify({ result, ms: Math.round((Bun.nanoseconds() - start) / 1e6) }));
+`,
+};
+
+const results = await Promise.all(
+  Object.entries(algorithms).map(async ([runtime, code]) => {
+    const result = await isol8.execute({
+      code,
+      runtime: runtime as "python" | "node" | "bun",
+    });
+    return { runtime, ...JSON.parse(result.stdout) };
+  })
+);
+
+console.table(results);
+// ┌─────────┬───────────┬──────────┬────────┐
+// │ runtime │  result   │    ms    │        │
+// ├─────────┼───────────┼──────────┤────────┤
+// │ python  │ 9227465   │  2100.5  │        │
+// │ node    │ 9227465   │   85.0   │        │
+// │ bun     │ 9227465   │   62.0   │        │
+// └─────────┴───────────┴──────────┴────────┘
+```
+
+## Code Transpilation Pipeline
+
+Use one runtime to generate code for another:
+
+```typescript
+// Step 1: Generate Python code with Bun/TypeScript
+const generator = await isol8.execute({
+  code: `
+// Generate a Python data class from a schema
+const schema = {
+  name: "User",
+  fields: [
+    { name: "id", type: "int" },
+    { name: "email", type: "str" },
+    { name: "active", type: "bool", default: "True" },
+  ],
+};
+
+const lines = [
+  "from dataclasses import dataclass",
+  "",
+  "@dataclass",
+  `class \${schema.name}:`,
+  ...schema.fields.map(f =>
+    `    \${f.name}: \${f.type}` + (f.default ? ` = \${f.default}` : "")
+  ),
+  "",
+  '# Test it',
+  `u = \${schema.name}(id=1, email="alice@example.com")`,
+  "print(u)",
+];
+
+console.log(lines.join("
+"));
+`,
+  runtime: "bun",
+});
+
+// Step 2: Execute the generated Python code
+const execution = await isol8.execute({
+  code: generator.stdout,
+  runtime: "python",
+});
+
+console.log(execution.stdout);
+// User(id=1, email='alice@example.com', active=True)
+```
+
+## Bash as a Glue Language
+
+Use Bash to orchestrate file operations between runtime-specific steps:
+
+```typescript
+// Prepare the environment
+await isol8.execute({
+  code: `
+mkdir -p /sandbox/input /sandbox/output
+echo '{"items": [1, 2, 3, 4, 5]}' > /sandbox/input/data.json
+echo "Environment ready"
+ls -la /sandbox/input/
+`,
+  runtime: "bash",
+});
+```
+
+## CLI Chaining
+
+Chain multiple isol8 commands in a shell pipeline:
+
+```bash
+# Generate data with Python, process with Node.js
+isol8 run -e "import json; print(json.dumps([{'x': i, 'y': i**2} for i in range(10)]))" 
+  --runtime python | 
+isol8 run -e "
+  const data = JSON.parse(require('fs').readFileSync('/dev/stdin', 'utf8'));
+  console.log('Points:', data.length);
+  console.log('Max Y:', Math.max(...data.map(d => d.y)));
+" --runtime node
+```

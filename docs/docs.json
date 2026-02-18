@@ -36,7 +36,12 @@
         "groups": [
           {
             "group": "Get Started",
-            "pages": ["v2/intro", "v2/safety-for-humans", "v2/quickstart"]
+            "pages": [
+              "v2/intro",
+              "v2/safety-for-humans",
+              "v2/quickstart",
+              "v2/faq"
+            ]
           },
           {
             "group": "Essentials",
@@ -54,6 +59,18 @@
               "v2/observability",
               "v2/architecture",
               "v2/performance"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "v2/guides/ai-agents",
+              "v2/guides/data-processing",
+              "v2/guides/web-scraping",
+              "v2/guides/ci-testing",
+              "v2/guides/multi-runtime",
+              "v2/guides/education",
+              "v2/guides/debugging"
             ]
           },
           {

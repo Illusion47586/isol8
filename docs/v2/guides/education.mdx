@@ -1,0 +1,224 @@
+---
+title: "Education"
+description: "Build coding education platforms and online judges that grade student submissions"
+icon: "graduation-cap"
+---
+
+isol8 is well-suited for education platforms where students submit code that needs to be executed and graded automatically. The sandbox prevents malicious or buggy student code from affecting the host system.
+
+## Basic Code Grading
+
+Grade a student's submission by running it and comparing output:
+
+```typescript
+import { DockerIsol8 } from "isol8";
+
+const isol8 = new DockerIsol8({
+  mode: "ephemeral",
+  network: "none",       // Students shouldn't access the internet
+  memoryLimit: "256m",   // Conservative limits
+  timeoutMs: 5000,       // 5 seconds is plenty for most exercises
+  pidsLimit: 32,         // Prevent fork bombs
+});
+
+await isol8.start();
+
+interface TestCase {
+  input: string;
+  expectedOutput: string;
+}
+
+interface GradeResult {
+  passed: boolean;
+  testCase: number;
+  expected: string;
+  actual: string;
+  error?: string;
+}
+
+async function gradeSubmission(
+  code: string,
+  runtime: "python" | "node",
+  testCases: TestCase[]
+): Promise<GradeResult[]> {
+  const results: GradeResult[] = [];
+
+  for (let i = 0; i < testCases.length; i++) {
+    const tc = testCases[i];
+    const result = await isol8.execute({
+      code,
+      runtime,
+      stdin: tc.input,
+      timeoutMs: 5000,
+    });
+
+    const actual = result.stdout.trim();
+    results.push({
+      passed: actual === tc.expectedOutput.trim(),
+      testCase: i + 1,
+      expected: tc.expectedOutput.trim(),
+      actual,
+      error: result.exitCode !== 0 ? result.stderr : undefined,
+    });
+  }
+
+  return results;
+}
+
+// Usage
+const studentCode = `
+n = int(input())
+print(n * n)
+`;
+
+const testCases = [
+  { input: "5", expectedOutput: "25" },
+  { input: "0", expectedOutput: "0" },
+  { input: "-3", expectedOutput: "9" },
+];
+
+const grades = await gradeSubmission(studentCode, "python", testCases);
+console.log(grades);
+// [{ passed: true, testCase: 1, ... }, { passed: true, testCase: 2, ... }, ...]
+```
+
+## Interactive Coding Playground
+
+Build a playground where users type code and see results instantly:
+
+```typescript
+import { Hono } from "hono";
+import { DockerIsol8 } from "isol8";
+
+const app = new Hono();
+const isol8 = new DockerIsol8({ mode: "ephemeral", network: "none" });
+await isol8.start();
+
+app.post("/execute", async (c) => {
+  const { code, runtime, stdin } = await c.req.json();
+
+  const result = await isol8.execute({
+    code,
+    runtime: runtime || "python",
+    stdin,
+    timeoutMs: 10000,
+  });
+
+  return c.json({
+    stdout: result.stdout,
+    stderr: result.stderr,
+    exitCode: result.exitCode,
+    durationMs: result.durationMs,
+    truncated: result.truncated,
+  });
+});
+
+export default app;
+```
+
+## Multi-Language Support
+
+Let students choose their language for the same problem:
+
+```typescript
+const SUPPORTED_RUNTIMES = ["python", "node", "bun", "bash"] as const;
+type SupportedRuntime = (typeof SUPPORTED_RUNTIMES)[number];
+
+async function executeMultiLang(
+  code: string,
+  runtime: SupportedRuntime,
+  stdin?: string
+) {
+  if (!SUPPORTED_RUNTIMES.includes(runtime)) {
+    throw new Error(`Unsupported runtime: ${runtime}`);
+  }
+
+  return isol8.execute({
+    code,
+    runtime,
+    stdin,
+    timeoutMs: 10000,
+  });
+}
+
+// Same problem, different languages
+const pythonSolution = `print(sum(range(1, int(input()) + 1)))`;
+const nodeSolution = `
+const n = parseInt(require("readline").createInterface({
+  input: process.stdin
+}).on("line", (l) => { console.log(n*(n+1)/2); }).n = 0);
+`;
+const bashSolution = `read n; echo $(( n * (n + 1) / 2 ))`;
+```
+
+## Detecting Common Student Mistakes
+
+Check for infinite loops, excessive memory usage, and other issues:
+
+```typescript
+async function safeGrade(code: string, runtime: "python" | "node", stdin: string) {
+  const result = await isol8.execute({
+    code,
+    runtime,
+    stdin,
+    timeoutMs: 5000,
+    // memoryLimit is set at engine level
+  });
+
+  // Detect common issues
+  if (result.stderr.includes("EXECUTION TIMED OUT")) {
+    return { verdict: "TIME_LIMIT_EXCEEDED", output: result.stdout };
+  }
+
+  if (result.stderr.includes("Killed") || result.stderr.includes("MemoryError")) {
+    return { verdict: "MEMORY_LIMIT_EXCEEDED", output: result.stdout };
+  }
+
+  if (result.exitCode !== 0) {
+    return { verdict: "RUNTIME_ERROR", error: result.stderr };
+  }
+
+  return { verdict: "OK", output: result.stdout.trim() };
+}
+```
+
+## Batch Grading
+
+Grade an entire class's submissions concurrently:
+
+```typescript
+interface Submission {
+  studentId: string;
+  code: string;
+  runtime: "python" | "node";
+}
+
+async function batchGrade(
+  submissions: Submission[],
+  testCases: TestCase[],
+  concurrency = 5
+) {
+  const results: Record<string, GradeResult[]> = {};
+
+  // Process in batches to respect concurrency limits
+  for (let i = 0; i < submissions.length; i += concurrency) {
+    const batch = submissions.slice(i, i + concurrency);
+    const batchResults = await Promise.all(
+      batch.map(async (sub) => ({
+        studentId: sub.studentId,
+        grades: await gradeSubmission(sub.code, sub.runtime, testCases),
+      }))
+    );
+
+    for (const { studentId, grades } of batchResults) {
+      results[studentId] = grades;
+    }
+  }
+
+  return results;
+}
+```
+
+<Info>
+isol8's built-in concurrency semaphore (configurable via `maxConcurrent` in the config, default 10) automatically limits parallel container executions. You don't need to implement your own rate limiting at the engine level, but you may want to limit at the application level to control queue depth.
+</Info>
