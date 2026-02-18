@@ -178,7 +178,7 @@ program
   .option("--writable", "Disable read-only root filesystem")
   .option("--max-output <bytes>", "Maximum output size in bytes")
   .option("--secret <KEY=VALUE>", "Secret env var (repeatable, values masked)", collect, [])
-  .option("--sandbox-size <size>", "Sandbox tmpfs size (e.g. 128m)")
+  .option("--sandbox-size <size>", "Sandbox tmpfs size (e.g. 128m, 512m)")
   .option("--tmp-size <size>", "Tmp tmpfs size (e.g. 256m, 512m)")
   .option("--stdin <data>", "Data to pipe to stdin")
   .option("--install <package>", "Install package for runtime (repeatable)", collect, [])
@@ -188,6 +188,8 @@ program
   .option("--debug", "Enable debug logging")
   .option("--persist", "Keep container running after execution for inspection")
   .option("--log-network", "Log all network requests (requires --net filtered)")
+  .option("--pool-strategy <mode>", "Pool strategy: fast (default) or secure", "fast")
+  .option("--pool-size <size>", "Pool size (number or 'clean,dirty' for fast mode)", "1,1")
   .action(async (file: string | undefined, opts) => {
     const { code, runtime, engineOptions, engine, stdinData, fileExtension } =
       await resolveRunInput(file, opts);
@@ -764,6 +766,15 @@ async function resolveRunInput(file: string | undefined, opts: any) {
     debug: opts.debug ?? config.debug,
     persist: opts.persist ?? false,
     ...(opts.logNetwork ? { logNetwork: true } : {}),
+    poolStrategy: opts.poolStrategy === "secure" ? "secure" : "fast",
+    poolSize: opts.poolSize
+      ? opts.poolSize.includes(",")
+        ? {
+            clean: Number.parseInt(opts.poolSize.split(",")[0]!, 10),
+            dirty: Number.parseInt(opts.poolSize.split(",")[1]!, 10),
+          }
+        : Number.parseInt(opts.poolSize, 10)
+      : { clean: 1, dirty: 1 },
   };
 
   logger.debug(
