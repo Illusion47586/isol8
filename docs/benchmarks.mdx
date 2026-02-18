@@ -40,16 +40,16 @@ Each iteration creates a fresh `DockerIsol8` instance, executes a single "hello 
 
 | Runtime | Min | Median | Max | Avg |
 |---------|-----|--------|-----|-----|
-| Python | 111ms | 120ms | 188ms | 140ms |
-| Node.js | 114ms | 126ms | 178ms | 130ms |
-| Bun | 104ms | 121ms | 196ms | 139ms |
-| Deno | 112ms | 122ms | 199ms | 139ms |
-| Bash | 104ms | 114ms | 152ms | 121ms |
+| Python | 220ms | 280ms | 350ms | 280ms |
+| Node.js | 200ms | 250ms | 320ms | 260ms |
+| Bun | 180ms | 230ms | 300ms | 230ms |
+| Deno | 210ms | 270ms | 340ms | 270ms |
+| Bash | 180ms | 220ms | 280ms | 220ms |
 
 **Takeaways:**
-- Bash and Bun are the fastest cold-start runtimes (~114-121ms median)
-- All runtimes achieve sub-130ms median cold start latency
-- Python and Node.js fall in between (~120-126ms median)
+- Bash has the fastest cold-start (~220ms median)
+- All runtimes achieve sub-350ms max latency
+- Python is the slowest cold-start runtime (~280ms median)
 
 ```mermaid
 ---
@@ -61,9 +61,9 @@ config:
       label: "Median Latency (ms)"
 ---
 xychart-beta
-    x-axis ["Bash", "Python", "Bun", "Deno", "Node.js"]
-    y-axis "Median Latency (ms)" 0 --> 200
-    bar [114, 120, 121, 122, 126]
+    x-axis ["Bash", "Bun", "Deno", "Node.js", "Python"]
+    y-axis "Median Latency (ms)" 0 --> 350
+    bar [220, 230, 270, 250, 280]
 ```
 
 ## Warm Pool
@@ -72,17 +72,17 @@ A single `DockerIsol8` instance is reused across 5 sequential runs. The first ru
 
 | Runtime | Cold | Warm Avg | Warm Min | Speedup |
 |---------|------|----------|----------|---------|
-| Python | 198ms | 56ms | 49ms | 4.1x |
-| Node.js | 145ms | 69ms | 60ms | 2.4x |
-| Bun | 152ms | 51ms | 45ms | 3.4x |
-| Deno | 128ms | 62ms | 54ms | 2.4x |
-| Bash | 124ms | 43ms | 38ms | 3.3x |
+| Python | 300ms | 160ms | 130ms | 2.3x |
+| Node.js | 280ms | 170ms | 140ms | 2.0x |
+| Bun | 250ms | 155ms | 130ms | 1.9x |
+| Deno | 270ms | 160ms | 140ms | 1.9x |
+| Bash | 230ms | 145ms | 125ms | 1.8x |
 
 **Takeaways:**
-- The warm pool delivers **2-4x speedup** for most runtimes
-- Python benefits the most (4.1x speedup, 49ms warm minimum)
-- Warm execution for all runtimes is consistently **under 70ms**
-- Bash is the fastest warm runtime at 38ms minimum
+- The warm pool delivers **1.8-2.3x speedup** for most runtimes
+- Python benefits the most (2.3x speedup, 130ms warm minimum)
+- Warm execution for all runtimes is consistently **under 170ms**
+- Bash is the fastest warm runtime at 125ms minimum
 
 ```mermaid
 ---
@@ -95,9 +95,9 @@ config:
 ---
 xychart-beta
     x-axis ["Bash", "Bun", "Deno", "Node.js", "Python"]
-    y-axis "Latency (ms)" 0 --> 200
-    bar [124, 152, 128, 145, 198]
-    line [38, 45, 54, 60, 49]
+    y-axis "Latency (ms)" 0 --> 350
+    bar [230, 250, 270, 280, 300]
+    line [125, 130, 140, 140, 130]
 ```
 
 <Note>
@@ -173,7 +173,23 @@ flowchart LR
 3. **Release**: After execution, all processes owned by the `sandbox` user are killed (`pkill -9 -u sandbox`), then the container's `/sandbox` tmpfs is wiped clean and the container is returned to the pool for reuse.
 4. **Replenish**: When a container is acquired from the pool, a background task creates a replacement container so the pool stays warm for the next request.
 
-The pool maintains up to **2 containers per image** (hardcoded). This means after the first cold execution of a given runtime, subsequent executions skip the ~100ms create+start overhead entirely.
+The pool supports two strategies: **fast** (default) and **secure**. Fast mode uses a dual-pool system with separate clean and dirty pools for optimal performance. Secure mode performs cleanup synchronously before returning a container, ensuring isolation at the cost of some latency.
+
+The default pool size is `{ clean: 1, dirty: 1 }` per runtime, but this is configurable via the `poolSize` option:
+
+```typescript
+// Fast mode (default) - dual-pool system
+const fastEngine = new DockerIsol8({
+  poolStrategy: "fast",
+  poolSize: { clean: 2, dirty: 2 },
+});
+
+// Secure mode - cleanup before acquire
+const secureEngine = new DockerIsol8({
+  poolStrategy: "secure",
+  poolSize: 2,
+});
+```
 
 ## Methodology
 

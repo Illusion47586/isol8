@@ -34,6 +34,11 @@ jobs:
       - name: Verify Docker is running
         run: docker info
       
+      - name: Setup isol8 images
+        run: isol8 setup
+        env:
+          ISOL8_TEST_VERSION: ${{ github.event.inputs.version }}
+      
       - name: Run production tests
         id: tests
         run: |
