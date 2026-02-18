@@ -155,7 +155,11 @@ describe("Integration: Git Operations", () => {
     ]);
 
     if (userCreate.exitCode !== 0 && !userCreate.stderr.includes("already exists")) {
-      throw new Error(`Failed to create gitea user: ${userCreate.stderr}`);
+      const userList = await execInContainer(container, ["gitea", "admin", "user", "list"]);
+      const userExists = userList.stdout.includes(username);
+      if (!userExists) {
+        throw new Error(`Failed to create gitea user: ${userCreate.stderr || userCreate.stdout}`);
+      }
     }
 
     const tokenResult = await execInContainer(container, [
