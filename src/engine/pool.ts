@@ -20,6 +20,8 @@ export interface PoolOptions {
   poolSize?: number;
   /** Container creation options (HostConfig, Env, etc). */
   createOptions: Omit<Docker.ContainerCreateOptions, "Image">;
+  /** Network mode to determine if iptables cleanup is needed. */
+  networkMode: "none" | "host" | "filtered";
 }
 
 interface PoolEntry {
@@ -35,6 +37,7 @@ export class ContainerPool {
   private readonly docker: Docker;
   private readonly poolSize: number;
   private readonly createOptions: Omit<Docker.ContainerCreateOptions, "Image">;
+  private readonly networkMode: "none" | "host" | "filtered";
   private readonly pools = new Map<string, PoolEntry[]>();
   private readonly replenishing = new Set<string>();
   private readonly pendingReplenishments = new Set<Promise<void>>();
@@ -43,6 +46,7 @@ export class ContainerPool {
     this.docker = options.docker;
     this.poolSize = options.poolSize ?? 2;
     this.createOptions = options.createOptions;
+    this.networkMode = options.networkMode;
   }
 
   /**
@@ -80,15 +84,17 @@ export class ContainerPool {
     }
 
     try {
+      // Build cleanup command - only include iptables flush for filtered network mode
+      const needsIptables = this.networkMode === "filtered";
+      const cleanupCmd = needsIptables
+        ? "pkill -9 -u sandbox 2>/dev/null; /usr/sbin/iptables -F OUTPUT 2>/dev/null; true"
+        : "pkill -9 -u sandbox 2>/dev/null; true";
+
       // Kill all processes owned by the sandbox user to prevent process
       // persistence across executions. The container's init (tini + sleep)
       // runs as root, so it survives this kill. See: GitHub issue #3.
       const killExec = await container.exec({
-        Cmd: [
-          "sh",
-          "-c",
-          "pkill -9 -u sandbox 2>/dev/null; /usr/sbin/iptables -F OUTPUT 2>/dev/null; true",
-        ],
+        Cmd: ["sh", "-c", cleanupCmd],
       });
       await killExec.start({ Detach: true });
 

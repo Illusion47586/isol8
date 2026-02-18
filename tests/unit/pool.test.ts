@@ -36,6 +36,7 @@ describe("ContainerPool", () => {
     const pool = new ContainerPool({
       docker,
       poolSize: 2,
+      networkMode: "none",
       createOptions: {},
     });
 
@@ -49,6 +50,7 @@ describe("ContainerPool", () => {
     const pool = new ContainerPool({
       docker,
       poolSize: 1,
+      networkMode: "none",
       createOptions: {},
     });
 
@@ -73,6 +75,7 @@ describe("ContainerPool", () => {
     const pool = new ContainerPool({
       docker,
       poolSize: 1,
+      networkMode: "none",
       createOptions: {},
     });
 
@@ -113,6 +116,7 @@ describe("ContainerPool", () => {
     const pool = new ContainerPool({
       docker,
       poolSize: 1,
+      networkMode: "none",
       createOptions: {},
     });
 
@@ -135,6 +139,7 @@ describe("ContainerPool", () => {
     const pool = new ContainerPool({
       docker,
       poolSize: 1,
+      networkMode: "none",
       createOptions: {},
     });
 

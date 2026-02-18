@@ -800,6 +800,7 @@ export class DockerIsol8 implements Isol8Engine {
       this.pool = new ContainerPool({
         docker: this.docker,
         poolSize: 2,
+        networkMode: this.network,
         createOptions: {
           Cmd: ["sleep", "infinity"],
           WorkingDir: SANDBOX_WORKDIR,
