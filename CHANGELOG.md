@@ -1,16 +1,3 @@
-## [Unreleased]
-
-### Features
-
-* **cli:** smart builds with hash-based caching and automatic cleanup of dangling images ([#49](https://github.com/Illusion47586/isol8/issues/49), [#42](https://github.com/Illusion47586/isol8/issues/42))
-  - SHA256 hash of docker/ directory and dependencies stored as image labels
-  - Automatic skipping of builds when configuration is unchanged
-  - Added `--force` flag to `setup` command for manual rebuilds
-
-### Bug Fixes
-
-* **cli:** remove dangling Docker images after rebuilds ([#42](https://github.com/Illusion47586/isol8/issues/42))
-
 ## [0.10.2](https://github.com/Illusion47586/isol8/compare/v0.10.1...v0.10.2) (2026-02-18)
 
 
