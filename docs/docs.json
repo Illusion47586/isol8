@@ -49,7 +49,12 @@
           },
           {
             "group": "Advanced",
-            "pages": ["v2/remote", "v2/observability", "v2/architecture"]
+            "pages": [
+              "v2/remote",
+              "v2/observability",
+              "v2/architecture",
+              "v2/performance"
+            ]
           },
           {
             "group": "Reference",

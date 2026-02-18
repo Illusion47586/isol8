@@ -123,7 +123,11 @@ curl -X POST http://localhost:3000/execute
   -d '{"request": {"code": "print(x)", "runtime": "python"}, "sessionId": "session-123"}'
 ```
 
-Sessions are automatically pruned after 1 hour of inactivity (configurable via `cleanup.maxContainerAgeMs`).
+Sessions are automatically pruned by the server if they haven't been accessed for 1 hour (default).
+
+<Note>
+  The timeout is based on **idle time** (last access), not creation time. As long as you keep using the session, it stays alive. Configure the limit with `cleanup.maxContainerAgeMs`.
+</Note>
 
 ## Stdin/Stdout
 

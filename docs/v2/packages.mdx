@@ -118,17 +118,22 @@ This ensures your custom image inherits all security features (non-root user, pr
 
 ### Smart Rebuilds
 
-`isol8 setup` uses intelligent caching. It computes a hash of your dependencies and only rebuilds if something changed.
+`isol8 setup` is intelligent. It avoids unnecessary work by tracking build state using Docker labels.
+
+1.  **Change Detection**: It computes SHA256 hashes of your `docker/` directory (for base images) and your dependency lists (for custom images).
+2.  **Metadata**: These hashes are stored in the image labels `org.isol8.build.hash` and `org.isol8.deps.hash`.
+3.  **Fast Path**: If the hashes match the existing image, the build is skipped instantly.
+4.  **Auto-Cleanup**: When a rebuild is necessary, isol8 automatically removes the old image version to prevent "dangling images" from clogging your disk.
 
 ```bash
-# Up to date - skips build
+# Up to date - skips build (0s)
 isol8 setup
 
-# Add a package - triggers rebuild
+# Add a package - triggers rebuild & cleanup
 isol8 setup --python requests
 ```
 
-Use `--force` to rebuild unconditionally.
+Use `--force` to bypass this check and rebuild unconditionally.
 
 ## Reference
 

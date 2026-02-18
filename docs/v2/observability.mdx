@@ -32,25 +32,29 @@ Each line is a JSON object (JSONL).
 ```json
 {
   "executionId": "550e8400-e29b-41d4-a716-446655440000",
-  "userId": "user-123",
-  "timestamp": "2026-02-14T12:00:00.000Z",
-  "runtime": "python",
-  "codeHash": "a1b2c3d4...",
-  "containerId": "abc123",
-  "exitCode": 0,
-  "durationMs": 82,
   "resourceUsage": {
     "cpuPercent": 12.5,
     "memoryMB": 64,
-    "networkBytesIn": 0,
-    "networkBytesOut": 0
-  },
-  "securityEvents": [],
-  "metadata": {
-    "tenantId": "tenant-456"
+    "networkBytesIn": 1024,
+    "networkBytesOut": 512
   }
 }
 ```
+
+#### Resource Usage
+
+When `trackResources` is enabled (default `true`), every log entry includes a snapshot of resource consumption:
+
+| Field | Description |
+|:------|:------------|
+| `cpuPercent` | CPU usage as a percentage (e.g., `150.0` = 1.5 cores). |
+| `memoryMB` | RAM usage in megabytes. |
+| `networkBytesIn` | Total bytes received by the container. |
+| `networkBytesOut` | Total bytes sent by the container. |
+
+<Tip>
+  Resource tracking adds negligible overhead. It uses Docker's stats API to capture a snapshot at the end of execution.
+</Tip>
 
 ### Security Events
 
