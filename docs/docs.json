@@ -78,6 +78,7 @@
             "group": "Use Cases",
             "pages": [
               "cookbook/ai-agents",
+              "cookbook/git-operations",
               "cookbook/education",
               "cookbook/data-processing",
               "cookbook/ci-testing",

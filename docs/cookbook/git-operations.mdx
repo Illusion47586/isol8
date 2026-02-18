@@ -1,0 +1,183 @@
+---
+title: "Git Operations"
+description: "Cookbook recipes for clone/commit/push workflows inside isol8"
+og:title: "Git Operations Cookbook - isol8"
+og:description: "Practical recipes for using isol8 Git operations in agents and automation."
+---
+
+This cookbook shows practical Git workflows using isol8’s built-in Git operations.
+
+## Recipe: Auto-fix a repo and push
+
+```typescript
+import { DockerIsol8 } from "isol8";
+
+const isol8 = new DockerIsol8({
+  network: "host",
+  gitSecurity: {
+    allowedHosts: ["github.com"],
+    blockedPatterns: [],
+    allowPrivateIPs: false,
+    credentialEnvVars: ["GITHUB_TOKEN"],
+  },
+  secrets: {
+    GITHUB_TOKEN: process.env.GITHUB_TOKEN ?? "",
+  },
+});
+
+const result = await isol8.execute({
+  runtime: "bash",
+  code: "cd /sandbox/repo && npm install && npm run lint -- --fix",
+  git: {
+    clone: { url: "https://user:${GITHUB_TOKEN}@github.com/user/repo.git", path: "repo" },
+    commit: {
+      message: "chore: auto-fix lint",
+      authorName: "CI Bot",
+      authorEmail: "ci@example.com",
+      repoPath: "repo",
+      all: true,
+    },
+    push: { remote: "origin", branch: "main", repoPath: "repo" },
+  },
+});
+
+console.log(result.exitCode, result.stderr);
+```
+
+## Recipe: Create a new branch and push changes
+
+```typescript
+const result = await isol8.execute({
+  runtime: "bash",
+  code: "cd /sandbox/repo && ./scripts/update-deps.sh",
+  git: {
+    clone: { url: "https://user:${GITHUB_TOKEN}@github.com/user/repo.git", path: "repo" },
+    checkout: { target: "automation/update-deps", createBranch: true, repoPath: "repo" },
+    commit: {
+      message: "chore: update dependencies",
+      authorName: "Deps Bot",
+      authorEmail: "deps@example.com",
+      repoPath: "repo",
+      all: true,
+    },
+    push: {
+      remote: "origin",
+      branch: "automation/update-deps",
+      repoPath: "repo",
+      setUpstream: true,
+    },
+  },
+});
+```
+
+## Recipe: Use `pull` before running code
+
+```typescript
+const result = await isol8.execute({
+  runtime: "bash",
+  code: "cd /sandbox/repo && ./scripts/run-task.sh",
+  git: {
+    clone: { url: "https://user:${GITHUB_TOKEN}@github.com/user/repo.git", path: "repo" },
+    pull: { remote: "origin", branch: "main", repoPath: "repo", rebase: true },
+    commit: {
+      message: "feat: task output",
+      authorName: "Task Bot",
+      authorEmail: "task@example.com",
+      repoPath: "repo",
+      all: true,
+    },
+    push: { remote: "origin", branch: "main", repoPath: "repo" },
+  },
+});
+```
+
+## Recipe: CLI one-liner
+
+```bash
+isol8 run script.py --runtime python \
+  --git-clone https://github.com/user/repo.git \
+  --git-clone-path repo \
+  --git-commit "feat: update" \
+  --git-commit-author-name "AI Agent" \
+  --git-commit-author-email "agent@example.com" \
+  --git-push --git-push-branch main
+```
+
+## Recipe: Private Git host
+
+```json
+// isol8.config.json
+{
+  "gitSecurity": {
+    "allowedHosts": ["git.internal.company"],
+    "blockedPatterns": [],
+    "allowPrivateIPs": true,
+    "credentialEnvVars": ["GIT_TOKEN"]
+  }
+}
+```
+
+```typescript
+const result = await isol8.execute({
+  runtime: "bash",
+  code: "cd /sandbox/repo && ./apply-patch.sh",
+  git: {
+    clone: { url: "https://user:${GIT_TOKEN}@git.internal.company/repo.git", path: "repo" },
+    commit: { message: "fix: internal patch", repoPath: "repo", all: true },
+    push: { remote: "origin", branch: "main", repoPath: "repo" },
+  },
+});
+```
+
+## Behavior Notes
+
+- Git operations run in order: clone → checkout → pull → execute → commit → push.
+- `commit` and `push` only run if the execution exit code is `0`.
+- Pre-execution Git failures stop the run. Post-execution failures emit warnings but do not fail the run.
+- Git commands run as the `sandbox` user with `HOME=/sandbox`.
+- Use `network: "host"` for SSH Git or `network: "filtered"` for HTTPS-only Git with proxy allowlists.
+
+## FAQ / Edge Cases
+
+### Can I use SSH Git in `network: "filtered"` mode?
+
+No. `network: "filtered"` only allows HTTP/HTTPS through the proxy. SSH Git uses TCP directly and will be blocked. Use `network: "host"` for SSH Git, or use HTTPS Git with a token in filtered mode.
+
+### Why did `commit` or `push` not run?
+
+Post-execution Git operations only run if the main execution exits with code `0`. If your script fails, `commit`/`push` are skipped.
+
+### How do I use a private Git host?
+
+Allow the host and private IPs in `gitSecurity`, then use HTTPS with a token:
+
+```json
+{
+  "gitSecurity": {
+    "allowedHosts": ["git.internal.company"],
+    "blockedPatterns": [],
+    "allowPrivateIPs": true,
+    "credentialEnvVars": ["GIT_TOKEN"]
+  }
+}
+```
+
+```typescript
+const result = await isol8.execute({
+  runtime: "bash",
+  code: "cd /sandbox/repo && ./apply-patch.sh",
+  git: {
+    clone: { url: "https://user:${GIT_TOKEN}@git.internal.company/repo.git", path: "repo" },
+    commit: { message: "fix: internal patch", repoPath: "repo", all: true },
+    push: { remote: "origin", branch: "main", repoPath: "repo" },
+  },
+});
+```
+
+### Why is my clone failing with “not in allowed hosts”?
+
+Set `gitSecurity.allowedHosts` to include your Git host or its parent domain. Subdomains are allowed (e.g., `git.company.com` is allowed if `company.com` is in the list).
+
+### Why is Git complaining about “unsafe repository”?
+
+isol8 adds a safe directory entry for `/sandbox/*` and for cloned repos. If you see this error, ensure your repo path is under `/sandbox` and does not contain `..` or `~`.

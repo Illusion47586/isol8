@@ -12,6 +12,7 @@ isol8 can run Git operations as part of an execution. This is useful for AI agen
 - Git is installed in all runtime images.
 - Credentials must be supplied via environment variables or URL-embedded tokens.
 - Git URLs are validated against `gitSecurity` rules before execution.
+- Network must allow outbound access for clone/pull/push. `network: "none"` will fail Git operations. `network: "host"` works for HTTPS and SSH. `network: "filtered"` only allows HTTP/HTTPS via the proxy, so SSH Git will be blocked.
 
 ## Library Usage
 
@@ -41,6 +42,58 @@ const result = await isol8.execute({
 console.log(result.exitCode, result.stderr);
 ```
 
+## Supported Operations
+
+All Git operations are optional and can be combined. Operations are executed in order.
+
+### `clone`
+
+Supported fields:
+
+- `url` (required): HTTPS or SSH Git URL.
+- `path`: Relative path under `/sandbox` to clone into.
+- `branch`: Branch or tag to checkout after cloning.
+- `depth`: Shallow clone depth (e.g. `1` for latest commit).
+- `recursive`: Whether to clone submodules.
+
+### `checkout`
+
+Supported fields:
+
+- `target` (required): Branch, tag, or commit SHA.
+- `createBranch`: Create a new branch (`git checkout -b`).
+- `repoPath`: Relative path under `/sandbox` for the repo.
+
+### `pull`
+
+Supported fields:
+
+- `remote`: Remote name (default `origin`).
+- `branch`: Branch to pull.
+- `rebase`: Use `--rebase`.
+- `repoPath`: Relative path under `/sandbox` for the repo.
+
+### `commit`
+
+Supported fields:
+
+- `message` (required): Commit message.
+- `authorName`: Sets `user.name`.
+- `authorEmail`: Sets `user.email`.
+- `all`: Stage all changes (`git add -A`).
+- `files`: Specific files to stage (when `all` is not set).
+- `repoPath`: Relative path under `/sandbox` for the repo.
+
+### `push`
+
+Supported fields:
+
+- `remote`: Remote name (default `origin`).
+- `branch` (required): Branch to push.
+- `force`: Use `--force`.
+- `setUpstream`: Use `-u`.
+- `repoPath`: Relative path under `/sandbox` for the repo.
+
 ## CLI Usage
 
 ```bash
@@ -63,6 +116,15 @@ Operations run in this order:
 4. Execute code
 5. `commit`
 6. `push`
+
+### When does `commit` happen?
+
+`commit` runs **after the user code finishes**. It only runs if the main execution exits with code `0`. If the execution fails (non-zero exit code), post-execution Git operations are skipped.
+
+### Failure behavior
+
+- Pre-execution failures (clone/checkout/pull) fail the execution.
+- Post-execution failures (commit/push) do not fail the execution; they append a warning to stderr or stream output.
 
 ## Configuring Git Security
 
@@ -88,6 +150,60 @@ https://user:${GIT_TOKEN}@github.com/user/repo.git
 ```
 
 All values listed under `gitSecurity.credentialEnvVars` are masked from Git command output.
+
+## Validation and Safety Rules
+
+- URL validation checks hostnames against `allowedHosts` and `blockedPatterns`.
+- Private IPs and localhost are blocked by default (`allowPrivateIPs: false`).
+- Repo paths must be relative, cannot include `..` or `~`, and may only include `[a-zA-Z0-9._/-]`.
+- A safe directory entry is added for `/sandbox/*` and for cloned repos to avoid Git safety warnings.
+- Git commands run as the `sandbox` user with `HOME=/sandbox`.
+
+## Execution Details
+
+- Pre-exec Git commands run before code is written/executed.
+- Post-exec Git commands run after user code completes successfully.
+- Git commands are run through the same output sanitizer and secret masking.
+- Each Git phase is time-limited (default 120s).
+
+## Full Example
+
+```typescript
+import { DockerIsol8 } from "isol8";
+
+const isol8 = new DockerIsol8({
+  network: "host",
+  gitSecurity: {
+    allowedHosts: ["github.com"],
+    blockedPatterns: [],
+    allowPrivateIPs: false,
+    credentialEnvVars: ["GIT_TOKEN", "GITHUB_TOKEN"],
+  },
+  secrets: {
+    GIT_TOKEN: process.env.GIT_TOKEN ?? "",
+  },
+});
+
+const result = await isol8.execute({
+  code: "cd /sandbox/repo && echo 'update' >> README.md",
+  runtime: "bash",
+  git: {
+    clone: { url: "https://user:${GIT_TOKEN}@github.com/user/repo.git", path: "repo" },
+    checkout: { target: "main", repoPath: "repo" },
+    pull: { remote: "origin", branch: "main", repoPath: "repo", rebase: true },
+    commit: {
+      message: "feat: update",
+      authorName: "AI Agent",
+      authorEmail: "agent@example.com",
+      repoPath: "repo",
+      all: true,
+    },
+    push: { remote: "origin", branch: "main", repoPath: "repo", setUpstream: true },
+  },
+});
+
+console.log(result.exitCode, result.stderr);
+```
 
 ## Notes
 
