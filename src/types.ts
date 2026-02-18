@@ -141,9 +141,13 @@ export interface ExecutionResult {
     /** Bytes sent during execution */
     networkBytesOut: number;
   };
-}
 
-/**
+  /**
+   * Network request logs collected during execution.
+   * Only populated when `logNetwork` is enabled and network mode is "filtered".
+   */
+  networkLogs?: NetworkLogEntry[];
+} /**
  * A chunk of streaming output from an execution.
  *
  * Yielded by {@link Isol8Engine.executeStream} as output arrives in real-time.
@@ -163,6 +167,24 @@ export interface SecurityEvent {
   message: string;
   details?: Record<string, unknown>;
   timestamp: string;
+}
+
+/**
+ * A network request logged by the proxy in filtered network mode.
+ */
+export interface NetworkLogEntry {
+  /** ISO 8601 timestamp of when the request was made. */
+  timestamp: string;
+  /** HTTP method (GET, POST, CONNECT, etc.). */
+  method: string;
+  /** Target hostname. */
+  host: string;
+  /** Request path for HTTP requests, null for HTTPS CONNECT tunnels. */
+  path: string | null;
+  /** Whether the request was allowed through or blocked by the filter. */
+  action: "ALLOW" | "BLOCK";
+  /** Time taken to handle the request in milliseconds. */
+  durationMs: number;
 }
 
 /**
@@ -190,6 +212,7 @@ export interface ExecutionAudit {
     networkBytesOut: number;
   };
   securityEvents?: SecurityEvent[]; // Initially optional, can be enhanced later
+  networkLogs?: NetworkLogEntry[];
   // Optional fields that may be omitted by configuration for privacy
   code?: string;
   stdout?: string;
@@ -264,6 +287,13 @@ export interface Isol8Options {
    * @default false
    */
   persist?: boolean;
+
+  /**
+   * Enable network request logging. Only works when network mode is "filtered".
+   * Logs are collected from the proxy and included in ExecutionResult.
+   * @default false
+   */
+  logNetwork?: boolean;
 
   /** Security settings. */
   security?: SecurityConfig;

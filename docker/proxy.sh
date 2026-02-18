@@ -17,8 +17,9 @@ PORT="${ISOL8_PROXY_PORT:-8118}"
 PROXY_DIR="/tmp/isol8-proxy"
 mkdir -p "$PROXY_DIR"
 
-# Create security events log file
+# Create log files
 touch "$PROXY_DIR/security-events.jsonl"
+touch "$PROXY_DIR/network.jsonl"
 
 WL_FILE="$PROXY_DIR/whitelist"
 BL_FILE="$PROXY_DIR/blacklist"
