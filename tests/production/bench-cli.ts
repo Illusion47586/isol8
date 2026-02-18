@@ -1,6 +1,7 @@
 /**
  * Benchmark: CLI execution performance via globally installed isol8
  * Measures: spawn → execute → collect output time
+ * Uses warm pool: first run is cold, subsequent runs use warm containers
  *
  * Usage: ISOL8_TEST_VERSION=0.9.0 bun run bench:cli
  */
@@ -14,6 +15,7 @@ const execAsync = promisify(exec);
 
 const RUNTIMES = ["python", "node", "bun", "deno", "bash"] as const;
 const RUNS = 5;
+const WARMUP_RUNS = 1;
 
 const CODE: Record<string, string> = {
   python: 'print("hello")',
@@ -49,39 +51,52 @@ async function runOnce(runtime: string, tmpDir: string): Promise<number> {
   return performance.now() - t0;
 }
 
-async function bench(runtime: string): Promise<{ min: number; max: number; avg: number }> {
+async function bench(runtime: string, tmpDir: string): Promise<{ cold: number; warm: number[] }> {
   const times: number[] = [];
-  const tmpDir = mkdtempSync(join(tmpdir(), "isol8-bench-"));
 
-  try {
-    for (let i = 0; i < RUNS; i++) {
-      const time = await runOnce(runtime, tmpDir);
-      times.push(time);
-    }
-  } finally {
-    rmSync(tmpDir, { recursive: true });
+  // Warmup runs to populate the container pool
+  for (let i = 0; i < WARMUP_RUNS; i++) {
+    await runOnce(runtime, tmpDir);
   }
 
-  const sorted = [...times].sort((a, b) => a - b);
+  // Actual benchmark runs
+  for (let i = 0; i < RUNS; i++) {
+    const time = await runOnce(runtime, tmpDir);
+    times.push(time);
+  }
+
   return {
-    min: sorted[0]!,
-    max: sorted.at(-1)!,
-    avg: times.reduce((a, b) => a + b, 0) / times.length,
+    cold: times[0]!,
+    warm: times.slice(1),
   };
 }
 
 async function main() {
   const version = getVersion();
-  console.log(`\n⏱  isol8 CLI Benchmark via isol8 (version: ${version}) (${RUNS} runs each)\n`);
-  console.log("Runtime   | Min      | Max      | Avg");
-  console.log("----------|----------|----------|----------");
+  const tmpDir = mkdtempSync(join(tmpdir(), "isol8-bench-"));
 
-  for (const runtime of RUNTIMES) {
-    const { min, max, avg } = await bench(runtime);
-    console.log(`${runtime.padEnd(9)} | ${fmt(min)} | ${fmt(max)} | ${fmt(avg)}`);
+  try {
+    console.log(
+      `\n⏱  isol8 CLI Benchmark via isol8 (version: ${version}) (${RUNS} runs each, warm pool)\n`
+    );
+    console.log("Runtime   | Cold     | Warm Avg  | Warm Min | Speedup");
+    console.log("----------|----------|-----------|----------|--------");
+
+    for (const runtime of RUNTIMES) {
+      const { cold, warm } = await bench(runtime, tmpDir);
+      const warmAvg = warm.reduce((a, b) => a + b, 0) / warm.length;
+      const warmMin = Math.min(...warm);
+      const speedup = cold / warmMin;
+
+      console.log(
+        `${runtime.padEnd(9)} | ${fmt(cold)} | ${fmt(warmAvg)} | ${fmt(warmMin)} | ${speedup.toFixed(1)}x`
+      );
+    }
+
+    console.log("");
+  } finally {
+    rmSync(tmpDir, { recursive: true });
   }
-
-  console.log("");
 }
 
 function fmt(ms: number): string {
