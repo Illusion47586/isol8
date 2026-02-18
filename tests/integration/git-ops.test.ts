@@ -23,11 +23,12 @@ async function pullImage(docker: Docker, image: string) {
   });
 }
 
-async function execInContainer(container: Docker.Container, cmd: string[]) {
+async function execInContainer(container: Docker.Container, cmd: string[], user?: string) {
   const exec = await container.exec({
     Cmd: cmd,
     AttachStdout: true,
     AttachStderr: true,
+    ...(user ? { User: user } : {}),
   });
 
   const stream = await exec.start({ Tty: false });
@@ -139,39 +140,47 @@ describe("Integration: Git Operations", () => {
     baseUrl = `http://127.0.0.1:${hostPort}`;
     await waitForHttp(`${baseUrl}/api/v1/version`, 90_000);
 
-    const userCreate = await execInContainer(container, [
-      "gitea",
-      "admin",
-      "user",
-      "create",
-      "--username",
-      username,
-      "--password",
-      password,
-      "--email",
-      email,
-      "--admin",
-      "--must-change-password=false",
-    ]);
+    const userCreate = await execInContainer(
+      container,
+      [
+        "gitea",
+        "admin",
+        "user",
+        "create",
+        "--username",
+        username,
+        "--password",
+        password,
+        "--email",
+        email,
+        "--admin",
+        "--must-change-password=false",
+      ],
+      "git"
+    );
 
     if (userCreate.exitCode !== 0 && !userCreate.stderr.includes("already exists")) {
-      const userList = await execInContainer(container, ["gitea", "admin", "user", "list"]);
+      const userList = await execInContainer(container, ["gitea", "admin", "user", "list"], "git");
       const userExists = userList.stdout.includes(username);
       if (!userExists) {
         throw new Error(`Failed to create gitea user: ${userCreate.stderr || userCreate.stdout}`);
       }
     }
 
-    const tokenResult = await execInContainer(container, [
-      "gitea",
-      "admin",
-      "user",
-      "generate-access-token",
-      "--username",
-      username,
-      "--token-name",
-      "isol8-ci",
-    ]);
+    const tokenResult = await execInContainer(
+      container,
+      [
+        "gitea",
+        "admin",
+        "user",
+        "generate-access-token",
+        "--username",
+        username,
+        "--token-name",
+        "isol8-ci",
+      ],
+      "git"
+    );
 
     const tokenMatch = tokenResult.stdout.match(/([a-f0-9]{32,})/i);
     if (!tokenMatch) {
