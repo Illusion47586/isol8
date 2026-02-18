@@ -801,6 +801,7 @@ export class DockerIsol8 implements Isol8Engine {
         docker: this.docker,
         poolSize: 2,
         networkMode: this.network,
+        securityMode: this.security.seccomp ?? "strict",
         createOptions: {
           Cmd: ["sleep", "infinity"],
           WorkingDir: SANDBOX_WORKDIR,

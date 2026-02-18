@@ -22,6 +22,8 @@ export interface PoolOptions {
   createOptions: Omit<Docker.ContainerCreateOptions, "Image">;
   /** Network mode to determine if iptables cleanup is needed. */
   networkMode: "none" | "host" | "filtered";
+  /** Security mode - if strict, run process cleanup between executions */
+  securityMode: "strict" | "unconfined" | "custom";
 }
 
 interface PoolEntry {
@@ -38,6 +40,7 @@ export class ContainerPool {
   private readonly poolSize: number;
   private readonly createOptions: Omit<Docker.ContainerCreateOptions, "Image">;
   private readonly networkMode: "none" | "host" | "filtered";
+  private readonly securityMode: "strict" | "unconfined" | "custom";
   private readonly pools = new Map<string, PoolEntry[]>();
   private readonly replenishing = new Set<string>();
   private readonly pendingReplenishments = new Set<Promise<void>>();
@@ -47,6 +50,7 @@ export class ContainerPool {
     this.poolSize = options.poolSize ?? 2;
     this.createOptions = options.createOptions;
     this.networkMode = options.networkMode;
+    this.securityMode = options.securityMode;
   }
 
   /**
@@ -84,25 +88,34 @@ export class ContainerPool {
     }
 
     try {
-      // Build cleanup command - only include iptables flush for filtered network mode
-      const needsIptables = this.networkMode === "filtered";
-      const cleanupCmd = needsIptables
-        ? "pkill -9 -u sandbox 2>/dev/null; /usr/sbin/iptables -F OUTPUT 2>/dev/null; true"
-        : "pkill -9 -u sandbox 2>/dev/null; true";
+      // Build cleanup command - only run if security is strict
+      // Skip process kill and iptables flush for unconfined mode (performance)
+      const needsCleanup = this.securityMode === "strict";
+      const needsIptables = this.networkMode === "filtered" && needsCleanup;
+
+      let cleanupCmd = "true";
+      if (needsCleanup) {
+        cleanupCmd = needsIptables
+          ? "pkill -9 -u sandbox 2>/dev/null; /usr/sbin/iptables -F OUTPUT 2>/dev/null; true"
+          : "pkill -9 -u sandbox 2>/dev/null; true";
+      }
 
       // Kill all processes owned by the sandbox user to prevent process
       // persistence across executions. The container's init (tini + sleep)
       // runs as root, so it survives this kill. See: GitHub issue #3.
-      const killExec = await container.exec({
-        Cmd: ["sh", "-c", cleanupCmd],
-      });
-      await killExec.start({ Detach: true });
+      // Skip for unconfined security mode (performance)
+      if (needsCleanup) {
+        const killExec = await container.exec({
+          Cmd: ["sh", "-c", cleanupCmd],
+        });
+        await killExec.start({ Detach: true });
 
-      // Wait for kill to complete before wiping the filesystem
-      let killInfo = await killExec.inspect();
-      while (killInfo.Running) {
-        await new Promise((r) => setTimeout(r, 5));
-        killInfo = await killExec.inspect();
+        // Wait for kill to complete before wiping the filesystem
+        let killInfo = await killExec.inspect();
+        while (killInfo.Running) {
+          await new Promise((r) => setTimeout(r, 5));
+          killInfo = await killExec.inspect();
+        }
       }
 
       // Wipe the sandbox for next use

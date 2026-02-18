@@ -37,6 +37,7 @@ describe("ContainerPool", () => {
       docker,
       poolSize: 2,
       networkMode: "none",
+      securityMode: "strict",
       createOptions: {},
     });
 
@@ -51,6 +52,7 @@ describe("ContainerPool", () => {
       docker,
       poolSize: 1,
       networkMode: "none",
+      securityMode: "strict",
       createOptions: {},
     });
 
@@ -76,6 +78,7 @@ describe("ContainerPool", () => {
       docker,
       poolSize: 1,
       networkMode: "none",
+      securityMode: "strict",
       createOptions: {},
     });
 
@@ -117,6 +120,7 @@ describe("ContainerPool", () => {
       docker,
       poolSize: 1,
       networkMode: "none",
+      securityMode: "strict",
       createOptions: {},
     });
 
@@ -140,6 +144,7 @@ describe("ContainerPool", () => {
       docker,
       poolSize: 1,
       networkMode: "none",
+      securityMode: "strict",
       createOptions: {},
     });
 
