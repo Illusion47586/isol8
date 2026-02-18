@@ -119,6 +119,15 @@ stateDiagram-v2
     - `release()`: Cleans up processes and filesystem before returning.
     - `replenish()`: Background task to refill the pool.
 
+### Pool Strategies
+
+Configurable via `--pool-strategy`.
+
+| Strategy | Description | Behavior |
+|:---|:---|:---|
+| **`fast`** | **Default**. Dual-pool system. | Containers are returned to a "dirty" pool. A background task cleans them every 5s. Acquire is instant (O(1)). |
+| **`secure`** | Synchronous cleanup. | Cleanup happens *inside* `acquire()`. Guarantees clean state but increases latency on every request. |
+
 ## Security Layers
 
 ### Network Filtering

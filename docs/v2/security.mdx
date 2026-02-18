@@ -25,6 +25,37 @@ isol8 applies a "safety" seccomp profile by default. It blocks dangerous syscall
   You can customize seccomp profiles in your configuration. See the [Security Configuration](/v2/configuration#security-security) for details.
 </Tip>
 
+#### Custom Profiles
+
+If the default "safety" profile is too restrictive, you can provide your own.
+
+1. Create a seccomp profile JSON file (following Docker's format).
+2. Point to it in your configuration.
+
+```json
+{
+  "security": {
+    "seccomp": "custom",
+    "customProfilePath": "./seccomp.json"
+  }
+}
+```
+
+The profile should define `defaultAction` and `syscalls`.
+
+```json
+{
+  "defaultAction": "SCMP_ACT_ERRNO",
+  "architectures": ["SCMP_ARCH_X86_64", "SCMP_ARCH_AARCH64"],
+  "syscalls": [
+    {
+      "names": ["read", "write", "exit", "sigreturn"],
+      "action": "SCMP_ACT_ALLOW"
+    }
+  ]
+}
+```
+
 ## Network Control
 
 Control exactly which domains your code can access.
