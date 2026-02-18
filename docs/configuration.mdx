@@ -1,34 +1,47 @@
 ---
-title: "Configuration"
-description: "Configure defaults, network filtering, and resource limits"
-og:title: "Configuration Reference - isol8"
-og:description: "Full configuration reference for isol8. Customize resource limits, network filtering rules, timeouts, and cleanup policies."
+title: "Configuration reference"
+description: "Detailed reference for isol8.config.json, merge behavior, defaults, and operational guidance for each section."
+icon: "gear"
 ---
 
-isol8 loads configuration from a JSON file. The config sets defaults for all executions and controls server behavior.
+`isol8.config.json` defines your baseline security, resource, and server behavior.
 
-## Config File Location
-
-isol8 looks for config in this order (first found wins):
+Config resolution order:
 
 1. `./isol8.config.json` (current working directory)
-2. `~/.isol8/config.json` (home directory)
+2. `~/.isol8/config.json`
+3. Built-in defaults
 
-If no config file is found, built-in defaults are used. Partial configs are deep-merged with defaults.
+The first existing file is loaded and deep-merged with defaults. You only need to provide the fields you want to override.
 
-## Full Schema
+<Info>
+  Config files are not merged with each other. isol8 loads the first file it finds (`./isol8.config.json` before `~/.isol8/config.json`) and then merges that file with built-in defaults.
+</Info>
+
+## How configuration is applied
+
+- CLI `isol8 run`: CLI flags override config defaults.
+- Library (`DockerIsol8`): constructor options are authoritative.
+- Server API (`isol8 serve`): server config establishes defaults, request `options` may override them.
+
+For a side-by-side mapping, see [Passing values (CLI, config, API, library)](/passing-values).
+
+## Full schema shape
+
+Use this as a complete reference template. In real configs, you can provide only the sections you need.
 
 ```json
 {
   "$schema": "./schema/isol8.config.schema.json",
+  "debug": false,
   "maxConcurrent": 10,
   "defaults": {
     "timeoutMs": 30000,
     "memoryLimit": "512m",
-    "cpuLimit": 1.0,
+    "cpuLimit": 1,
     "network": "none",
-    "sandboxSize": "64m",
-    "tmpSize": "64m"
+    "sandboxSize": "512m",
+    "tmpSize": "256m"
   },
   "network": {
     "whitelist": [],
@@ -39,157 +52,21 @@ If no config file is found, built-in defaults are used. Partial configs are deep
     "maxContainerAgeMs": 3600000
   },
   "dependencies": {
-    "python": ["numpy", "pandas"],
-    "node": ["lodash"],
+    "python": [],
+    "node": [],
     "bun": [],
     "deno": [],
-    "bash": ["jq", "curl"]
-  }
-}
-```
-
-## Fields
-
-### Top-Level
-
-<ResponseField name="maxConcurrent" type="number" default="10">
-  Maximum number of concurrent container executions. Enforced by a global semaphore in the server.
-</ResponseField>
-
-### defaults
-
-Default values for execution options. These are used when a request doesn't specify its own values.
-
-<ResponseField name="defaults.timeoutMs" type="number" default="30000">
-  Default execution timeout in milliseconds.
-</ResponseField>
-
-<ResponseField name="defaults.memoryLimit" type="string" default="512m">
-  Default memory limit. Accepts Docker format: `256m`, `512m`, `1g`.
-</ResponseField>
-
-<ResponseField name="defaults.cpuLimit" type="number" default="1.0">
-  Default CPU limit as fraction of one core.
-</ResponseField>
-
-<ResponseField name="defaults.network" type="string" default="none">
-  Default network mode: `none`, `host`, or `filtered`.
-</ResponseField>
-
-<ResponseField name="defaults.sandboxSize" type="string" default="64m">
-  Default size of the `/sandbox` tmpfs mount.
-</ResponseField>
-
-<ResponseField name="defaults.tmpSize" type="string" default="64m">
-  Default size of the `/tmp` tmpfs mount.
-</ResponseField>
-
-### network
-
-Network filtering rules for `filtered` network mode.
-
-<ResponseField name="network.whitelist" type="string[]" default="[]">
-  Regex patterns for allowed hostnames. When non-empty, only matching hostnames can be accessed.
-</ResponseField>
-
-<ResponseField name="network.blacklist" type="string[]" default="[]">
-  Regex patterns for blocked hostnames. Matching hostnames are denied.
-</ResponseField>
-
-### cleanup
-
-Server cleanup behavior for stale containers.
-
-<ResponseField name="cleanup.autoPrune" type="boolean" default="true">
-  Whether the server should periodically clean up old containers.
-</ResponseField>
-
-<ResponseField name="cleanup.maxContainerAgeMs" type="number" default="3600000">
-  Maximum age of a container in milliseconds before it's eligible for auto-pruning (default: 1 hour).
-</ResponseField>
-
-### dependencies
-
-Packages to bake into custom Docker images when running `isol8 setup`.
-
-<ResponseField name="dependencies.python" type="string[]" default="[]">
-  Python packages (pip install).
-</ResponseField>
-
-<ResponseField name="dependencies.node" type="string[]" default="[]">
-  Node.js packages (npm install -g).
-</ResponseField>
-
-<ResponseField name="dependencies.bun" type="string[]" default="[]">
-  Bun packages (bun install -g).
-</ResponseField>
-
-<ResponseField name="dependencies.deno" type="string[]" default="[]">
-  Deno module URLs (deno cache).
-</ResponseField>
-
-<ResponseField name="dependencies.bash" type="string[]" default="[]">
-  Alpine apk packages.
-</ResponseField>
-
-
-### seccomp
-
-Security computing mode profile configuration.
-
-<ResponseField name="security.seccomp" type="string" default="safety">
-  The seccomp profile to use:
-  - `safety`: Blocks known dangerous syscalls (mount, ptrace, kernel modules) while allowing standard runtime operations (blacklist approach).
-  - `unconfined`: Disables seccomp filtering (use with caution).
-  - `path/to/profile.json`: Path to a custom seccomp profile JSON file.
-</ResponseField>
-
-### audit
-
-Audit logging configuration for execution provenance and compliance tracking.
-
-<ResponseField name="audit.enabled" type="boolean" default="false">
-  Enable audit logging. When enabled, every execution is recorded with metadata including code hash, timestamps, and resource usage.
-</ResponseField>
-
-<ResponseField name="audit.destination" type="string" default="filesystem">
-  Destination for audit logs. Options:
-  - `filesystem` or `file`: Write to log files (default)
-  - `stdout`: Print to console
-</ResponseField>
-
-<ResponseField name="audit.logDir" type="string">
-  Custom directory for audit log files. Defaults to `./.isol8_audit` in the current working directory, or the value of `ISOL8_AUDIT_DIR` environment variable.
-</ResponseField>
-
-<ResponseField name="audit.postLogScript" type="string">
-  Path to a script that runs after each audit log entry is written. The script receives the log file path as its first argument. Useful for integrating with external systems like CloudWatch, Splunk, or custom log aggregators.
-</ResponseField>
-
-<ResponseField name="audit.trackResources" type="boolean" default="true">
-  Track resource usage (CPU percentage, memory MB, network bytes) during execution. Adds slight overhead but useful for billing and monitoring.
-</ResponseField>
-
-<ResponseField name="audit.retentionDays" type="number" default="90">
-  Number of days to retain audit log files. Files older than this are automatically cleaned up when the AuditLogger initializes.
-</ResponseField>
-
-<ResponseField name="audit.includeCode" type="boolean" default="false">
-  Include the full source code in audit logs. Disabled by default for privacy. Enable only when you need complete code provenance.
-</ResponseField>
-
-<ResponseField name="audit.includeOutput" type="boolean" default="false">
-  Include stdout and stderr in audit logs. Disabled by default for privacy. Useful for debugging and compliance scenarios.
-</ResponseField>
-
-**Example audit configuration:**
-
-```json
-{
+    "bash": []
+  },
+  "security": {
+    "seccomp": "strict",
+    "customProfilePath": "./seccomp.json"
+  },
   "audit": {
-    "enabled": true,
-    "logDir": "/var/log/isol8",
-    "postLogScript": "/usr/local/bin/send-to-cloudwatch.sh",
+    "enabled": false,
+    "destination": "filesystem",
+    "logDir": "./.isol8_audit",
+    "postLogScript": "./scripts/on-audit.sh",
     "trackResources": true,
     "retentionDays": 90,
     "includeCode": false,
@@ -198,21 +75,251 @@ Audit logging configuration for execution provenance and compliance tracking.
 }
 ```
 
-## JSON Schema
+## Top-level sections
 
-A JSON Schema file is available at `schema/isol8.config.schema.json`. Reference it in your config file for editor autocompletion:
+| Field | Type | Default | Used by |
+|:--|:--|:--|:--|
+| `debug` | boolean | `false` | CLI/server/engine internal logs |
+| `maxConcurrent` | number | `10` | Global server concurrency cap |
+| `defaults` | object | safe baseline | Engine defaults for runs |
+| `network` | object | empty lists | Filter lists for filtered mode |
+| `cleanup` | object | prune enabled | Server session lifecycle |
+| `dependencies` | object | `{}` | Custom image setup inputs |
+| `security` | object | strict seccomp | Syscall policy |
+| `audit` | object | disabled | Audit and telemetry logging |
+
+## `defaults`
+
+These values are applied to every execution unless overridden by CLI flags or request options.
+
+<ResponseField name="timeoutMs" type="number" default="30000">
+  Hard execution timeout in milliseconds. If execution exceeds this, the container is forcibly killed.
+</ResponseField>
+
+<ResponseField name="memoryLimit" type="string" default="512m">
+  Container memory limit (e.g., `512m`, `1g`). Code exceeding this will be OOM killed.
+</ResponseField>
+
+<ResponseField name="cpuLimit" type="number" default="1.0">
+  CPU shares relative to one core. `1.0` allows full usage of one core.
+</ResponseField>
+
+<ResponseField name="network" type="none | host | filtered" default="none">
+  Default network egress mode.
+  - `none`: No network access.
+  - `filtered`: Access allowed only to whitelisted hosts via proxy.
+  - `host`: Full host network access (dangerous).
+</ResponseField>
+
+<ResponseField name="sandboxSize" type="string" default="512m">
+  Size of the writable `/sandbox` tmpfs mount where code executes.
+</ResponseField>
+
+<ResponseField name="tmpSize" type="string" default="256m">
+  Size of the `/tmp` tmpfs mount (mounted `noexec`).
+</ResponseField>
+
+## `network`
+
+Global hostname rules used when `network` is set to `filtered`.
+
+<ResponseField name="whitelist" type="string[]" default="[]">
+   List of regex patterns for allowed hostnames. If non-empty, *only* matching connections are allowed.
+</ResponseField>
+
+<ResponseField name="blacklist" type="string[]" default="[]">
+  List of regex patterns for denied hostnames. Matches here are blocked even if they match a whitelist rule.
+</ResponseField>
+
+<Tip>
+  Keep allow/deny regexes as narrow as possible (exact host patterns when feasible) to reduce accidental data egress.
+</Tip>
+
+## `cleanup`
+
+Server-side idle session management settings.
+
+<Note>
+  `cleanup` applies to long-running server sessions (`isol8 serve`). It does not change one-off local CLI runs.
+</Note>
+
+<ResponseField name="autoPrune" type="boolean" default="true">
+  Enables the background periodic cleanup loop for idle persistent containers.
+</ResponseField>
+
+<ResponseField name="maxContainerAgeMs" type="number" default="3600000">
+  Idle time threshold (in milliseconds) before a persistent container is removed. Default is 1 hour.
+</ResponseField>
+
+## `dependencies`
+
+Runtime-specific packages to bake into custom Docker images during `isol8 setup`.
+
+<ResponseField name="python" type="string[]">
+  List of pip packages (e.g., `["numpy", "pandas"]`).
+</ResponseField>
+
+<ResponseField name="node" type="string[]">
+  List of global npm packages.
+</ResponseField>
+
+<ResponseField name="bun" type="string[]">
+  List of global bun packages.
+</ResponseField>
+
+<ResponseField name="deno" type="string[]">
+  List of Deno module URLs to pre-cache.
+</ResponseField>
+
+<ResponseField name="bash" type="string[]">
+  List of Alpine packages to install via `apk`.
+</ResponseField>
+
+## `security`
+
+System-level security policies.
+
+<ResponseField name="seccomp" type="strict | unconfined | custom" default="strict">
+  Syscall filtering profile.
+  - `strict`: Default secure profile.
+  - `unconfined`: No syscall filtering.
+  - `custom`: Use profile from `customProfilePath`.
+</ResponseField>
+
+<ResponseField name="customProfilePath" type="string">
+  Absolute path to a custom seccomp profile JSON file. Required if `seccomp` is `custom`.
+</ResponseField>
+
+## `audit`
+
+Telemetry and audit logging configuration.
+
+<ResponseField name="enabled" type="boolean" default="false">
+  Master switch to enable audit logging.
+</ResponseField>
+
+<ResponseField name="destination" type="string" default="filesystem">
+  Where to write logs. Currently supports `filesystem` or `stdout`.
+</ResponseField>
+
+<ResponseField name="logDir" type="string" default="./.isol8_audit">
+  Directory to store audit log files when destination is `filesystem`.
+</ResponseField>
+
+<ResponseField name="trackResources" type="boolean" default="true">
+  Whether to record CPU, memory, and network usage metrics for each execution.
+</ResponseField>
+
+<ResponseField name="retentionDays" type="number" default="90">
+  Number of days to keep audit logs before auto-deletion.
+</ResponseField>
+
+<ResponseField name="includeCode" type="boolean" default="false">
+  **Security Risk**. If true, the full source code of every execution is saved in the logs.
+</ResponseField>
+
+<ResponseField name="includeOutput" type="boolean" default="false">
+  **Security Risk**. If true, full stdout/stderr capture is saved in the logs.
+</ResponseField>
+
+<Warning>
+  Enabling `audit.includeCode` or `audit.includeOutput` may store sensitive user data. Turn these on only when you have explicit retention and access controls.
+</Warning>
+
+## Practical baseline configs
+
+### Secure default for most workloads
 
 ```json
 {
-  "$schema": "./schema/isol8.config.schema.json"
+  "$schema": "./schema/isol8.config.schema.json",
+  "defaults": {
+    "network": "none",
+    "timeoutMs": 20000,
+    "memoryLimit": "512m"
+  },
+  "cleanup": {
+    "autoPrune": true,
+    "maxContainerAgeMs": 1800000
+  }
 }
 ```
 
-## Viewing Resolved Config
+### API-heavy workload with filtered egress and audit logs
 
-Use the CLI to see the fully resolved configuration:
+```json
+{
+  "$schema": "./schema/isol8.config.schema.json",
+  "maxConcurrent": 25,
+  "defaults": {
+    "network": "filtered",
+    "timeoutMs": 45000,
+    "memoryLimit": "1g",
+    "cpuLimit": 2
+  },
+  "network": {
+    "whitelist": ["^api\\.openai\\.com$", "^api\\.github\\.com$"],
+    "blacklist": [".*\\.internal$"]
+  },
+  "audit": {
+    "enabled": true,
+    "destination": "filesystem",
+    "logDir": "./.isol8_audit",
+    "trackResources": true,
+    "retentionDays": 30
+  }
+}
+```
 
-```bash
+## Validation and inspection
+
+<CodeGroup>
+```bash Command
 isol8 config
 isol8 config --json
 ```
+
+```text Expected output
+Prints effective resolved config (human-readable or JSON), including defaults and overrides from the selected config file.
+```
+</CodeGroup>
+
+- Keep `$schema` in your config for IDE validation/autocomplete.
+
+## FAQ
+
+<Accordion title="Can I combine project and home config files?">
+  No. isol8 picks the first existing config file by search order, then merges that single file with built-in defaults.
+</Accordion>
+
+<Accordion title="Which values are safe defaults for production start?">
+  Start with `defaults.network: "none"`, conservative `timeoutMs`/`memoryLimit`, and `audit.enabled: false` unless you need logging.
+</Accordion>
+
+<Accordion title="Where should I set package dependencies for setup images?">
+  Use the `dependencies` section in config (or equivalent flags on `isol8 setup`) for runtime-specific pre-baked packages.
+</Accordion>
+
+## Troubleshooting quick checks
+
+- **Config changes not reflected**: confirm which file is being loaded (`./isol8.config.json` takes precedence over `~/.isol8/config.json`).
+- **Filtered mode not behaving as expected**: validate `network.whitelist`/`network.blacklist` regex patterns.
+- **Persistent sessions not being cleaned up**: check `cleanup.autoPrune` and `cleanup.maxContainerAgeMs` on the server.
+- **Missing audit files**: verify `audit.enabled`, `audit.destination`, and `audit.logDir` settings.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Passing values" icon="sliders" href="/passing-values">
+    See exactly where each option is set across CLI, config, API, and library.
+  </Card>
+  <Card title="How to CLI" icon="terminal" href="/cli">
+    Command-level flags and behavior for `run`, `setup`, `serve`, and cleanup.
+  </Card>
+  <Card title="Library reference" icon="book-open" href="/library">
+    TypeScript option mapping for `DockerIsol8` and `RemoteIsol8`.
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/troubleshooting">
+    Diagnose and fix common runtime and server problems.
+  </Card>
+</CardGroup>

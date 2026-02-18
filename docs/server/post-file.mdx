@@ -1,0 +1,43 @@
+---
+title: "Upload file"
+description: "Upload base64-encoded file content into an active persistent session."
+api: "POST /file"
+icon: "upload"
+---
+
+Uploads a file into a persistent session container.
+
+<ParamField body="sessionId" type="string" required>
+  Existing persistent session identifier.
+</ParamField>
+
+<ParamField body="path" type="string" required>
+  Absolute target path inside the container.
+</ParamField>
+
+<ParamField body="content" type="string" required>
+  Base64-encoded file content.
+</ParamField>
+
+<ResponseField name="ok" type="boolean">
+  `true` when upload succeeds.
+</ResponseField>
+
+<RequestExample>
+```bash
+curl -X POST http://localhost:3000/file \
+  -H "Authorization: Bearer $ISOL8_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sessionId": "session-123",
+    "path": "/sandbox/input.txt",
+    "content": "aGVsbG8K"
+  }'
+```
+</RequestExample>
+
+<ResponseExample>
+```json
+{ "ok": true }
+```
+</ResponseExample>

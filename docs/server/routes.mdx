@@ -1,0 +1,46 @@
+---
+title: "Routes index"
+description: "Server route catalog for health, execute, streaming, file transfer, and session lifecycle endpoints."
+icon: "route"
+---
+
+Use these endpoint pages for complete contracts and interactive API playground usage.
+
+## Endpoint catalog
+
+<CardGroup cols={2}>
+  <Card title="GET /health" icon="heart-pulse" href="/server/get-health">
+    Liveness + server version, no auth required.
+  </Card>
+  <Card title="POST /execute" icon="terminal" href="/server/post-execute">
+    Execute code and return the full result payload.
+  </Card>
+  <Card title="POST /execute/stream" icon="activity" href="/server/post-execute-stream">
+    Stream stdout/stderr/exit as Server-Sent Events.
+  </Card>
+  <Card title="POST /file" icon="upload" href="/server/post-file">
+    Upload base64 content to a persistent session container.
+  </Card>
+  <Card title="GET /file" icon="download" href="/server/get-file">
+    Download base64 content from a persistent session container.
+  </Card>
+  <Card title="DELETE /session/:id" icon="trash" href="/server/delete-session">
+    Destroy a persistent session and release resources.
+  </Card>
+</CardGroup>
+
+## Auth rules
+
+- `GET /health` is public.
+- All other endpoints require `Authorization: Bearer <api-key>`.
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Server overview" icon="server" href="/server/overview">
+    Architecture, defaults, and auto-pruning behavior.
+  </Card>
+  <Card title="Remote server and client" icon="server" href="/remote">
+    End-to-end remote usage with CLI and SDK.
+  </Card>
+</CardGroup>

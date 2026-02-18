@@ -1,0 +1,353 @@
+---
+title: "Passing values (CLI, config, API, library)"
+sidebarTitle: "Passing values"
+description: "How every isol8 option maps across CLI flags, isol8.config.json, API request bodies, and TypeScript parameters."
+icon: "list"
+---
+
+Use this page when you need to answer: "where do I set this value?"
+
+- CLI flag (`isol8 run ...`)
+- Config (`isol8.config.json`)
+- API request body (`POST /execute`)
+- Library parameters (`new DockerIsol8(...)`, `execute(...)`)
+
+## Precedence rules
+
+### Local CLI execution
+
+1. CLI flag
+2. Config default (`isol8.config.json`)
+3. Built-in default
+
+### Remote API execution
+
+1. Request `options`
+2. Server-side config defaults
+3. Engine built-in default
+
+## Execution request fields (`ExecutionRequest`)
+
+<ResponseField name="code" type="string">
+  **CLI**: `-e, --eval` or file/stdin input
+
+  **Config**: not set via config
+
+  **API**: `request.code`
+
+  **Library**: `execute({ code })`
+</ResponseField>
+
+<ResponseField name="runtime" type="'python' | 'node' | 'bun' | 'deno' | 'bash'">
+  **CLI**: `-r, --runtime`, or auto-detected from file extension
+
+  **Config**: not set via config
+
+  **API**: `request.runtime`
+
+  **Library**: `execute({ runtime })`
+</ResponseField>
+
+<ResponseField name="timeoutMs" type="number">
+  **CLI**: `--timeout <ms>`
+
+  **Config fallback**: `defaults.timeoutMs`
+
+  **API**: `request.timeoutMs`
+
+  **Library**: `execute({ timeoutMs })`
+</ResponseField>
+
+<ResponseField name="stdin" type="string">
+  **CLI**: `--stdin <data>` or piped stdin
+
+  **Config**: not set via config
+
+  **API**: `request.stdin`
+
+  **Library**: `execute({ stdin })`
+</ResponseField>
+
+<ResponseField name="env" type="Record<string, string>">
+  **CLI**: no direct generic env flag (secrets use `--secret`)
+
+  **Config**: not set via config
+
+  **API**: `request.env`
+
+  **Library**: `execute({ env })`
+</ResponseField>
+
+<ResponseField name="fileExtension" type="string">
+  **CLI**: inferred from file argument
+
+  **Config**: not set via config
+
+  **API**: `request.fileExtension`
+
+  **Library**: `execute({ fileExtension })`
+</ResponseField>
+
+<ResponseField name="files" type="Record<string, string | Buffer>">
+  **CLI**: not exposed as a run flag
+
+  **Config**: not set via config
+
+  **API**: `request.files`
+
+  **Library**: `execute({ files })`
+</ResponseField>
+
+<ResponseField name="outputPaths" type="string[]">
+  **CLI**: not exposed as a run flag
+
+  **Config**: not set via config
+
+  **API**: `request.outputPaths`
+
+  **Library**: `execute({ outputPaths })`
+</ResponseField>
+
+<ResponseField name="installPackages" type="string[]">
+  **CLI**: `--install <package>` (repeatable)
+
+  **Config**: not set via config
+
+  **API**: `request.installPackages`
+
+  **Library**: `execute({ installPackages })`
+</ResponseField>
+
+<ResponseField name="metadata" type="Record<string, string>">
+  **CLI**: not exposed as run flag
+
+  **Config**: not set via config
+
+  **API**: `request.metadata`
+
+  **Library**: `execute({ metadata })`
+</ResponseField>
+
+## Engine options (`Isol8Options`)
+
+<ResponseField name="mode" type="'ephemeral' | 'persistent'" default="ephemeral">
+  **CLI**: `--persistent` enables persistent mode
+
+  **Config**: not a config key
+
+  **API**: persistent behavior via `sessionId` on `POST /execute`
+
+  **Library**: `new DockerIsol8({ mode: ... })`
+</ResponseField>
+
+<ResponseField name="network" type="'none' | 'host' | 'filtered'" default="none">
+  **CLI**: `--net <mode>`
+
+  **Config fallback**: `defaults.network`
+
+  **API**: `options.network`
+
+  **Library**: `network`
+</ResponseField>
+
+<ResponseField name="networkFilter" type="{ whitelist: string[]; blacklist: string[] }">
+  **CLI**: `--allow <regex>` and `--deny <regex>`
+
+  **Config fallback**: `network.whitelist` / `network.blacklist`
+
+  **API**: `options.networkFilter`
+
+  **Library**: `networkFilter`
+</ResponseField>
+
+<ResponseField name="memoryLimit" type="string" default="512m">
+  **CLI**: `--memory <size>`
+
+  **Config fallback**: `defaults.memoryLimit`
+
+  **API**: `options.memoryLimit`
+
+  **Library**: `memoryLimit`
+</ResponseField>
+
+<ResponseField name="cpuLimit" type="number" default="1">
+  **CLI**: `--cpu <number>`
+
+  **Config fallback**: `defaults.cpuLimit`
+
+  **API**: `options.cpuLimit`
+
+  **Library**: `cpuLimit`
+</ResponseField>
+
+<ResponseField name="pidsLimit" type="number" default="64">
+  **CLI**: `--pids-limit <n>`
+
+  **Config**: no direct key
+
+  **API**: `options.pidsLimit`
+
+  **Library**: `pidsLimit`
+</ResponseField>
+
+<ResponseField name="readonlyRootFs" type="boolean" default="true">
+  **CLI**: `--writable` sets this to `false`
+
+  **Config**: no direct key
+
+  **API**: `options.readonlyRootFs`
+
+  **Library**: `readonlyRootFs`
+</ResponseField>
+
+<ResponseField name="maxOutputSize" type="number" default="1048576">
+  **CLI**: `--max-output <bytes>`
+
+  **Config**: no direct key
+
+  **API**: `options.maxOutputSize`
+
+  **Library**: `maxOutputSize`
+</ResponseField>
+
+<ResponseField name="image" type="string">
+  **CLI**: `--image <name>`
+
+  **Config**: no direct key
+
+  **API**: `options.image`
+
+  **Library**: `image`
+</ResponseField>
+
+<ResponseField name="sandboxSize" type="string" default="512m">
+  **CLI**: `--sandbox-size <size>`
+
+  **Config fallback**: `defaults.sandboxSize`
+
+  **API**: `options.sandboxSize`
+
+  **Library**: `sandboxSize`
+</ResponseField>
+
+<ResponseField name="tmpSize" type="string" default="256m">
+  **CLI**: `--tmp-size <size>`
+
+  **Config fallback**: `defaults.tmpSize`
+
+  **API**: `options.tmpSize`
+
+  **Library**: `tmpSize`
+</ResponseField>
+
+<ResponseField name="persist" type="boolean" default="false">
+  **CLI**: `--persist`
+
+  **Config**: no direct key
+
+  **API**: `options.persist`
+
+  **Library**: `persist`
+</ResponseField>
+
+<ResponseField name="debug" type="boolean" default="false">
+  **CLI**: `--debug`
+
+  **Config fallback**: `debug`
+
+  **API**: `options.debug`
+
+  **Library**: `debug`
+</ResponseField>
+
+<ResponseField name="logNetwork" type="boolean" default="false">
+  **CLI**: `--log-network`
+
+  **Config**: no direct key
+
+  **API**: `options.logNetwork`
+
+  **Library**: `logNetwork`
+</ResponseField>
+
+<ResponseField name="poolStrategy" type="'fast' | 'secure'" default="fast">
+  **CLI**: `--pool-strategy <mode>`
+
+  **Config**: not a config key
+
+  **API**: `options.poolStrategy`
+
+  **Library**: `poolStrategy`
+</ResponseField>
+
+<ResponseField name="poolSize" type="number | { clean: number; dirty: number }" default="{ clean: 1, dirty: 1 }">
+  **CLI**: `--pool-size <size>` (`2` or `2,2`)
+
+  **Config**: not a config key
+
+  **API**: `options.poolSize`
+
+  **Library**: `poolSize`
+</ResponseField>
+
+<ResponseField name="security" type="SecurityConfig">
+  **CLI**: no direct run flags
+
+  **Config**: `security.seccomp`, `security.customProfilePath`
+
+  **API**: `options.security`
+
+  **Library**: `security`
+</ResponseField>
+
+<ResponseField name="audit" type="AuditConfig">
+  **CLI**: no direct run flags
+
+  **Config**: `audit.*`
+
+  **API**: `options.audit`
+
+  **Library**: `audit`
+</ResponseField>
+
+<Note>
+  `poolStrategy` and `poolSize` are runtime options. They are not keys in `isol8.config.json`.
+</Note>
+
+## `isol8 setup` mapping
+
+<ResponseField name="dependencies.python" type="string[]">
+  **CLI**: `isol8 setup --python numpy,pandas`
+
+  **Config**: `dependencies.python`
+</ResponseField>
+
+<ResponseField name="dependencies.node" type="string[]">
+  **CLI**: `isol8 setup --node lodash,axios`
+
+  **Config**: `dependencies.node`
+</ResponseField>
+
+<ResponseField name="dependencies.bun" type="string[]">
+  **CLI**: `isol8 setup --bun zod`
+
+  **Config**: `dependencies.bun`
+</ResponseField>
+
+<ResponseField name="dependencies.deno" type="string[]">
+  **CLI**: `isol8 setup --deno https://deno.land/std@...`
+
+  **Config**: `dependencies.deno`
+</ResponseField>
+
+<ResponseField name="dependencies.bash" type="string[]">
+  **CLI**: `isol8 setup --bash jq,curl`
+
+  **Config**: `dependencies.bash`
+</ResponseField>
+
+<ResponseField name="rebuild behavior" type="flag">
+  **CLI**: `--force`
+
+  **Config**: no equivalent key
+</ResponseField>

@@ -18,6 +18,14 @@
     "twitter:description": "Secure code execution engine for AI agents. Run untrusted code in Docker containers.",
     "twitter:card": "summary_large_image"
   },
+  "api": {
+    "mdx": {
+      "server": "http://localhost:3000",
+      "auth": {
+        "method": "bearer"
+      }
+    }
+  },
   "navbar": {
     "links": [
       {
@@ -32,142 +40,75 @@
   "navigation": {
     "tabs": [
       {
-        "tab": "v2 (New Features)",
-        "groups": [
-          {
-            "group": "Get Started",
-            "pages": [
-              "v2/intro",
-              "v2/safety-for-humans",
-              "v2/quickstart",
-              "v2/faq"
-            ]
-          },
-          {
-            "group": "Essentials",
-            "pages": [
-              "v2/execution",
-              "v2/runtimes",
-              "v2/security",
-              "v2/persistence",
-              "v2/packages"
-            ]
-          },
-          {
-            "group": "Advanced",
-            "pages": [
-              "v2/remote",
-              "v2/observability",
-              "v2/architecture",
-              "v2/performance"
-            ]
-          },
-          {
-            "group": "Guides",
-            "pages": [
-              "v2/guides/ai-agents",
-              "v2/guides/data-processing",
-              "v2/guides/web-scraping",
-              "v2/guides/ci-testing",
-              "v2/guides/multi-runtime",
-              "v2/guides/education",
-              "v2/guides/debugging"
-            ]
-          },
-          {
-            "group": "Reference",
-            "pages": ["v2/configuration", "v2/cli", "v2/library"]
-          }
-        ]
-      },
-      {
-        "tab": "API Reference (v2)",
-        "groups": [
-          {
-            "group": "Overview",
-            "pages": ["v2/api/introduction", "v2/api/health"]
-          },
-          {
-            "group": "Execution",
-            "pages": ["v2/api/execute", "v2/api/stream"]
-          },
-          {
-            "group": "Files",
-            "pages": ["v2/api/upload", "v2/api/download"]
-          },
-          {
-            "group": "Sessions",
-            "pages": ["v2/api/delete-session"]
-          }
-        ]
-      },
-      {
         "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting Started",
-            "pages": ["index", "quickstart"]
+            "group": "Get Started",
+            "pages": ["index", "safety-for-humans", "quickstart"]
           },
           {
-            "group": "CLI",
+            "group": "Core Concepts",
             "pages": [
-              "cli/run",
-              "cli/setup",
-              "cli/serve",
-              "cli/config",
-              "cli/cleanup"
+              "execution",
+              "runtimes",
+              "security",
+              "persistence",
+              "packages"
             ]
           },
           {
-            "group": "TypeScript Library",
-            "pages": [
-              "library/overview",
-              "library/execution",
-              "library/streaming",
-              "library/file-io"
-            ]
+            "group": "Deployment & Ops",
+            "pages": ["remote", "observability", "architecture", "performance"]
           },
           {
             "group": "Reference",
+            "pages": ["passing-values", "configuration", "cli", "library"]
+          },
+          {
+            "group": "Help",
+            "pages": ["troubleshooting", "faq"]
+          }
+        ]
+      },
+      {
+        "tab": "Server",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": ["server/overview", "server/routes"]
+          },
+          {
+            "group": "Endpoints",
             "pages": [
-              "configuration",
-              "runtimes",
-              "benchmarks",
-              "architecture",
-              "security",
-              "faq"
+              "server/get-health",
+              "server/post-execute",
+              "server/post-execute-stream",
+              "server/post-file",
+              "server/get-file",
+              "server/delete-session"
             ]
           }
         ]
       },
       {
-        "tab": "Cookbook",
+        "tab": "Guides",
         "groups": [
           {
-            "group": "Use Cases",
+            "group": "Application Patterns",
             "pages": [
-              "cookbook/ai-agents",
-              "cookbook/education",
-              "cookbook/data-processing",
-              "cookbook/ci-testing",
-              "cookbook/web-scraping",
-              "cookbook/multi-runtime",
-              "cookbook/remote-execution",
-              "cookbook/debugging"
+              "guides/ai-agents",
+              "guides/data-processing",
+              "guides/web-scraping",
+              "guides/education"
             ]
           },
           {
-            "group": "Operations",
-            "pages": ["cookbook/audit-logs"]
-          }
-        ]
-      },
-      {
-        "tab": "API Reference",
-        "groups": [
+            "group": "Engineering Workflows",
+            "pages": ["guides/ci-testing", "guides/debugging"]
+          },
           {
-            "group": "HTTP Server",
-            "pages": ["server/overview", "server/endpoints"]
+            "group": "Runtime Orchestration",
+            "pages": ["guides/multi-runtime"]
           }
         ]
       }

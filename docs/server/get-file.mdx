@@ -1,0 +1,33 @@
+---
+title: "Download file"
+description: "Download base64-encoded file content from an active persistent session."
+api: "GET /file"
+icon: "download"
+---
+
+Downloads file content from a persistent session container.
+
+<ParamField query="sessionId" type="string" required>
+  Existing persistent session identifier.
+</ParamField>
+
+<ParamField query="path" type="string" required>
+  Absolute file path inside the container.
+</ParamField>
+
+<ResponseField name="content" type="string">
+  Base64-encoded file content.
+</ResponseField>
+
+<RequestExample>
+```bash
+curl "http://localhost:3000/file?sessionId=session-123&path=/sandbox/output.txt" \
+  -H "Authorization: Bearer $ISOL8_API_KEY"
+```
+</RequestExample>
+
+<ResponseExample>
+```json
+{ "content": "aGVsbG8K" }
+```
+</ResponseExample>

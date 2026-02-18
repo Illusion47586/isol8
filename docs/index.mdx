@@ -1,129 +1,64 @@
 ---
-title: "Introduction"
-description: "Secure code execution engine for AI agents. Run untrusted code inside Docker containers with strict resource limits, network controls, and output sanitization."
-og:title: "isol8 Documentation - Secure Code Execution Engine"
-og:description: "Secure code execution engine for AI agents. Learn how to safely execute untrusted code in Docker containers with the CLI, TypeScript library, and HTTP server."
+title: "Overview"
+sidebarTitle: "Overview"
+description: "What isol8 includes: secure execution, pooling, network controls, persistence, remote server/client, and observability."
+icon: "house"
 ---
 
-isol8 is a secure code execution engine that runs untrusted code inside Docker containers with strict resource limits, network controls, and output sanitization. It is purpose-built for AI agents, chatbots, coding assistants, and any application that needs to safely execute user-provided code without risking the host system.
+isol8 is a secure code execution engine for untrusted code.
 
-isol8 ships as three interfaces — a **TypeScript library**, a **CLI tool**, and a **remote HTTP server** — all backed by the same battle-hardened Docker-based execution engine.
+<Info>
+  If you are new to isol8, follow `Quickstart` first, then read `Execution guide` before tuning configuration or performance.
+</Info>
 
-## Architecture
+Core capabilities:
 
-The following diagram shows the end-to-end flow from code submission to result delivery:
+- Isolated Docker execution for Python, Node.js, Bun, Deno, and Bash
+- Ephemeral and persistent modes
+- Warm pool strategies (`fast`, `secure`)
+- Filtered networking with proxy + iptables enforcement
+- Remote HTTP server with streaming and session/file APIs
+- Audit and resource logging options
 
-```mermaid
-flowchart TB
-    subgraph Clients["Client Interfaces"]
-        CLI["`**CLI**
-isol8 run`"]
-        LIB["`**TypeScript Library**
-DockerIsol8`"]
-        HTTP["`**HTTP Server**
-isol8 serve`"]
-    end
-
-    subgraph Engine["isol8 Engine"]
-        RR["`**Runtime Resolver**
-Python · Node · Bun · Deno · Bash`"]
-        SEM["`**Concurrency Semaphore**
-Rate-limits parallel executions`"]
-        POOL["`**Container Pool**
-Pre-warmed containers per image`"]
-    end
-
-    subgraph Container["Docker Container"]
-        RL["`**Resource Limits**
-CPU · Memory · PIDs · Read-only FS`"]
-        NET["`**Network Controls**
-none · host · filtered proxy`"]
-        EXEC["`**Code Execution**
-Timeout-enforced sandbox`"]
-    end
-
-    subgraph Output["Output Pipeline"]
-        COLLECT["Collect stdout / stderr"]
-        MASK["Mask Secrets"]
-        TRUNC["Truncate if > maxOutputSize"]
-        RESULT["ExecutionResult"]
-    end
-
-    CLI --> RR
-    LIB --> RR
-    HTTP --> RR
-
-    RR --> SEM
-    SEM --> POOL
-    POOL -->|"Acquire warm container"| RL
-    RL --> NET
-    NET --> EXEC
-
-    EXEC --> COLLECT
-    COLLECT --> MASK
-    MASK --> TRUNC
-    TRUNC --> RESULT
-
-    RESULT -->|"Return to caller"| Clients
-    EXEC -->|"Release container back to pool"| POOL
-```
-
-## Key Features
+## Start here
 
 <CardGroup cols={2}>
-  <Card title="Multi-Runtime Support" icon="code">
-    Execute Python, Node.js, Bun, Deno, and Bash out of the box. Each runtime has its own optimized Docker image with the correct toolchain and package manager pre-installed.
+  <Card title="Quickstart" icon="bolt" href="/quickstart">
+    Install and run your first execution.
   </Card>
-  <Card title="Container Isolation" icon="shield">
-    Every execution runs in a Docker container with a read-only root filesystem, PID limits, memory and CPU caps, and `no-new-privileges` security policy. Containers are fully disposable.
+  <Card title="Execution guide" icon="terminal" href="/execution">
+    Learn request fields, modes, and streaming behavior.
   </Card>
-  <Card title="Network Control" icon="globe">
-    Choose between three network modes: `none` (all traffic blocked, default and most secure), `host` (full host network access), or `filtered` (HTTP/HTTPS traffic routed through a hostname-level allow/deny proxy).
+  <Card title="Passing values" icon="sliders" href="/passing-values">
+    See exactly where each option is configured.
   </Card>
-  <Card title="Real-Time Streaming" icon="bolt">
-    Stream stdout and stderr as code executes via `executeStream()` in the library or Server-Sent Events (SSE) over HTTP. No need to wait for the process to finish.
-  </Card>
-  <Card title="File I/O" icon="file">
-    Inject input files into the container before execution and retrieve output files after — even in ephemeral mode. Files are transferred as tar archives via the Docker API.
-  </Card>
-  <Card title="Sub-150ms Latency" icon="gauge-high">
-    The warm container pool keeps pre-started containers ready for immediate use, reducing execution latency from ~250-300ms (cold start) to ~125-145ms (warm). Containers are cleaned and recycled after each run.
-  </Card>
-  <Card title="Secret Masking" icon="eye-slash">
-    Pass sensitive values via the `secrets` option. isol8 automatically replaces any occurrence of secret values in stdout and stderr with `***`, preventing accidental leakage.
-  </Card>
-  <Card title="Package Installation" icon="box">
-    Install runtime-specific packages on the fly with `installPackages`. Supports pip (Python), npm (Node.js), bun (Bun), deno cache (Deno), and apk (Bash/Alpine).
+  <Card title="Troubleshooting" icon="wrench" href="/troubleshooting">
+    Fix common runtime and server issues.
   </Card>
 </CardGroup>
 
-## Three Ways to Use isol8
+## Architecture
 
-  <Card title="CLI" icon="terminal" href="/cli/run" horizontal>
-    Run code from the command line with `isol8 run`. Supports inline code (`-e`), file execution, stdin piping, persistent mode, secret injection, and package installation.
-  </Card>
-  <Card title="TypeScript Library" icon="brackets-curly" href="/library/overview" horizontal>
-    Import `DockerIsol8` for local execution or `RemoteIsol8` to connect to a remote server. Both implement the same `Isol8Engine` interface with `execute()`, `executeStream()`, `putFile()`, and `getFile()`.
-  </Card>
-  <Card title="HTTP Server" icon="server" href="/server/overview" horizontal>
-    Deploy `isol8 serve` as a standalone execution service. Exposes REST endpoints for code execution, streaming via SSE, and file I/O — all protected by Bearer token authentication.
-  </Card>
+<Card title="Architecture" icon="sitemap" href="/architecture">
+  Internal execution pipeline, pool lifecycle, and security boundaries.
+</Card>
 
+## FAQ
 
-## Supported Runtimes
+<Accordion title="Where should I start if I only need local execution?">
+  Start with <a href="/quickstart">Quickstart</a>, then move to <a href="/cli">How to CLI</a> for flag-level details.
+</Accordion>
 
-| Runtime | Image | File Extension | Package Manager | Inline Code |
-|:--------|:------|:---------------|:----------------|:------------|
-| Python 3.x | `isol8:python` | `.py` | pip | Yes |
-| Node.js LTS | `isol8:node` | `.js` | npm | Yes |
-| Bun | `isol8:bun` | `.ts` | bun | Yes |
-| Deno | `isol8:deno` | `.mts` | deno cache | No (file only) |
-| Bash | `isol8:bash` | `.sh` | apk | Yes |
+<Accordion title="When should I read Execution vs Passing values?">
+  Read <a href="/execution">Execution guide</a> for behavior and lifecycle. Read <a href="/passing-values">Passing values</a> to map each option to CLI, config, API, and library inputs.
+</Accordion>
 
-<Note>
-  `.ts` files default to Bun. Use `--runtime deno` or the `.mts` extension for Deno.
-</Note>
+<Accordion title="Where are remote server endpoint examples?">
+  Use <a href="/remote">Remote server and client</a> for endpoint usage patterns and request examples.
+</Accordion>
 
-<Warning>
-  Deno does **not** support inline code execution (the `-e` flag). It requires a file path. The Deno adapter will throw an error if no file path is provided.
-</Warning>
+## Troubleshooting quick checks
+
+- **Unsure which page to use**: start from `Quickstart`, then follow the “Next steps” cards on each page.
+- **Command works differently than expected**: verify where the value is set in <a href="/passing-values">Passing values</a>.
+- **Execution failures**: use <a href="/troubleshooting">Troubleshooting</a> for symptom-based fixes.
