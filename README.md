@@ -127,6 +127,15 @@ isol8 run script.py --host http://server:3000 --key my-api-key
 | `--install <pkg>` | Install package for runtime (repeatable) | — |
 | `--host <url>` | Remote server URL | — |
 | `--key <key>` | API key for remote server | `$ISOL8_API_KEY` |
+| `--git-clone <url>` | Clone a Git repository into the sandbox before execution | — |
+| `--git-clone-path <path>` | Path under `/sandbox` to clone into | — |
+| `--git-clone-branch <branch>` | Branch to checkout after cloning | — |
+| `--git-commit <message>` | Commit changes after execution (stages all by default) | — |
+| `--git-commit-author-name <name>` | Author name for commit | — |
+| `--git-commit-author-email <email>` | Author email for commit | — |
+| `--git-push` | Push committed changes after execution | `false` |
+| `--git-push-branch <branch>` | Branch name to push (required with `--git-push`) | — |
+| `--git-push-remote <remote>` | Remote name to push to | `origin` |
 
 ### `isol8 cleanup`
 

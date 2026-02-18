@@ -418,6 +418,11 @@ export interface Isol8Options {
 
   /** Security settings. */
   security?: SecurityConfig;
+  /**
+   * Git-related security settings. Controls allowed hosts, blocked patterns,
+   * and credential environment variable names used for masking.
+   */
+  gitSecurity?: GitSecurityConfig;
 
   /** Audit logging configuration. */
   audit?: AuditConfig;
