@@ -17,6 +17,8 @@ isol8 supports five language runtimes. Each runtime is implemented as a **Runtim
 | Deno | `isol8:deno` | `.mts` | No | Throws error | `deno run --allow-read=/sandbox,/tmp --allow-write=/sandbox,/tmp --allow-env --allow-net <path>` |
 | Bash | `isol8:bash` | `.sh` | Yes | `bash -c <code>` | `bash <path>` |
 
+All runtime images include `git` and `openssh-client` to support built-in Git operations.
+
 ## Auto-detection
 
 When you run a file through the CLI (`isol8 run script.py`), isol8 auto-detects the runtime from the file extension using `RuntimeRegistry.detect()`. The mapping is:

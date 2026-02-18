@@ -181,6 +181,17 @@ describe("CLI Run - Output Options", () => {
   }, 30_000);
 });
 
+describe("CLI Run - Git Operations", () => {
+  test("clone and commit via built-in git options", async () => {
+    const { stdout, stderr } = await runIsol8(
+      'run -e "cd /sandbox/repo && git checkout -b test-branch-$(date +%s) && git config user.name \\"isol8\\" && git config user.email \\"isol8@example.com\\" && echo \\"prod\\" >> README.md && git add -A && git commit -m \\"test: prod git\\" && git log -1 --pretty=%B" -r bash --net host --git-clone https://github.com/octocat/Hello-World.git --git-clone-path repo --no-stream',
+      { timeout: 120_000 }
+    );
+    expect(stdout).toContain("test: prod git");
+    expect(stderr).not.toContain("Git Warning");
+  }, 120_000);
+});
+
 describe("CLI Run - Filesystem", () => {
   test("--sandbox-size flag is accepted", async () => {
     const { stdout } = await runIsol8(

@@ -1,0 +1,281 @@
+---
+title: "Git Operations"
+description: "Clone, commit, and push repositories inside isol8 sandboxes"
+og:title: "Git Operations - isol8"
+og:description: "Run Git clone/commit/push as part of isol8 executions with built-in security controls."
+---
+
+isol8 can run Git operations as part of an execution. This is useful for AI agents that need to fetch code, apply changes, and push updates without manual shell scripting.
+
+## Requirements
+
+- Git is installed in all runtime images.
+- Credentials must be supplied via environment variables or URL-embedded tokens.
+- Git URLs are validated against `gitSecurity` rules before execution.
+- Network must allow outbound access for clone/pull/push. `network: "none"` will fail Git operations. `network: "host"` works for HTTPS and SSH. `network: "filtered"` only allows HTTP/HTTPS via the proxy, so SSH Git will be blocked.
+
+<Info>
+Git operations run in two phases:
+1) **Pre-execution**: `clone`, `checkout`, `pull`
+2) **Post-execution**: `commit`, `push`
+</Info>
+
+## Quickstart
+
+<Steps>
+  <Step title="Set network + security">
+    Use `network: "host"` for SSH Git or `network: "filtered"` for HTTPS-only Git. Configure `gitSecurity` to restrict allowed hosts.
+  </Step>
+  <Step title="Provide credentials">
+    Pass tokens via environment variables (e.g. `GITHUB_TOKEN`) and add them to `gitSecurity.credentialEnvVars` for masking.
+  </Step>
+  <Step title="Add git operations">
+    Set `ExecutionRequest.git` to perform `clone`, `commit`, and optionally `push`.
+  </Step>
+</Steps>
+
+## Usage
+
+<Tabs>
+  <Tab title="Library">
+```typescript
+import { DockerIsol8 } from "isol8";
+
+const isol8 = new DockerIsol8({
+  network: "host",
+  gitSecurity: {
+    allowedHosts: ["github.com"],
+    blockedPatterns: [],
+    allowPrivateIPs: false,
+    credentialEnvVars: ["GITHUB_TOKEN"],
+  },
+  secrets: {
+    GITHUB_TOKEN: process.env.GITHUB_TOKEN ?? "",
+  },
+});
+
+const result = await isol8.execute({
+  code: "cd /sandbox/repo && echo 'update' >> README.md",
+  runtime: "bash",
+  git: {
+    clone: { url: "https://user:${GITHUB_TOKEN}@github.com/user/repo.git", path: "repo" },
+    commit: {
+      message: "feat: update",
+      authorName: "AI Agent",
+      authorEmail: "agent@example.com",
+      repoPath: "repo",
+      all: true,
+    },
+    push: { remote: "origin", branch: "main", repoPath: "repo" },
+  },
+});
+
+console.log(result.exitCode, result.stderr);
+```
+  </Tab>
+  <Tab title="CLI">
+```bash
+isol8 run script.py --runtime python \
+  --net host \
+  --git-clone https://github.com/user/repo.git \
+  --git-clone-path repo \
+  --git-commit "feat: update" \
+  --git-commit-author-name "AI Agent" \
+  --git-commit-author-email "agent@example.com" \
+  --git-push --git-push-branch main
+```
+  </Tab>
+</Tabs>
+
+## Supported Operations
+
+All Git operations are optional and can be combined. Operations are executed in order.
+
+### `clone`
+
+<ResponseField name="git.clone.url" type="string" required>
+  HTTPS or SSH Git URL.
+</ResponseField>
+<ResponseField name="git.clone.path" type="string">
+  Relative path under `/sandbox` to clone into.
+</ResponseField>
+<ResponseField name="git.clone.branch" type="string">
+  Branch or tag to checkout after cloning.
+</ResponseField>
+<ResponseField name="git.clone.depth" type="number">
+  Shallow clone depth (e.g. `1` for latest commit).
+</ResponseField>
+<ResponseField name="git.clone.recursive" type="boolean">
+  Clone submodules recursively.
+</ResponseField>
+
+### `checkout`
+
+<ResponseField name="git.checkout.target" type="string" required>
+  Branch, tag, or commit SHA.
+</ResponseField>
+<ResponseField name="git.checkout.createBranch" type="boolean">
+  Create a new branch (`git checkout -b`).
+</ResponseField>
+<ResponseField name="git.checkout.repoPath" type="string">
+  Relative path under `/sandbox` for the repo.
+</ResponseField>
+
+### `pull`
+
+<ResponseField name="git.pull.remote" type="string" default="origin">
+  Remote name.
+</ResponseField>
+<ResponseField name="git.pull.branch" type="string">
+  Branch to pull.
+</ResponseField>
+<ResponseField name="git.pull.rebase" type="boolean">
+  Use `--rebase`.
+</ResponseField>
+<ResponseField name="git.pull.repoPath" type="string">
+  Relative path under `/sandbox` for the repo.
+</ResponseField>
+
+### `commit`
+
+<ResponseField name="git.commit.message" type="string" required>
+  Commit message.
+</ResponseField>
+<ResponseField name="git.commit.authorName" type="string">
+  Sets `user.name`.
+</ResponseField>
+<ResponseField name="git.commit.authorEmail" type="string">
+  Sets `user.email`.
+</ResponseField>
+<ResponseField name="git.commit.all" type="boolean">
+  Stage all changes (`git add -A`).
+</ResponseField>
+<ResponseField name="git.commit.files" type="string[]">
+  Specific files to stage (used when `all` is not set).
+</ResponseField>
+<ResponseField name="git.commit.repoPath" type="string">
+  Relative path under `/sandbox` for the repo.
+</ResponseField>
+
+### `push`
+
+<ResponseField name="git.push.remote" type="string" default="origin">
+  Remote name.
+</ResponseField>
+<ResponseField name="git.push.branch" type="string" required>
+  Branch to push.
+</ResponseField>
+<ResponseField name="git.push.force" type="boolean">
+  Use `--force`.
+</ResponseField>
+<ResponseField name="git.push.setUpstream" type="boolean">
+  Use `-u`.
+</ResponseField>
+<ResponseField name="git.push.repoPath" type="string">
+  Relative path under `/sandbox` for the repo.
+</ResponseField>
+
+## Git Operations Order
+
+Operations run in this order:
+
+1. `clone`
+2. `checkout`
+3. `pull`
+4. Execute code
+5. `commit`
+6. `push`
+
+### When does `commit` happen?
+
+`commit` runs **after the user code finishes**. It only runs if the main execution exits with code `0`. If the execution fails (non-zero exit code), post-execution Git operations are skipped.
+
+### Failure behavior
+
+- Pre-execution failures (clone/checkout/pull) fail the execution.
+- Post-execution failures (commit/push) do not fail the execution; they append a warning to stderr or stream output.
+
+## Configuring Git Security
+
+Configure Git URL validation and credential masking with `gitSecurity` in `isol8.config.json`:
+
+```json
+{
+  "gitSecurity": {
+    "allowedHosts": ["github.com", "gitlab.com"],
+    "blockedPatterns": [],
+    "allowPrivateIPs": false,
+    "credentialEnvVars": ["GIT_TOKEN", "GITHUB_TOKEN"]
+  }
+}
+```
+
+## Credentials
+
+Use environment variables for credentials. For HTTPS, you can pass a token via `GIT_TOKEN` or `GITHUB_TOKEN` and build a URL like:
+
+```
+https://user:${GIT_TOKEN}@github.com/user/repo.git
+```
+
+All values listed under `gitSecurity.credentialEnvVars` are masked from Git command output.
+
+## Validation and Safety Rules
+
+- URL validation checks hostnames against `allowedHosts` and `blockedPatterns`.
+- Private IPs and localhost are blocked by default (`allowPrivateIPs: false`).
+- Repo paths must be relative, cannot include `..` or `~`, and may only include `[a-zA-Z0-9._/-]`.
+- A safe directory entry is added for `/sandbox/*` and for cloned repos to avoid Git safety warnings.
+- Git commands run as the `sandbox` user with `HOME=/sandbox`.
+
+## Execution Details
+
+- Pre-exec Git commands run before code is written/executed.
+- Post-exec Git commands run after user code completes successfully.
+- Git commands are run through the same output sanitizer and secret masking.
+- Each Git phase is time-limited (default 120s).
+
+## Full Example
+
+```typescript
+import { DockerIsol8 } from "isol8";
+
+const isol8 = new DockerIsol8({
+  network: "host",
+  gitSecurity: {
+    allowedHosts: ["github.com"],
+    blockedPatterns: [],
+    allowPrivateIPs: false,
+    credentialEnvVars: ["GIT_TOKEN", "GITHUB_TOKEN"],
+  },
+  secrets: {
+    GIT_TOKEN: process.env.GIT_TOKEN ?? "",
+  },
+});
+
+const result = await isol8.execute({
+  code: "cd /sandbox/repo && echo 'update' >> README.md",
+  runtime: "bash",
+  git: {
+    clone: { url: "https://user:${GIT_TOKEN}@github.com/user/repo.git", path: "repo" },
+    checkout: { target: "main", repoPath: "repo" },
+    pull: { remote: "origin", branch: "main", repoPath: "repo", rebase: true },
+    commit: {
+      message: "feat: update",
+      authorName: "AI Agent",
+      authorEmail: "agent@example.com",
+      repoPath: "repo",
+      all: true,
+    },
+    push: { remote: "origin", branch: "main", repoPath: "repo", setUpstream: true },
+  },
+});
+
+console.log(result.exitCode, result.stderr);
+```
+
+## Notes
+
+- Private IPs and localhost are blocked by default to prevent SSRF.
+- If you need private Git hosts, set `gitSecurity.allowPrivateIPs` and add the host to `allowedHosts`.
+- Git operations run inside the sandbox as the `sandbox` user.

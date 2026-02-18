@@ -22,6 +22,11 @@ const result = await isol8.execute({
   },
   outputPaths: ["/sandbox/out.txt"], // Files to retrieve after execution
   installPackages: ["numpy"],        // Packages to install before execution
+  git: {                             // Optional Git operations
+    clone: { url: "https://github.com/user/repo.git", path: "repo" },
+    commit: { message: "feat: update", repoPath: "repo", all: true },
+    push: { remote: "origin", branch: "main", repoPath: "repo" },
+  },
 });
 ```
 
@@ -57,6 +62,10 @@ const result = await isol8.execute({
 
 <ResponseField name="installPackages" type="string[]">
   Packages to install before execution using the runtime's package manager. The container's root filesystem is temporarily made writable and network is enabled for installation.
+</ResponseField>
+
+<ResponseField name="git" type="GitOperations">
+  Git operations to run before and after execution. Operations are executed in order: clone → checkout → pull → execute → commit → push.
 </ResponseField>
 
 <ResponseField name="metadata" type="Record<string, string>">
@@ -163,6 +172,28 @@ print(f"Mean: {arr.mean()}, Std: {arr.std():.2f}")
 <Note>
   For faster execution, bake frequently-used packages into custom images with `isol8 setup --python numpy,pandas` instead of installing them on every run.
 </Note>
+
+### Git Operations
+
+```typescript
+const result = await isol8.execute({
+  code: "print('update')",
+  runtime: "python",
+  git: {
+    clone: { url: "https://github.com/user/repo.git", path: "repo" },
+    commit: {
+      message: "feat: update",
+      authorName: "AI Agent",
+      authorEmail: "agent@example.com",
+      repoPath: "repo",
+      all: true,
+    },
+    push: { remote: "origin", branch: "main", repoPath: "repo" },
+  },
+});
+```
+
+Git URL safety rules are controlled by `gitSecurity` in `isol8.config.json` or `Isol8Options`. By default, only trusted public hosts are allowed and private IPs are blocked for SSRF protection.
 
 ### Audit Metadata
 

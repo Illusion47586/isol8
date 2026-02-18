@@ -98,6 +98,7 @@ export async function createServer(options: ServerOptions) {
       timeoutMs: config.defaults.timeoutMs,
       sandboxSize: config.defaults.sandboxSize,
       tmpSize: config.defaults.tmpSize,
+      gitSecurity: config.gitSecurity,
       ...body.options,
       mode: body.sessionId ? "persistent" : "ephemeral",
       audit: config.audit,
@@ -174,6 +175,7 @@ export async function createServer(options: ServerOptions) {
       timeoutMs: config.defaults.timeoutMs,
       sandboxSize: config.defaults.sandboxSize,
       tmpSize: config.defaults.tmpSize,
+      gitSecurity: config.gitSecurity,
       ...body.options,
       mode: "ephemeral",
     };

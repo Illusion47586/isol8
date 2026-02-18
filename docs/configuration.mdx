@@ -38,6 +38,12 @@ If no config file is found, built-in defaults are used. Partial configs are deep
     "autoPrune": true,
     "maxContainerAgeMs": 3600000
   },
+  "gitSecurity": {
+    "allowedHosts": ["github.com", "gitlab.com", "bitbucket.org"],
+    "blockedPatterns": [],
+    "allowPrivateIPs": false,
+    "credentialEnvVars": ["GIT_TOKEN", "GITHUB_TOKEN"]
+  },
   "dependencies": {
     "python": ["numpy", "pandas"],
     "node": ["lodash"],
@@ -130,6 +136,26 @@ Packages to bake into custom Docker images when running `isol8 setup`.
 
 <ResponseField name="dependencies.bash" type="string[]" default="[]">
   Alpine apk packages.
+</ResponseField>
+
+### gitSecurity
+
+Controls Git URL validation and credential masking for the Git operations API.
+
+<ResponseField name="gitSecurity.allowedHosts" type="string[]" default="['github.com','gitlab.com','bitbucket.org',...]">
+  Allowed Git hosts. If set and non-empty, only matching hosts are permitted (subdomains allowed). Default includes major public Git providers.
+</ResponseField>
+
+<ResponseField name="gitSecurity.blockedPatterns" type="string[]" default="[]">
+  Regex patterns that always block a Git URL (SSRF protection). These are checked before the allowlist.
+</ResponseField>
+
+<ResponseField name="gitSecurity.allowPrivateIPs" type="boolean" default="false">
+  Whether to allow private/internal IPs in Git URLs. Defaults to false for SSRF protection.
+</ResponseField>
+
+<ResponseField name="gitSecurity.credentialEnvVars" type="string[]" default="['GIT_TOKEN','GITHUB_TOKEN','GITLAB_TOKEN','BITBUCKET_TOKEN']">
+  Environment variable names that may contain Git credentials. Values are masked in output logs.
 </ResponseField>
 
 

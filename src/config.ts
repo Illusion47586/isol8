@@ -9,6 +9,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { getDefaultGitSecurityConfig } from "./git";
 import type { Isol8Config } from "./types";
 
 /**
@@ -37,6 +38,7 @@ const DEFAULT_CONFIG: Isol8Config = {
   security: {
     seccomp: "strict",
   },
+  gitSecurity: getDefaultGitSecurityConfig(),
   audit: {
     enabled: false,
     destination: "filesystem",
@@ -115,6 +117,10 @@ function mergeConfig(defaults: Isol8Config, overrides: Partial<Isol8Config>): Is
       seccomp: overrides.security?.seccomp ?? defaults.security.seccomp,
       customProfilePath:
         overrides.security?.customProfilePath ?? defaults.security.customProfilePath,
+    },
+    gitSecurity: {
+      ...defaults.gitSecurity,
+      ...overrides.gitSecurity,
     },
     audit: {
       ...defaults.audit,

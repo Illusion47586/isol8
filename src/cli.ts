@@ -200,8 +200,18 @@ program
   .option("--log-network", "Log all network requests (requires --net filtered)")
   .option("--pool-strategy <mode>", "Pool strategy: fast (default) or secure", "fast")
   .option("--pool-size <size>", "Pool size (number or 'clean,dirty' for fast mode)", "1,1")
+  // Git operation options
+  .option("--git-clone <url>", "Clone a Git repository before execution")
+  .option("--git-clone-path <path>", "Path to clone repository (relative to /sandbox)")
+  .option("--git-clone-branch <branch>", "Branch to checkout after cloning")
+  .option("--git-commit <message>", "Commit changes after execution")
+  .option("--git-commit-author-name <name>", "Author name for Git commit")
+  .option("--git-commit-author-email <email>", "Author email for Git commit")
+  .option("--git-push", "Push changes after execution", false)
+  .option("--git-push-branch <branch>", "Branch to push (required with --git-push)")
+  .option("--git-push-remote <remote>", "Remote to push to", "origin")
   .action(async (file: string | undefined, opts) => {
-    const { code, runtime, engineOptions, engine, stdinData, fileExtension } =
+    const { code, runtime, engineOptions, engine, stdinData, fileExtension, git } =
       await resolveRunInput(file, opts);
 
     logger.debug(`[Run] Runtime: ${runtime}, mode: ${engineOptions.mode}`);
@@ -243,6 +253,7 @@ program
         ...(stdinData ? { stdin: stdinData } : {}),
         ...(opts.install.length > 0 ? { installPackages: opts.install } : {}),
         fileExtension,
+        ...(git ? { git } : {}),
       };
 
       // Stream by default unless --no-stream is passed
@@ -775,6 +786,7 @@ async function resolveRunInput(file: string | undefined, opts: any) {
     ...(opts.tmpSize ? { tmpSize: opts.tmpSize } : {}),
     debug: opts.debug ?? config.debug,
     persist: opts.persist ?? false,
+    gitSecurity: config.gitSecurity,
     ...(opts.logNetwork ? { logNetwork: true } : {}),
     poolStrategy: opts.poolStrategy === "secure" ? "secure" : "fast",
     poolSize: opts.poolSize
@@ -815,6 +827,12 @@ async function resolveRunInput(file: string | undefined, opts: any) {
   // Resolve stdin data
   const stdinData = opts.stdin ?? undefined;
 
+  // Build Git operations configuration from CLI options
+  const git = buildGitOperationsFromOpts(opts);
+  if (git) {
+    logger.debug(`[Run] Git operations configured: ${JSON.stringify(Object.keys(git))}`);
+  }
+
   let engine: Isol8Engine;
   if (opts.host) {
     logger.debug(`[Run] Using remote engine: ${opts.host}`);
@@ -832,7 +850,49 @@ async function resolveRunInput(file: string | undefined, opts: any) {
     engine = new DockerIsol8(engineOptions, config.maxConcurrent);
   }
 
-  return { code, runtime, engineOptions, engine, stdinData, fileExtension };
+  return { code, runtime, engineOptions, engine, stdinData, fileExtension, git };
+}
+
+/**
+ * Build GitOperations configuration from CLI options.
+ */
+// biome-ignore lint/suspicious/noExplicitAny: commander opts are untyped
+function buildGitOperationsFromOpts(opts: any): import("./types").GitOperations | undefined {
+  const git: import("./types").GitOperations = {};
+
+  // Clone operation
+  if (opts.gitClone) {
+    git.clone = {
+      url: opts.gitClone,
+      ...(opts.gitClonePath ? { path: opts.gitClonePath } : {}),
+      ...(opts.gitCloneBranch ? { branch: opts.gitCloneBranch } : {}),
+    };
+  }
+
+  // Commit operation
+  if (opts.gitCommit) {
+    git.commit = {
+      message: opts.gitCommit,
+      ...(opts.gitCommitAuthorName ? { authorName: opts.gitCommitAuthorName } : {}),
+      ...(opts.gitCommitAuthorEmail ? { authorEmail: opts.gitCommitAuthorEmail } : {}),
+      all: true, // Stage all changes by default in CLI mode
+    };
+  }
+
+  // Push operation
+  if (opts.gitPush) {
+    if (!opts.gitPushBranch) {
+      console.error("[ERR] --git-push-branch is required when using --git-push");
+      process.exit(1);
+    }
+    git.push = {
+      branch: opts.gitPushBranch,
+      remote: opts.gitPushRemote || "origin",
+    };
+  }
+
+  // Return undefined if no git operations configured
+  return Object.keys(git).length > 0 ? git : undefined;
 }
 
 function collect(value: string, previous: string[]): string[] {
