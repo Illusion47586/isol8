@@ -1,5 +1,5 @@
 ---
-title: "Execution Guide"
+title: "Execution guide"
 description: "Run code via CLI, Library, or API: modes, streaming, file I/O, and resource limits."
 icon: "terminal"
 ---
@@ -115,7 +115,72 @@ The core of every request.
     });
     ```
   </Tab>
+  <Tab title="API">
+    ```json
+    {
+      "request": {
+        "code": "console.log('Hello')",
+        "runtime": "node"
+      }
+    }
+    ```
+  </Tab>
 </Tabs>
+
+### 1.1 Remote Code URLs
+isol8 can fetch source code from a URL before execution.
+
+<Warning>
+  `code` and `codeUrl` are mutually exclusive. Provide only one per request.
+</Warning>
+
+Remote URL execution is controlled by:
+- request fields: `codeUrl`, `codeHash`, `allowInsecureCodeUrl`
+- CLI flags: `--url`, `--github`, `--gist`, `--hash`, `--allow-insecure-code-url`
+- config policy: `remoteCode.*` in `isol8.config.json`
+
+<Tabs>
+  <Tab title="CLI">
+    ```bash
+    # Direct URL
+    isol8 run --url https://raw.githubusercontent.com/user/repo/main/script.py --runtime python
+
+    # GitHub shorthand
+    isol8 run --github user/repo/main/script.py --runtime python
+
+    # Gist shorthand
+    isol8 run --gist abcd1234/example.js --runtime node
+
+    # Integrity verification
+    isol8 run --url https://example.com/script.py --hash <sha256> --runtime python
+    ```
+  </Tab>
+  <Tab title="Library">
+    ```typescript
+    await engine.execute({
+      codeUrl: "https://raw.githubusercontent.com/user/repo/<sha>/script.py",
+      codeHash: "<sha256>",
+      runtime: "python",
+    });
+    ```
+  </Tab>
+  <Tab title="API">
+    ```json
+    {
+      "request": {
+        "codeUrl": "https://raw.githubusercontent.com/user/repo/<sha>/script.py",
+        "codeHash": "<sha256>",
+        "runtime": "python"
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  URL fetching is disabled by default. Enable and tune `remoteCode` policy in config first.
+  For full policy fields and security guidance, see <a href="/remote-code">Remote code URLs</a>.
+</Note>
 
 ### 2. Environment Variables
 Inject configuration or secrets.
@@ -147,6 +212,17 @@ Inject configuration or secrets.
       // Per-request env vars (visible in output)
       env: { LOG_LEVEL: "debug" }
     });
+    ```
+  </Tab>
+  <Tab title="API">
+    ```json
+    {
+      "request": {
+        "runtime": "python",
+        "code": "import os; print(os.getenv('LOG_LEVEL', 'unset'))",
+        "env": { "LOG_LEVEL": "debug" }
+      }
+    }
     ```
   </Tab>
 </Tabs>
@@ -182,6 +258,20 @@ Inject files *before* execution and retrieve them *after*.
     const fileContent = result.files["/sandbox/output.json"]; // base64 encoded
     ```
   </Tab>
+  <Tab title="API">
+    ```json
+    {
+      "request": {
+        "runtime": "python",
+        "code": "print(open('/sandbox/data.txt').read())",
+        "files": {
+          "/sandbox/data.txt": "Hello from file!"
+        },
+        "outputPaths": ["/sandbox/output.json"]
+      }
+    }
+    ```
+  </Tab>
 </Tabs>
 
 ## Streaming Output
@@ -214,6 +304,19 @@ Real-time output is essential for long-running tasks or LLM code generation.
       if (event.type === 'stderr') process.stderr.write(event.data);
       if (event.type === 'exit') console.log(`Exited with ${event.data}`);
     }
+    ```
+  </Tab>
+  <Tab title="API">
+    ```bash
+    curl -N -X POST http://localhost:3000/execute/stream \
+      -H "Authorization: Bearer $ISOL8_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "request": {
+          "runtime": "python",
+          "code": "import time\nfor i in range(3):\n print(i)\n time.sleep(1)"
+        }
+      }'
     ```
   </Tab>
 </Tabs>
@@ -266,3 +369,36 @@ isol8 run -e "print('my-secret-value')" --secret KEY=my-secret-value
     - CLI users should pipe data via stdin or use inline strings for simple inputs.
   </Accordion>
 </AccordionGroup>
+
+## FAQ
+
+<AccordionGroup>
+  <Accordion title="Should I pass timeout in request or options?">
+    Use `request.timeoutMs` when you want a per-execution timeout. Use `options.timeoutMs` as a baseline engine default for a client/session.
+  </Accordion>
+
+  <Accordion title="When should I use codeUrl instead of code?">
+    Use `codeUrl` for pinned remote artifacts (for example immutable GitHub raw URLs). Keep `code` for direct inline or generated source. Never set both in one request.
+  </Accordion>
+
+  <Accordion title="Why does persistent mode not carry over between separate CLI invocations?">
+    CLI runs are process-scoped. For durable cross-call state, use a stable `sessionId` through the API or `RemoteIsol8`.
+  </Accordion>
+</AccordionGroup>
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Passing values" icon="sliders" href="/passing-values">
+    Exact option mapping across CLI, config, API, and library.
+  </Card>
+  <Card title="Runtime reference" icon="layers" href="/runtimes">
+    Runtime-specific behavior, extensions, and package semantics.
+  </Card>
+  <Card title="Remote code URLs" icon="link" href="/remote-code">
+    URL-based source fetching policy and integrity controls.
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/troubleshooting">
+    Symptom-based fixes for execution and session issues.
+  </Card>
+</CardGroup>

@@ -1,101 +1,158 @@
 ---
-title: "Runtime Reference"
-description: "Supported languages, versions, execution environments, and internal package commands."
+title: "Runtime reference"
+description: "Supported runtimes, extension mapping, module behavior, and package-install semantics for Python, Node, Bun, Deno, and Bash."
 icon: "layer-group"
 ---
 
-isol8 supports five runtime environments, each built on a minimal Alpine Linux base.
+isol8 supports five runtimes with a shared execution contract (`ExecutionRequest.runtime`) and runtime-specific command/extension behavior.
 
-## Supported Runtimes
+## Supported runtimes
 
-| Runtime | Docker Image | Default Extension | Inline Support |
-|:---|:---|:---|:---|
-| [Python](#python) | `isol8:python` | `.py` | ✅ Yes |
-| [Node.js](#node-js) | `isol8:node` | `.mjs`, `.cjs`, `.js` | ✅ Yes |
-| [Bun](#bun) | `isol8:bun` | `.ts` | ✅ Yes |
-| [Deno](#deno) | `isol8:deno` | `.mts` | ✅ Yes |
-| [Bash](#bash) | `isol8:bash` | `.sh` | ✅ Yes |
+| Runtime | Base image | Default extension | Extension aliases | Inline support |
+|:---|:---|:---|:---|:---|
+| Python | `isol8:python` | `.py` | none | Yes |
+| Node | `isol8:node` | `.mjs` | `.js`, `.cjs` | Yes |
+| Bun | `isol8:bun` | `.ts` | none | Yes |
+| Deno | `isol8:deno` | `.mts` | none | Yes (engine writes temp file) |
+| Bash | `isol8:bash` | `.sh` | none | Yes |
 
-## Package Management Commands
+<Note>
+  Registration order matters for extension detection: Bun wins `.ts`; Deno uses `.mts` to avoid collision.
+</Note>
 
-isol8 handles dependencies differently depending on whether you are installing them at runtime (ephemeral) or baking them into a custom image. See [Packages & Images](/packages) for usage guides.
+## How runtime selection works
 
-| Runtime | Runtime Install (`isol8 run --install`) | Build Install (`isol8 setup`) |
+<Tabs>
+  <Tab title="CLI">
+    ```bash
+    # Auto-detect from extension
+    isol8 run script.py
+    isol8 run app.js
+    isol8 run job.ts
+    isol8 run task.mts
+
+    # Explicit override
+    isol8 run script.any --runtime python
+    ```
+  </Tab>
+  <Tab title="Library">
+    ```typescript
+    await engine.execute({
+      runtime: "python",
+      code: "print('hello')",
+    });
+    ```
+  </Tab>
+  <Tab title="API">
+    ```json
+    {
+      "request": {
+        "runtime": "python",
+        "code": "print('hello')"
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Node.js module behavior (CJS and ESM)
+
+- `.mjs`: ESM
+- `.cjs`: CommonJS
+- `.js`: Node default resolution behavior
+- inline (`-e`/`code`) executes through `node -e`
+
+<Info>
+  If module mode matters, use explicit extensions (`.mjs` / `.cjs`) or force runtime + file extension in request construction.
+</Info>
+
+## Runtime execution commands
+
+| Runtime | Inline command | File command |
 |:---|:---|:---|
-| **Python** | `pip install --user --break-system-packages ...` | `pip install --no-cache-dir ...` |
-| **Node.js** | `npm install --prefix /sandbox ...` | `npm install -g ...` |
-| **Bun** | `bun install -g --global-dir=...` | `bun install -g ...` |
-| **Deno** | `deno cache ...` | `deno cache ...` |
-| **Bash** | `apk add --no-cache ...` | `apk add --no-cache ...` |
+| Python | `python3 -c <code>` | `python3 <file>` |
+| Node | `node -e <code>` | `node <file>` |
+| Bun | `bun -e <code>` | `bun run <file>` |
+| Deno | Engine writes file first | `deno run --allow-read=/sandbox,/tmp --allow-write=/sandbox,/tmp --allow-env --allow-net <file>` |
+| Bash | `bash -c <code>` | `bash <file>` |
 
-## Runtime Details
+## Package install behavior (`installPackages` / `--install`)
+
+| Runtime | Runtime install command | Setup image build command |
+|:---|:---|:---|
+| Python | `pip install --user --no-cache-dir --break-system-packages ...` | `pip install --no-cache-dir ...` |
+| Node | `npm install --prefix /sandbox ...` | `npm install -g ...` |
+| Bun | `bun install -g --global-dir=...` | `bun install -g ...` |
+| Deno | `deno cache ...` | `deno cache ...` |
+| Bash | `apk add --no-cache ...` | `apk add --no-cache ...` |
+
+<Note>
+  Runtime installs are written under `/sandbox` so native extensions can execute (`/tmp` is `noexec`).
+</Note>
+
+## Runtime-specific notes
 
 ### Python
 
-Uses the system Python 3 provided by Alpine Linux 3.21.
+- strong ecosystem for data/scientific workloads
+- packages install under `/sandbox/.local`
 
-- **Image:** `isol8:python`
-- **Extensions:** `.py`
-- **Execution:** Runs via `python3 -c <code>` (inline) or `python3 <file>`.
-- **Packages:** Installed to user site-packages (`/sandbox/.local`).
+### Node
 
-### Node.js
-
-Uses the system Node.js (LTS) provided by Alpine Linux 3.21. Supports both CommonJS and ESM.
-
-- **Image:** `isol8:node`
-- **Extensions:**
-  - `.cjs`: Forces CommonJS execution.
-  - `.mjs`: Forces ESM execution.
-  - `.js`: Follows Node.js default resolution (looks for `package.json` or defaults to CJS).
-- **Packages:** Installed locally in `/sandbox/node_modules`.
+- best for JS ecosystem tooling and JSON transforms
+- supports `.mjs`, `.cjs`, and `.js`
 
 ### Bun
 
-Uses the latest Bun version available at image build time.
-
-- **Image:** `isol8:bun`
-- **Extensions:** `.ts` (Bun takes precedence over Node for `.ts` files).
-- **Execution:** Runs via `bun -e <code>` (inline) or `bun <file>`.
-- **Packages:** Installed globally in the container.
+- fastest TS/JS startup for many workloads
+- default extension mapping for `.ts`
 
 ### Deno
 
-Uses the official `denoland/deno:alpine` image.
-
-- **Image:** `isol8:deno`
-- **Extensions:** `.mts` (Used to avoid conflict with Bun's `.ts` default).
-- **Execution:** Runs via `deno run <file>`. Inline code is written to a temporary file by isol8 before execution.
-- **Packages:** Deno uses URL imports. The "install" step runs `deno cache` to pre-download dependencies.
+- explicit `.mts` path avoids `.ts` ambiguity with Bun
+- adapter requires file execution; inline requests are materialized as files by engine
 
 ### Bash
 
-Uses the system Bash provided by Alpine Linux 3.21.
+- useful for shell orchestration and glue scripts
+- package installs use Alpine `apk`
 
-- **Image:** `isol8:bash`
-- **Extensions:** `.sh`
-- **Execution:** Runs via `bash -c <code>` (inline) or `bash <file>`.
-- **Packages:** Installs system packages via `apk add`.
+## FAQ
 
-<Note>
-  All runtimes run as a non-root user (`sandbox`, uid 100) inside the container, except for specific setup phases (like package installation in custom images) which may run as root before dropping privileges.
-</Note>
+<AccordionGroup>
+  <Accordion title="Why does .ts run on Bun, not Deno?">
+    Runtime registry gives Bun ownership of `.ts`. Use `.mts` for Deno or explicit `runtime: "deno"`.
+  </Accordion>
+
+  <Accordion title="Can I switch runtimes inside one persistent session?">
+    No. Persistent containers are runtime-bound. Use separate sessions for Python/Node/Bun/Deno/Bash.
+  </Accordion>
+
+  <Accordion title="Why do some packages fail on Alpine-based images?">
+    Some packages expect `glibc` or extra system libs. Use custom images with required dependencies or compatible alternatives.
+  </Accordion>
+</AccordionGroup>
 
 ## Troubleshooting
 
-<AccordionGroup>
-  <Accordion title="Package installation failed">
-    Common reasons for installation failures:
-    - **Network restrictions:** If running with `--net none` (default), installation will fail. Use `--net host` or `--net filtered` with appropriate whitelisting.
-    - **Alpine compatibility:** Some Python/Node packages rely on `glibc` and may not compile on Alpine Linux (`musl`). Look for pre-compiled wheels or alternative packages.
-    - **System dependencies:** You may need to install system libraries via `apk` (using a custom image build) before installing certain language packages.
-  </Accordion>
+- **Runtime detection mismatch**: pass explicit `--runtime` (CLI) or `request.runtime`.
+- **Module mode issues in Node**: use explicit `.mjs` or `.cjs` file extension.
+- **Deno inline confusion**: send inline code normally; engine writes temp file for Deno execution.
+- **Install failures**: verify network mode and package manager compatibility for selected runtime.
 
-  <Accordion title="Permission denied errors">
-    The container file system is read-only by default, except for:
-    - `/sandbox`: The working directory (writable).
-    - `/tmp`: Temporary files (writable, no execution).
+## Related pages
 
-    If your code tries to write elsewhere, it will fail. Use `/sandbox` for all file operations.
-  </Accordion>
-</AccordionGroup>
+<CardGroup cols={2}>
+  <Card title="Execution guide" icon="terminal" href="/execution">
+    Request lifecycle, modes, I/O, streaming, and resource limits.
+  </Card>
+  <Card title="Packages and images" icon="boxes" href="/packages">
+    Dependency strategy: runtime installs vs pre-baked custom images.
+  </Card>
+  <Card title="Passing values" icon="sliders" href="/passing-values">
+    Exact CLI/config/API/library mapping for runtime and options.
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/troubleshooting">
+    Fix common runtime and environment issues.
+  </Card>
+</CardGroup>
