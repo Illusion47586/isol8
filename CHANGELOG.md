@@ -1,3 +1,11 @@
+# [0.11.0](https://github.com/Illusion47586/isol8/compare/v0.10.3...v0.11.0) (2026-02-18)
+
+
+### Features
+
+* **cli:** smart builds and dangling image cleanup ([#53](https://github.com/Illusion47586/isol8/issues/53)) ([9981f5d](https://github.com/Illusion47586/isol8/commit/9981f5d5aaa56b7b9f2fda016695def1f511a18e)), closes [#42](https://github.com/Illusion47586/isol8/issues/42) [#49](https://github.com/Illusion47586/isol8/issues/49) [#42](https://github.com/Illusion47586/isol8/issues/42) [#49](https://github.com/Illusion47586/isol8/issues/49)
+* **remote-code:** secure URL-based code execution ([#55](https://github.com/Illusion47586/isol8/issues/55)) ([0771c6a](https://github.com/Illusion47586/isol8/commit/0771c6adad51048c118d673f84cc999cf5382f81)), closes [#17](https://github.com/Illusion47586/isol8/issues/17)
+
 ## [0.10.3](https://github.com/Illusion47586/isol8/compare/v0.10.2...v0.10.3) (2026-02-18)
 
 
