@@ -21,6 +21,7 @@ Secure code execution engine for AI agents. Run untrusted Python, Node.js, Bun, 
 -   **Modern Node.js** — defaults to ESM (`.mjs`), supports CommonJS (`.cjs`)
 -   **Secret masking** — environment variables are scrubbed from output
 - **Output truncation** — prevents runaway stdout (default 1MB cap)
+- **Git operations** — built-in clone/commit/push workflow (git included in runtime images)
 - **Remote mode** — run an HTTP server and execute from anywhere
 - **Embeddable** — use as a TypeScript library in your own project
 

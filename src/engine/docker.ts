@@ -13,6 +13,8 @@ import Docker from "dockerode";
 import {
   generatePostExecutionCommands,
   generatePreExecutionCommands,
+  getCredentialEnvVars,
+  getDefaultGitSecurityConfig,
   validateGitOperations,
 } from "../git";
 import { RuntimeRegistry } from "../runtime";
@@ -20,6 +22,7 @@ import type { RuntimeAdapter } from "../runtime/adapter";
 import type {
   ExecutionRequest,
   ExecutionResult,
+  GitSecurityConfig,
   Isol8Engine,
   Isol8Mode,
   Isol8Options,
@@ -399,6 +402,7 @@ export class DockerIsol8 implements Isol8Engine {
   private readonly poolStrategy: "secure" | "fast";
   private readonly poolSize: number | { clean: number; dirty: number };
   private readonly auditLogger?: AuditLogger;
+  private readonly gitSecurity: GitSecurityConfig;
 
   private container: Docker.Container | null = null;
   private persistentRuntime: RuntimeAdapter | null = null;
@@ -427,6 +431,7 @@ export class DockerIsol8 implements Isol8Engine {
     this.tmpSize = options.tmpSize ?? "256m";
     this.persist = options.persist ?? false;
     this.security = options.security ?? { seccomp: "strict" };
+    this.gitSecurity = options.gitSecurity ?? getDefaultGitSecurityConfig();
     this.logNetwork = options.logNetwork ?? false;
     this.poolStrategy = options.poolStrategy ?? "fast";
     this.poolSize = options.poolSize ?? { clean: 1, dirty: 1 };
@@ -763,7 +768,7 @@ export class DockerIsol8 implements Isol8Engine {
 
         // Validate and execute pre-execution Git operations (clone, checkout, pull)
         if (req.git) {
-          const gitValidation = validateGitOperations(req.git);
+          const gitValidation = validateGitOperations(req.git, this.gitSecurity);
           if (!gitValidation.valid) {
             throw new Error(`Git operations validation failed: ${gitValidation.error}`);
           }
@@ -776,7 +781,8 @@ export class DockerIsol8 implements Isol8Engine {
               container,
               preExecCommands,
               gitEnv,
-              120_000
+              120_000,
+              req.env
             );
             if (!gitResult.success) {
               throw new Error(
@@ -823,7 +829,8 @@ export class DockerIsol8 implements Isol8Engine {
               container,
               postExecCommands,
               gitEnv,
-              120_000
+              120_000,
+              req.env
             );
             if (gitResult.success) {
               logger.debug("[Git] Post-execution completed successfully");
@@ -927,7 +934,7 @@ export class DockerIsol8 implements Isol8Engine {
 
       // Validate and execute pre-execution Git operations (clone, checkout, pull)
       if (req.git) {
-        const gitValidation = validateGitOperations(req.git);
+        const gitValidation = validateGitOperations(req.git, this.gitSecurity);
         if (!gitValidation.valid) {
           throw new Error(`Git operations validation failed: ${gitValidation.error}`);
         }
@@ -940,7 +947,8 @@ export class DockerIsol8 implements Isol8Engine {
             container,
             preExecCommands,
             gitEnv,
-            120_000
+            120_000,
+            req.env
           );
           if (!gitResult.success) {
             throw new Error(
@@ -1053,7 +1061,8 @@ export class DockerIsol8 implements Isol8Engine {
             container,
             postExecCommands,
             gitEnv,
-            120_000
+            120_000,
+            req.env
           );
           if (gitResult.success) {
             logger.debug("[Git] Post-execution completed successfully");
@@ -1101,7 +1110,7 @@ export class DockerIsol8 implements Isol8Engine {
 
     // Validate and execute pre-execution Git operations (clone, checkout, pull)
     if (req.git) {
-      const gitValidation = validateGitOperations(req.git);
+      const gitValidation = validateGitOperations(req.git, this.gitSecurity);
       if (!gitValidation.valid) {
         throw new Error(`Git operations validation failed: ${gitValidation.error}`);
       }
@@ -1114,7 +1123,8 @@ export class DockerIsol8 implements Isol8Engine {
           this.container!,
           preExecCommands,
           gitEnv,
-          120_000
+          120_000,
+          req.env
         );
         if (!gitResult.success) {
           throw new Error(
@@ -1247,7 +1257,8 @@ export class DockerIsol8 implements Isol8Engine {
           this.container!,
           postExecCommands,
           gitEnv,
-          120_000
+          120_000,
+          req.env
         );
         if (gitResult.success) {
           logger.debug("[Git] Post-execution completed successfully");
@@ -1455,6 +1466,21 @@ export class DockerIsol8 implements Isol8Engine {
     return env;
   }
 
+  /**
+   * Build a secret map that includes configured secrets plus Git credential env vars.
+   */
+  private buildGitSecrets(extra?: Record<string, string>): Record<string, string> {
+    const secrets: Record<string, string> = { ...this.secrets };
+    const credentialVars = getCredentialEnvVars(this.gitSecurity);
+    for (const name of credentialVars) {
+      const value = extra?.[name] ?? process.env[name];
+      if (value && value.length > 0) {
+        secrets[name] = value;
+      }
+    }
+    return secrets;
+  }
+
   private async *streamExecOutput(
     stream: NodeJS.ReadableStream,
     exec: Docker.Exec,
@@ -1656,7 +1682,8 @@ export class DockerIsol8 implements Isol8Engine {
     container: Docker.Container,
     commands: string[],
     env: string[],
-    timeoutMs = 60_000
+    timeoutMs = 60_000,
+    secretEnv?: Record<string, string>
   ): Promise<{ success: boolean; stdout: string; stderr: string; exitCode: number }> {
     if (commands.length === 0) {
       return { success: true, stdout: "", stderr: "", exitCode: 0 };
@@ -1678,9 +1705,14 @@ export class DockerIsol8 implements Isol8Engine {
 
     const execStream = await exec.start({ Tty: false });
 
-    const { stdout, stderr } = await this.collectExecOutput(execStream, container, timeoutMs);
+    let { stdout, stderr } = await this.collectExecOutput(execStream, container, timeoutMs);
     const inspectResult = await exec.inspect();
     const exitCode = inspectResult.ExitCode ?? 1;
+    const gitSecrets = this.buildGitSecrets(secretEnv);
+    if (Object.keys(gitSecrets).length > 0) {
+      stdout = maskSecrets(stdout, gitSecrets);
+      stderr = maskSecrets(stderr, gitSecrets);
+    }
 
     return {
       success: exitCode === 0,

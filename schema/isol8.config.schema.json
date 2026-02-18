@@ -2,6 +2,38 @@
   "$ref": "#/definitions/Isol8UserConfig",
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
+    "GitSecurityConfig": {
+      "additionalProperties": false,
+      "description": "Security configuration for Git operations.",
+      "properties": {
+        "allowPrivateIPs": {
+          "description": "Whether to allow private/internal IP addresses (default: false for SSRF protection).",
+          "type": "boolean"
+        },
+        "allowedHosts": {
+          "description": "List of allowed Git host domains (e.g., [\"github.com\", \"gitlab.com\"]). If specified, only these hosts are permitted.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "blockedPatterns": {
+          "description": "List of blocked URL patterns (regex strings) for SSRF prevention. Matching URLs are always denied, even if whitelisted.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "credentialEnvVars": {
+          "description": "Environment variable names containing Git credentials (e.g., [\"GIT_TOKEN\", \"GITHUB_TOKEN\"]). These will be masked in output logs.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
     "Isol8Dependencies": {
       "additionalProperties": false,
       "description": "Runtime-specific packages to bake into custom Docker images. Populated via `isol8.config.json` or CLI flags on `isol8 setup`.",
@@ -161,6 +193,10 @@
         "dependencies": {
           "$ref": "#/definitions/Isol8Dependencies",
           "description": "Runtime-specific packages to bake into custom Docker images."
+        },
+        "gitSecurity": {
+          "$ref": "#/definitions/GitSecurityConfig",
+          "description": "Git security settings (allowed hosts, blocked patterns, credential env vars)."
         },
         "maxConcurrent": {
           "default": 10,

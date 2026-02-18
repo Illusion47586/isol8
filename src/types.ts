@@ -610,6 +610,9 @@ export interface Isol8Config {
   /** Security settings. */
   security: SecurityConfig;
 
+  /** Git security settings (allowed hosts, blocked patterns, credential env vars). */
+  gitSecurity: GitSecurityConfig;
+
   /** Audit logging configuration. */
   audit: AuditConfig;
 
@@ -645,6 +648,9 @@ export interface Isol8UserConfig {
 
   /** Security settings. */
   security?: SecurityConfig;
+
+  /** Git security settings (allowed hosts, blocked patterns, credential env vars). */
+  gitSecurity?: GitSecurityConfig;
 
   /** Audit logging configuration. */
   audit?: Partial<AuditConfig>;

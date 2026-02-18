@@ -786,6 +786,7 @@ async function resolveRunInput(file: string | undefined, opts: any) {
     ...(opts.tmpSize ? { tmpSize: opts.tmpSize } : {}),
     debug: opts.debug ?? config.debug,
     persist: opts.persist ?? false,
+    gitSecurity: config.gitSecurity,
     ...(opts.logNetwork ? { logNetwork: true } : {}),
     poolStrategy: opts.poolStrategy === "secure" ? "secure" : "fast",
     poolSize: opts.poolSize

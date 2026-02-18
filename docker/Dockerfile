@@ -1,6 +1,6 @@
 # ── Base ──────────────────────────────────────────────────────────────
 FROM alpine:3.21 AS base
-RUN apk add --no-cache tini curl ca-certificates iptables bash \
+RUN apk add --no-cache tini curl ca-certificates iptables bash git openssh-client \
     && addgroup -S sandbox && adduser -S sandbox -G sandbox -h /sandbox
 COPY proxy.sh /usr/local/bin/proxy.sh
 COPY proxy-handler.sh /usr/local/bin/proxy-handler.sh
@@ -28,7 +28,7 @@ CMD ["bun"]
 
 # ── Deno ──────────────────────────────────────────────────────────────
 FROM denoland/deno:alpine AS deno
-RUN apk add --no-cache tini curl ca-certificates iptables bash \
+RUN apk add --no-cache tini curl ca-certificates iptables bash git openssh-client \
     && addgroup -S sandbox && adduser -S sandbox -G sandbox -h /sandbox
 COPY proxy.sh /usr/local/bin/proxy.sh
 COPY proxy-handler.sh /usr/local/bin/proxy-handler.sh

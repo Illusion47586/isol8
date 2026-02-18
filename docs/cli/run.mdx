@@ -134,6 +134,44 @@ If the extension doesn't match any registered adapter, the CLI exits with an err
   Secret environment variable in `KEY=VALUE` format. The value is injected into the container as an env var and automatically masked with `***` in all stdout and stderr output. Repeatable — use `--secret KEY1=val1 --secret KEY2=val2` for multiple secrets.
 </ResponseField>
 
+### Git Operations
+
+<ResponseField name="--git-clone" type="string">
+  Clone a Git repository into the sandbox before execution. The URL can be HTTPS or SSH.
+</ResponseField>
+
+<ResponseField name="--git-clone-path" type="string">
+  Path under `/sandbox` to clone into. Defaults to the repo name if omitted.
+</ResponseField>
+
+<ResponseField name="--git-clone-branch" type="string">
+  Branch or tag to checkout after cloning.
+</ResponseField>
+
+<ResponseField name="--git-commit" type="string">
+  Commit changes after execution. By default, the CLI stages all changes before committing.
+</ResponseField>
+
+<ResponseField name="--git-commit-author-name" type="string">
+  Author name to use for the commit.
+</ResponseField>
+
+<ResponseField name="--git-commit-author-email" type="string">
+  Author email to use for the commit.
+</ResponseField>
+
+<ResponseField name="--git-push" type="boolean" default="false">
+  Push committed changes after execution.
+</ResponseField>
+
+<ResponseField name="--git-push-branch" type="string">
+  Branch to push (required when `--git-push` is provided).
+</ResponseField>
+
+<ResponseField name="--git-push-remote" type="string" default="origin">
+  Remote name to push to (defaults to `origin`).
+</ResponseField>
+
 ### Output
 
 <ResponseField name="--out" type="string">
@@ -210,6 +248,19 @@ isol8 run -e "import pandas; import numpy" --runtime python \
 # Node.js with lodash
 isol8 run -e "const _ = require('lodash'); console.log(_.chunk([1,2,3,4], 2))" \
   --runtime node --install lodash
+```
+
+### Git Operations
+
+```bash
+# Clone, run, commit, and push
+isol8 run script.py --runtime python \
+  --git-clone https://github.com/user/repo.git \
+  --git-clone-path repo \
+  --git-commit "feat: update" \
+  --git-commit-author-name "AI Agent" \
+  --git-commit-author-email "agent@example.com" \
+  --git-push --git-push-branch main
 ```
 
 ### Resource Configuration
