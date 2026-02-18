@@ -16,6 +16,7 @@ isol8 cleanup [options]
 Use `isol8 cleanup` to:
 
 - **Remove orphaned containers** — Clean up containers left behind from interrupted executions or persistent sessions
+- **Clean up after server crash/stop** — If `isol8 serve` stops unexpectedly, containers remain running. Use cleanup to remove them
 - **Free disk space** — Remove stopped containers that are no longer needed
 - **Reset environment** — Clear all isol8 containers before starting fresh
 - **Maintenance** — Periodic cleanup as part of system maintenance routines

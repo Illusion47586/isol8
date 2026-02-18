@@ -40,6 +40,10 @@ Key behaviors:
 - **Global semaphore** limits concurrent container executions (default: 10, configurable via `maxConcurrent`)
 - **Auto-pruning** periodically removes stale containers when enabled
 
+<Warning>
+  The auto-prune mechanism only runs while the server process is active. If `isol8 serve` stops or crashes, the in-memory session tracking is lost and the auto-pruner stops. Any containers running at that time will remain as orphans. Use the `isol8 cleanup` CLI command to remove orphaned containers.
+</Warning>
+
 ## Endpoints Overview
 
 | Method | Path | Description |
