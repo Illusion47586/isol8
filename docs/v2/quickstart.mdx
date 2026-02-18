@@ -5,70 +5,72 @@ description: "Get up and running with isol8 in under 5 minutes."
 
 Ready to execute code safely? This guide will walk you through installing isol8, setting up the environment, and running your first sandboxed code.
 
-## Prerequisites
+<Steps>
+  <Step title="Prerequisites">
+    - **[Docker](https://docs.docker.com/get-docker/)**: Must be installed and running.
+    - **[Bun](https://bun.sh)** (recommended) or **Node.js 18+**.
+  </Step>
 
-- **[Docker](https://docs.docker.com/get-docker/)**: Must be installed and running.
-- **[Bun](https://bun.sh)** (recommended) or **Node.js 18+**.
+  <Step title="Installation">
+    Install the CLI globally to use `isol8` from anywhere:
 
-## Installation
+    <CodeGroup>
+    ```bash npm
+    npm install -g isol8
+    ```
 
-Install the CLI globally to use `isol8` from anywhere:
+    ```bash bun
+    bun install -g isol8
+    ```
+    </CodeGroup>
 
-<CodeGroup>
-```bash npm
-npm install -g isol8
-```
+    Or add it to your project:
 
-```bash bun
-bun install -g isol8
-```
-</CodeGroup>
+    <CodeGroup>
+    ```bash npm
+    npm install isol8
+    ```
 
-Or add it to your project:
+    ```bash bun
+    bun add isol8
+    ```
+    </CodeGroup>
+  </Step>
 
-<CodeGroup>
-```bash npm
-npm install isol8
-```
+  <Step title="Setup">
+    Before running code, you need to build the Docker images. This command verifies your Docker connection and builds the optimized runtime images.
 
-```bash bun
-bun add isol8
-```
-</CodeGroup>
+    ```bash
+    isol8 setup
+    ```
 
-## Setup
+    <Check>
+      This step is only needed once (or when you want to update images). It builds `isol8:python`, `isol8:node`, `isol8:bun`, `isol8:deno`, and `isol8:bash`.
+    </Check>
+  </Step>
 
-Before running code, you need to build the Docker images. This command verifies your Docker connection and builds the optimized runtime images.
+  <Step title="Hello World">
+    Run your first snippet of code securely. The `--eval` flag lets you pass code directly.
 
-```bash
-isol8 setup
-```
+    <CodeGroup>
+    ```bash Python
+    isol8 run -e "print('Hello form the sandbox!')" --runtime python
+    ```
 
-<Check>
-  This step is only needed once (or when you want to update images). It builds `isol8:python`, `isol8:node`, `isol8:bun`, `isol8:deno`, and `isol8:bash`.
-</Check>
+    ```bash Node.js
+    isol8 run -e "console.log('Hello from Node!')" --runtime node
+    ```
 
-## Hello World
+    ```bash Bun
+    isol8 run -e "console.log('Hello from Bun!')" --runtime bun
+    ```
 
-Run your first snippet of code securely. The `--eval` flag lets you pass code directly.
-
-<CodeGroup>
-```bash Python
-isol8 run -e "print('Hello form the sandbox!')" --runtime python
-```
-
-```bash Node.js
-isol8 run -e "console.log('Hello from Node!')" --runtime node
-```
-
-```bash Bun
-isol8 run -e "console.log('Hello from Bun!')" --runtime bun
-```
-
-```bash Bash
-isol8 run -e "echo 'Hello from Bash!'" --runtime bash
-```
-</CodeGroup>
+    ```bash Bash
+    isol8 run -e "echo 'Hello from Bash!'" --runtime bash
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
 
 ## Feature Highlights
 

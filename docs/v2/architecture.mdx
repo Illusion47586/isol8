@@ -59,11 +59,23 @@ flowchart TB
 
 The fastest way to run code. Containers are borrowed from a warm pool, used once, wiped, and returned.
 
-1. **Acquire**: Get a warm container from the pool (or create one if empty).
-2. **Inject**: Write code to `/sandbox` via `docker exec`.
-3. **Execute**: Run the code with timeout enforcement.
-4. **Collect**: Capture stdout/stderr.
-5. **Release**: Kill user processes (`pkill -9 -u sandbox`), wipe `/sandbox`, and return to pool.
+<Steps>
+  <Step title="Acquire">
+    Get a warm container from the pool (or create one if empty).
+  </Step>
+  <Step title="Inject">
+    Write code to `/sandbox` via `docker exec`.
+  </Step>
+  <Step title="Execute">
+    Run the code with timeout enforcement.
+  </Step>
+  <Step title="Collect">
+    Capture stdout/stderr.
+  </Step>
+  <Step title="Release">
+    Kill user processes (`pkill -9 -u sandbox`), wipe `/sandbox`, and return to pool.
+  </Step>
+</Steps>
 
 Latency: ~130ms (warm).
 
@@ -89,6 +101,16 @@ For real-time output. Creates a **fresh container** for each run (bypasses pool)
 ## Container Pool
 
 The secret to low latency. The `ContainerPool` keeps pre-started containers ready.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Empty
+    Empty --> Warm : warm()
+    Warm --> InUse : acquire()
+    InUse --> Cleaning : release()
+    Cleaning --> Warm : clean & reset
+    Warm --> [*] : drain()
+```
 
 - **Pool Size**: Configurable via `--pool-size` (default: `{ clean: 1, dirty: 1 }`).
 - **Lifecycle**:

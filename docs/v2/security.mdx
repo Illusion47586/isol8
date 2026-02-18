@@ -31,15 +31,36 @@ Control exactly which domains your code can access.
 
 ### Network Modes
 
-| Mode | Security | Description | Use Case |
-|:-----|:---------|:------------|:---------|
-| **`none`** | Highest | **Default**. No network interface. Blocks all traffic. | Most code execution tasks. |
-| **`filtered`** | High | Bridge network with HTTP/HTTPS proxy + whitelist/blacklist. | API calls, scraping specific sites. |
-| **`host`** | Low | Full host network access. | Trusted code needing unrestricted access. |
+<CardGroup cols={3}>
+  <Card title="none (Default)" icon="shield-check">
+    **Highest Security**. No network interface. Blocks all traffic. Ideal for most tasks.
+  </Card>
+  <Card title="filtered" icon="filter">
+    **High Security**. Bridge network with HTTP/HTTPS proxy + whitelist/blacklist.
+  </Card>
+  <Card title="host" icon="globe">
+    **Low Security**. Full host network access. Use only for trusted code.
+  </Card>
+</CardGroup>
 
 ### Filtered Mode (`--net filtered`)
 
 This mode routes all HTTP/HTTPS traffic through an internal proxy (`proxy.sh`) and enforces strict iptables rules.
+
+```mermaid
+sequenceDiagram
+    participant Code
+    participant Proxy
+    participant Internet
+    Code->>Proxy: Request (google.com)
+    alt Allowed
+        Proxy->>Internet: Forward
+        Internet-->>Proxy: Response
+        Proxy-->>Code: Response
+    else Blocked
+        Proxy-->>Code: 403 Forbidden
+    end
+```
 
 - **Whitelist**: Allow only specific domains.
 - **Blacklist**: Block specific domains.

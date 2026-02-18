@@ -61,6 +61,19 @@ echo "console.log('Piped code')" | isol8 run --runtime node
 echo '{"key": "val"}' | isol8 run script.py
 ```
 
+## Execution Lifecycle
+
+```mermaid
+flowchart LR
+    Start --> Check{Warm Pool?}
+    Check -- Yes --> Acquire[Acquire Container]
+    Check -- No --> Create[Create Container]
+    Acquire --> Execute
+    Create --> Execute
+    Execute --> Cleanup[Wipe & Release]
+    Cleanup --> End
+```
+
 ## Real-Time Streaming
 
 Don't wait for execution to finish. Stream stdout and stderr as they happen.
@@ -122,6 +135,20 @@ Where does the time go?
 - **Write Code**: ~15ms
 - **Run**: ~20-30ms (Runtime startup)
 - **Cleanup**: ~40ms
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Execution Timed Out">
+    The code ran longer than the configured limit (default 30s). Increase it using the `--timeout <ms>` flag.
+  </Accordion>
+  <Accordion title="OOM Killed">
+    The container ran out of memory (default 512MB). Increase the limit using `--memory <size>` (e.g., `1g`).
+  </Accordion>
+  <Accordion title="Output Truncated">
+    Output is capped at 1MB by default to prevent memory exhaustion. Use `--max-output <bytes>` to increase the limit.
+  </Accordion>
+</AccordionGroup>
 
 ## Reference
 
