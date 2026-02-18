@@ -7,12 +7,11 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { getTestVersion } from "./setup";
 
 const execAsync = promisify(exec);
 
 /**
- * Run isol8 command via bunx
+ * Run isol8 command via globally installed isol8
  */
 export async function runIsol8(
   args: string,
@@ -22,8 +21,7 @@ export async function runIsol8(
     timeout?: number;
   } = {}
 ) {
-  const version = getTestVersion();
-  const command = `bunx isol8@${version} ${args}`;
+  const command = `isol8 ${args}`;
 
   return execAsync(command, {
     cwd: options.cwd || process.cwd(),
@@ -42,8 +40,7 @@ export function spawnIsol8(
     env?: Record<string, string>;
   } = {}
 ) {
-  const version = getTestVersion();
-  return spawn("bunx", [`isol8@${version}`, ...args], {
+  return spawn("isol8", args, {
     cwd: options.cwd || process.cwd(),
     env: { ...process.env, ...options.env },
   });

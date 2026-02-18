@@ -1,5 +1,5 @@
 /**
- * Benchmark: CLI execution performance via bunx isol8
+ * Benchmark: CLI execution performance via globally installed isol8
  * Measures: spawn → execute → collect output time
  *
  * Usage: ISOL8_TEST_VERSION=0.9.0 bun run bench:cli
@@ -28,7 +28,6 @@ function getVersion(): string {
 }
 
 async function runOnce(runtime: string, tmpDir: string): Promise<number> {
-  const version = getVersion();
   const ext =
     runtime === "bash"
       ? "sh"
@@ -43,7 +42,7 @@ async function runOnce(runtime: string, tmpDir: string): Promise<number> {
 
   const t0 = performance.now();
 
-  await execAsync(`bunx isol8@${version} run ${filePath} -r ${runtime} --no-stream`, {
+  await execAsync(`isol8 run ${filePath} -r ${runtime} --no-stream`, {
     timeout: 30_000,
   });
 
@@ -73,7 +72,7 @@ async function bench(runtime: string): Promise<{ min: number; max: number; avg: 
 
 async function main() {
   const version = getVersion();
-  console.log(`\n⏱  isol8 CLI Benchmark via bunx isol8@${version} (${RUNS} runs each)\n`);
+  console.log(`\n⏱  isol8 CLI Benchmark via isol8 (version: ${version}) (${RUNS} runs each)\n`);
   console.log("Runtime   | Min      | Max      | Avg");
   console.log("----------|----------|----------|----------");
 
