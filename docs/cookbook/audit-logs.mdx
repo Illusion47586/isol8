@@ -322,6 +322,97 @@ cat .isol8_audit/executions.log | jq -s '
 '
 ```
 
+## Network Request Logging
+
+Enable detailed logging of all HTTP/HTTPS requests made through the filtering proxy in `filtered` network mode:
+
+```bash
+# CLI usage
+isol8 run script.py --net filtered --log-network
+```
+
+In your code:
+
+```typescript
+const engine = new DockerIsol8({
+  network: "filtered",
+  logNetwork: true,
+});
+
+const result = await engine.execute({
+  code: "import urllib.request; urllib.request.urlopen('https://api.example.com')",
+  runtime: "python",
+});
+
+console.log(result.networkLogs);
+```
+
+### Log Format
+
+Each network request produces a JSON entry:
+
+```json
+{
+  "timestamp": "2026-02-18T12:34:56Z",
+  "method": "GET",
+  "host": "api.example.com",
+  "path": "/v1/chat",
+  "action": "ALLOW",
+  "durationMs": 234
+}
+```
+
+For HTTPS CONNECT tunnels (which don't have a path):
+
+```json
+{
+  "timestamp": "2026-02-18T12:34:56Z",
+  "method": "CONNECT",
+  "host": "api.example.com",
+  "path": null,
+  "action": "ALLOW",
+  "durationMs": 0
+}
+```
+
+### Fields
+
+| Field | Type | Description |
+|:------|:-----|:------------|
+| `timestamp` | string | ISO 8601 timestamp of the request |
+| `method` | string | HTTP method (GET, POST, CONNECT, etc.) |
+| `host` | string | Target hostname |
+| `path` | string \| null | Request path for HTTP, null for HTTPS CONNECT |
+| `action` | string | `ALLOW` or `BLOCK` |
+| `durationMs` | number | Time taken to handle the request in milliseconds |
+
+### Use Cases
+
+- **API Usage Tracking**: Monitor which external APIs your code is accessing
+- **Security Auditing**: Review all network requests for compliance
+- **Debugging**: Trace network issues in executed code
+- **Billing**: Track API call counts by host
+
+### In Audit Logs
+
+Network logs are also included in audit log entries when enabled:
+
+```json
+{
+  "executionId": "...",
+  "networkLogs": [
+    {
+      "timestamp": "2026-02-18T12:34:56Z",
+      "method": "GET",
+      "host": "api.openai.com",
+      "path": "/v1/chat/completions",
+      "action": "ALLOW",
+      "durationMs": 450
+    }
+  ]
+}
+```
+
 ## Retention and Cleanup
 
 Configure automatic cleanup of old logs:
