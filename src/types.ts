@@ -300,6 +300,22 @@ export interface Isol8Options {
 
   /** Audit logging configuration. */
   audit?: AuditConfig;
+
+  /**
+   * Pool strategy for container reuse.
+   * - "secure": Clean container before returning (slower but ensures clean state)
+   * - "fast": Use dual-pool system - instant acquire, background cleanup (faster)
+   * @default "fast"
+   */
+  poolStrategy?: "secure" | "fast";
+
+  /**
+   * Pool size configuration.
+   * For "secure" mode: number of containers to keep warm
+   * For "fast" mode: { clean: number of ready containers, dirty: number being cleaned }
+   * @default 1 (for fast mode: { clean: 1, dirty: 1 })
+   */
+  poolSize?: number | { clean: number; dirty: number };
 }
 
 /**
