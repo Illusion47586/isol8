@@ -272,4 +272,54 @@ describe("Integration: Git Operations", () => {
     const commits = (await commitsResp.json()) as Array<{ sha: string }>;
     expect(commits.length).toBeGreaterThanOrEqual(2);
   }, 120_000);
+
+  test("clone and commit on a new branch (no push)", async () => {
+    const cloneUrl = `http://${username}:${token}@127.0.0.1:${hostPort}/${username}/${repoName}.git`;
+
+    const engine = new DockerIsol8({
+      mode: "persistent",
+      network: "host",
+      gitSecurity: {
+        allowedHosts: ["127.0.0.1", "localhost"],
+        allowPrivateIPs: true,
+        blockedPatterns: [],
+        credentialEnvVars: ["GIT_TOKEN"],
+      },
+      secrets: {
+        GIT_TOKEN: token,
+      },
+    });
+
+    const branchName = `test-branch-${Date.now()}`;
+
+    const result = await engine.execute({
+      code: "cd /sandbox/repo && echo 'local change' >> README.md",
+      runtime: "bash",
+      git: {
+        clone: { url: cloneUrl, path: "repo" },
+        checkout: { target: branchName, createBranch: true, repoPath: "repo" },
+        commit: {
+          message: "test: local commit",
+          authorName: "Isol8 CI",
+          authorEmail: "ci@isol8.dev",
+          repoPath: "repo",
+          all: true,
+        },
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+
+    const verify = await engine.execute({
+      code: "cd /sandbox/repo && git rev-parse --abbrev-ref HEAD && git log -1 --pretty=%B",
+      runtime: "bash",
+    });
+
+    await engine.stop();
+
+    expect(verify.exitCode).toBe(0);
+    const output = verify.stdout.trim().split("\\n");
+    expect(output[0]).toBe(branchName);
+    expect(output[1]).toBe("test: local commit");
+  }, 120_000);
 });
