@@ -1,3 +1,10 @@
+## [0.10.3](https://github.com/Illusion47586/isol8/compare/v0.10.2...v0.10.3) (2026-02-18)
+
+
+### Bug Fixes
+
+* **server:** prevent auto-pruner from killing active sessions ([#52](https://github.com/Illusion47586/isol8/issues/52)) ([9ab9140](https://github.com/Illusion47586/isol8/commit/9ab91402c3785dbd337c30cb6bcf839f32dc5292))
+
 ## [0.10.2](https://github.com/Illusion47586/isol8/compare/v0.10.1...v0.10.2) (2026-02-18)
 
 
