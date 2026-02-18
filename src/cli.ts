@@ -187,6 +187,7 @@ program
   .option("--no-stream", "Disable real-time output streaming") // Default is now streaming
   .option("--debug", "Enable debug logging")
   .option("--persist", "Keep container running after execution for inspection")
+  .option("--log-network", "Log all network requests (requires --net filtered)")
   .action(async (file: string | undefined, opts) => {
     const { code, runtime, engineOptions, engine, stdinData, fileExtension } =
       await resolveRunInput(file, opts);
@@ -267,6 +268,14 @@ program
         }
         if (result.truncated) {
           console.error("[WARN] Output was truncated");
+        }
+
+        // Print network logs if available
+        if (result.networkLogs && result.networkLogs.length > 0) {
+          console.error("\n--- Network Logs ---");
+          for (const log of result.networkLogs) {
+            console.error(JSON.stringify(log));
+          }
         }
 
         // Write output to file if requested
@@ -754,6 +763,7 @@ async function resolveRunInput(file: string | undefined, opts: any) {
     ...(opts.tmpSize ? { tmpSize: opts.tmpSize } : {}),
     debug: opts.debug ?? config.debug,
     persist: opts.persist ?? false,
+    ...(opts.logNetwork ? { logNetwork: true } : {}),
   };
 
   logger.debug(
