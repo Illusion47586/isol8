@@ -171,7 +171,7 @@ release container to pool`"]
 
     console.log(result.stdout);     // "Hello from isol8!"
     console.log(result.exitCode);   // 0
-    console.log(result.durationMs); // ~55-95ms with warm pool
+    console.log(result.durationMs); // ~125-145ms with warm pool
 
     // Execute Node.js with a package
     const nodeResult = await isol8.execute({
@@ -277,7 +277,7 @@ release container to pool`"]
 
     **Key characteristics:**
     - No state persists between executions
-    - Fastest startup thanks to the warm container pool (~55-95ms)
+    - Fastest startup thanks to the warm container pool (~125-145ms)
     - Most secure — every run starts with a clean slate
     - Ideal for one-off code execution, AI agent tool calls, and untrusted user code
 
