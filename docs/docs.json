@@ -4,9 +4,9 @@
   "name": "isol8",
   "description": "Secure code execution engine for AI agents. Run untrusted code in Docker containers with strict resource limits, network controls, and output sanitization.",
   "colors": {
-    "primary": "#0E7C6B",
-    "light": "#55D3B9",
-    "dark": "#0A5C50"
+    "primary": "#FC642D",
+    "light": "#FE9D7A",
+    "dark": "#C83F0F"
   },
   "favicon": "/favicon.png",
   "metadata": {
@@ -35,36 +35,21 @@
         "tab": "v2 (New Features)",
         "groups": [
           {
-            "group": "Start Here",
+            "group": "Get Started",
             "pages": ["v2/intro", "v2/quickstart"]
           },
           {
-            "group": "Execution & Runtimes",
-            "pages": ["v2/execution"]
+            "group": "Essentials",
+            "pages": [
+              "v2/execution",
+              "v2/security",
+              "v2/persistence",
+              "v2/packages"
+            ]
           },
           {
-            "group": "Security & Network",
-            "pages": ["v2/security"]
-          },
-          {
-            "group": "Data & Persistence",
-            "pages": ["v2/persistence"]
-          },
-          {
-            "group": "Packages & Images",
-            "pages": ["v2/packages"]
-          },
-          {
-            "group": "Remote & API",
-            "pages": ["v2/remote"]
-          },
-          {
-            "group": "Observability",
-            "pages": ["v2/observability"]
-          },
-          {
-            "group": "Architecture",
-            "pages": ["v2/architecture"]
+            "group": "Advanced",
+            "pages": ["v2/remote", "v2/observability", "v2/architecture"]
           }
         ]
       },
