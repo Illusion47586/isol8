@@ -36,7 +36,7 @@
         "groups": [
           {
             "group": "Get Started",
-            "pages": ["v2/intro", "v2/quickstart"]
+            "pages": ["v2/intro", "v2/safety-for-humans", "v2/quickstart"]
           },
           {
             "group": "Essentials",

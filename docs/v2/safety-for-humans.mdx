@@ -1,0 +1,60 @@
+---
+title: "Safety for Humans"
+description: "A non-technical guide to why you need isol8 for your AI agents."
+icon: "life-buoy"
+---
+
+If you are using AI tools like Claude, ChatGPT, or custom agents to write and run code on your computer, you might be worried. **What if the AI makes a mistake?** What if it deletes your vacation photos or sends your passwords to a stranger?
+
+You don't need to be a programmer to understand why **isol8** keeps you safe.
+
+## The Analogy: The "Digital Sandbox"
+
+Imagine you are letting a very fast, very enthusiastic stranger use your computer to do some work for you.
+
+-   **Without isol8**: You hand them your unlocked laptop, your passwords, and your house keys. If they trip and fall, they might break something important. If they are malicious, they can steal everything.
+-   **With isol8**: You put them in an empty, locked room with a whiteboard and a calculator. They can do the math you asked for, but they **cannot leave the room**, they **cannot open your files**, and when they are done, the room is **cleaned instantly**.
+
+isol8 creates this "locked room" (we call it a **sandbox**) for every single piece of code the AI runs.
+
+## Three Layers of Protection
+
+isol8 uses industrial-grade technology (Docker) to enforce three strict rules that the AI cannot break.
+
+### 1. The "Read-Only" Rule (Don't Touch My Stuff)
+By default, the AI **cannot change your files**. It can look at files you explicitly give it, but it cannot delete, overwrite, or mess up your hard drive.
+
+<Card title="Real World Example" icon="file-lock">
+  The AI tries to run a command to "delete all files to save space".
+  **Result:** isol8 blocks it immediately. The AI sees an error message saying "Read-only file system". Your files remain safe.
+</Card>
+
+### 2. The "No Internet" Rule (Don't Talk to Strangers)
+By default, the AI **cannot access the internet**. It cannot send your data to a server in another country, and it cannot download viruses or sketchy software.
+
+<Card title="Real World Example" icon="wifi-slash">
+  The AI tries to upload your spreadsheet to a website to "analyze" it.
+  **Result:** The connection fails instantly. The AI is trapped inside the sandbox with no way out.
+</Card>
+
+### 3. The "Total Amnesia" Rule (Leave No Trace)
+Every time the AI finishes a task, isol8 destroys the sandbox completely. It doesn't just delete the files; it destroys the entire virtual computer it created for that task.
+
+<Card title="Real World Example" icon="trash-can">
+  The AI accidentally creates a messy temporary file or installs a program that slows things down.
+  **Result:** As soon as the task is done, *poof*. It's gone. The next task starts with a brand new, clean slate.
+</Card>
+
+## Why is this necessary?
+
+AI agents are powerful, but they are essentially guessing the next word in a sentence. They don't "know" right from wrong.
+
+-   They might hallucinate a command that deletes files.
+-   They might get confused and try to email your private keys.
+-   They might get stuck in an infinite loop, freezing your computer.
+
+isol8 puts a **hard limit** on all of this. It limits how much memory and CPU the AI can use, how long it can run (default 30 seconds), and exactly what it can touch.
+
+## Summary
+
+You don't need to trust the AI. You just need to trust the **jail cell** you put it in. isol8 is that jail cell—secure, disposable, and built to keep your digital life safe.
