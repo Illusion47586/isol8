@@ -19,6 +19,8 @@ Code is resolved from three sources, checked in priority order. The first match 
 2. **File argument** — Path to a script file. The runtime is auto-detected from the file extension via `RuntimeRegistry.detect()`. Use `--runtime` to override.
 3. **Stdin** — Piped input read from `process.stdin`. Defaults to `python` runtime if `--runtime` is not specified.
 
+When `--url`, `--github`, or `--gist` is provided, source is fetched remotely and file/eval input is not allowed in the same request.
+
 ### Extension-to-Runtime Mapping
 
 When a file argument is provided without `--runtime`, the runtime is auto-detected from the file extension:
@@ -43,6 +45,26 @@ If the extension doesn't match any registered adapter, the CLI exits with an err
 
 <ResponseField name="--runtime, -r" type="string">
   Force runtime: `python`, `node`, `bun`, `deno`, or `bash`. Overrides auto-detection from file extension.
+</ResponseField>
+
+<ResponseField name="--url" type="string">
+  Fetch source code from a URL. Requires `remoteCode.enabled=true` in config. Use `--hash` for integrity verification.
+</ResponseField>
+
+<ResponseField name="--github" type="string">
+  GitHub shorthand in `owner/repo/ref/path/to/file` format. Expanded to `raw.githubusercontent.com`.
+</ResponseField>
+
+<ResponseField name="--gist" type="string">
+  Gist shorthand in `gistId/file.ext` format. Expanded to `gist.githubusercontent.com`.
+</ResponseField>
+
+<ResponseField name="--hash" type="string">
+  Expected SHA-256 hash for fetched remote code. Execution fails if the hash mismatches.
+</ResponseField>
+
+<ResponseField name="--allow-insecure-code-url" type="boolean" default="false">
+  Allow insecure `http://` code URLs for this request.
 </ResponseField>
 
 <ResponseField name="--stdin" type="string">
@@ -185,6 +207,12 @@ echo "console.log('hello')" | isol8 run --runtime node
 
 # Pipe code from a file via stdin
 cat script.py | isol8 run --runtime python
+
+# Fetch code from URL
+isol8 run --url https://raw.githubusercontent.com/user/repo/main/script.py --runtime python
+
+# GitHub shorthand + hash verification
+isol8 run --github user/repo/main/script.py --hash <sha256> --runtime python
 ```
 
 ### Real-Time Streaming

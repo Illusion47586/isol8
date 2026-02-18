@@ -188,6 +188,65 @@
           },
           "type": "object"
         },
+        "remoteCode": {
+          "additionalProperties": false,
+          "description": "Remote code fetching policy. (Partial override allowed).",
+          "properties": {
+            "allowedHosts": {
+              "description": "Allowed hostname regex patterns. Empty means allow all (subject to blocklist).",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "allowedSchemes": {
+              "default": ["https"],
+              "description": "Allowed URL schemes.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "blockedHosts": {
+              "description": "Blocked hostname regex patterns.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "cacheTtl": {
+              "default": 3600,
+              "description": "Cache TTL in seconds for future use.",
+              "type": "number"
+            },
+            "enableCache": {
+              "default": true,
+              "description": "Cache support toggle for future use.",
+              "type": "boolean"
+            },
+            "enabled": {
+              "default": false,
+              "description": "Enable URL-based source fetching.",
+              "type": "boolean"
+            },
+            "fetchTimeoutMs": {
+              "default": 30000,
+              "description": "Fetch timeout in milliseconds.",
+              "type": "number"
+            },
+            "maxCodeSize": {
+              "default": "10485760 (10MB)",
+              "description": "Max fetched source size in bytes.",
+              "type": "number"
+            },
+            "requireHash": {
+              "default": false,
+              "description": "Require `ExecutionRequest.codeHash` for URL-based execution.",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
         "security": {
           "$ref": "#/definitions/SecurityConfig",
           "description": "Security settings."

@@ -192,6 +192,11 @@ program
   .option("--tmp-size <size>", "Tmp tmpfs size (e.g. 256m, 512m)")
   .option("--stdin <data>", "Data to pipe to stdin")
   .option("--install <package>", "Install package for runtime (repeatable)", collect, [])
+  .option("--url <url>", "Fetch code from URL")
+  .option("--github <path>", "GitHub shorthand: owner/repo/ref/path/to/file")
+  .option("--gist <path>", "Gist shorthand: gistId/file.ext")
+  .option("--hash <sha256>", "Expected SHA-256 hash of fetched code")
+  .option("--allow-insecure-code-url", "Allow insecure HTTP code URLs")
   .option("--host <url>", "Execute on remote server")
   .option("--key <key>", "API key for remote server")
   .option("--no-stream", "Disable real-time output streaming") // Default is now streaming
@@ -201,13 +206,25 @@ program
   .option("--pool-strategy <mode>", "Pool strategy: fast (default) or secure", "fast")
   .option("--pool-size <size>", "Pool size (number or 'clean,dirty' for fast mode)", "1,1")
   .action(async (file: string | undefined, opts) => {
-    const { code, runtime, engineOptions, engine, stdinData, fileExtension } =
-      await resolveRunInput(file, opts);
+    const {
+      code,
+      codeUrl,
+      codeHash,
+      allowInsecureCodeUrl,
+      runtime,
+      engineOptions,
+      engine,
+      stdinData,
+      fileExtension,
+    } = await resolveRunInput(file, opts);
 
     logger.debug(`[Run] Runtime: ${runtime}, mode: ${engineOptions.mode}`);
     logger.debug(`[Run] Network: ${engineOptions.network}, timeout: ${engineOptions.timeoutMs}ms`);
     logger.debug(`[Run] Memory: ${engineOptions.memoryLimit}, CPU: ${engineOptions.cpuLimit}`);
-    logger.debug(`[Run] Code length: ${code.length} chars`);
+    logger.debug(`[Run] Code source: ${codeUrl ? `url=${codeUrl}` : "inline/file/stdin"}`);
+    if (code) {
+      logger.debug(`[Run] Code length: ${code.length} chars`);
+    }
     if (stdinData) {
       logger.debug(`[Run] Stdin data provided (${stdinData.length} chars)`);
     }
@@ -237,9 +254,12 @@ program
       spinner.text = "Running code...";
 
       const req: ExecutionRequest = {
-        code,
         runtime,
         timeoutMs: engineOptions.timeoutMs,
+        ...(code ? { code } : {}),
+        ...(codeUrl ? { codeUrl } : {}),
+        ...(codeHash ? { codeHash } : {}),
+        ...(allowInsecureCodeUrl ? { allowInsecureCodeUrl } : {}),
         ...(stdinData ? { stdin: stdinData } : {}),
         ...(opts.install.length > 0 ? { installPackages: opts.install } : {}),
         fileExtension,
@@ -588,6 +608,15 @@ program
     } else {
       console.log("  Whitelist:       (none)");
     }
+
+    // Remote code
+    console.log("");
+    console.log("  ── Remote Code ──");
+    console.log(`  Enabled:         ${config.remoteCode.enabled ? "yes" : "no"}`);
+    console.log(`  Schemes:         ${config.remoteCode.allowedSchemes.join(", ")}`);
+    console.log(`  Max code size:   ${config.remoteCode.maxCodeSize} bytes`);
+    console.log(`  Fetch timeout:   ${config.remoteCode.fetchTimeoutMs}ms`);
+    console.log(`  Require hash:    ${config.remoteCode.requireHash ? "yes" : "no"}`);
     if (config.network.blacklist.length > 0) {
       console.log(`  Blacklist:       ${config.network.blacklist.join(", ")}`);
     } else {
@@ -721,10 +750,27 @@ async function resolveRunInput(file: string | undefined, opts: any) {
   const config = loadConfig();
   logger.debug("[Run] Config loaded");
 
-  let code: string;
+  let code: string | undefined;
+  let codeUrl: string | undefined;
+  let codeHash: string | undefined;
+  let allowInsecureCodeUrl = false;
   let runtime: Runtime;
 
-  if (opts.eval) {
+  if (opts.url || opts.github || opts.gist) {
+    if (file || opts.eval) {
+      console.error("[ERR] --url/--github/--gist cannot be used with file input or --eval.");
+      process.exit(1);
+    }
+    codeUrl = resolveCodeUrl(opts);
+    codeHash = opts.hash ?? undefined;
+    allowInsecureCodeUrl = opts.allowInsecureCodeUrl ?? false;
+    runtime = (opts.runtime ?? detectRuntimeFromPath(new URL(codeUrl).pathname)) as Runtime;
+    if (!runtime) {
+      console.error("[ERR] Cannot detect runtime from URL path. Use --runtime to specify.");
+      process.exit(1);
+    }
+    logger.debug(`[Run] Remote code URL: ${codeUrl}`);
+  } else if (opts.eval) {
     code = opts.eval;
     runtime = (opts.runtime ?? "python") as Runtime;
     logger.debug(`[Run] Inline eval, runtime: ${runtime}`);
@@ -776,6 +822,7 @@ async function resolveRunInput(file: string | undefined, opts: any) {
     debug: opts.debug ?? config.debug,
     persist: opts.persist ?? false,
     ...(opts.logNetwork ? { logNetwork: true } : {}),
+    remoteCode: config.remoteCode,
     poolStrategy: opts.poolStrategy === "secure" ? "secure" : "fast",
     poolSize: opts.poolSize
       ? opts.poolSize.includes(",")
@@ -832,7 +879,50 @@ async function resolveRunInput(file: string | undefined, opts: any) {
     engine = new DockerIsol8(engineOptions, config.maxConcurrent);
   }
 
-  return { code, runtime, engineOptions, engine, stdinData, fileExtension };
+  return {
+    code,
+    codeUrl,
+    codeHash,
+    allowInsecureCodeUrl,
+    runtime,
+    engineOptions,
+    engine,
+    stdinData,
+    fileExtension,
+  };
+}
+
+function resolveCodeUrl(opts: Record<string, unknown>): string {
+  if (typeof opts.url === "string") {
+    return opts.url;
+  }
+  if (typeof opts.github === "string") {
+    const parts = opts.github.split("/");
+    if (parts.length < 4) {
+      console.error("[ERR] --github format must be owner/repo/ref/path/to/file");
+      process.exit(1);
+    }
+    const [owner, repo, ref, ...pathParts] = parts;
+    return `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${pathParts.join("/")}`;
+  }
+  if (typeof opts.gist === "string") {
+    const [gistId, ...fileParts] = opts.gist.split("/");
+    if (!gistId || fileParts.length === 0) {
+      console.error("[ERR] --gist format must be gistId/file.ext");
+      process.exit(1);
+    }
+    return `https://gist.githubusercontent.com/${gistId}/raw/${fileParts.join("/")}`;
+  }
+  console.error("[ERR] Missing code URL source.");
+  process.exit(1);
+}
+
+function detectRuntimeFromPath(pathValue: string): Runtime | undefined {
+  try {
+    return RuntimeRegistry.detect(pathValue).name;
+  } catch {
+    return undefined;
+  }
 }
 
 function collect(value: string, previous: string[]): string[] {

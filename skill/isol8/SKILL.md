@@ -29,6 +29,8 @@ Isol8 is a secure execution engine for running untrusted code inside Docker cont
 
 **Extension mapping:** `.py` → python, `.js`/`.mjs`/`.cjs` → node, `.ts` → bun, `.mts` → deno, `.sh` → bash
 
+**Remote source input:** use `--url`, `--github`, or `--gist` (requires `remoteCode.enabled=true` in config). Add `--hash` for SHA-256 verification.
+
 ### Most-Used Flags (`isol8 run`)
 
 | Flag | Default | Description |
@@ -40,6 +42,11 @@ Isol8 is a secure execution engine for running untrusted code inside Docker cont
 | `--persist` | `false` | Keep container after execution for debugging |
 | `--debug` | `false` | Enable internal debug logging |
 | `--install <package>` | — | Install package before execution (repeatable) |
+| `--url <url>` | — | Fetch source code from URL |
+| `--github <owner/repo/ref/path>` | — | GitHub shorthand for raw source |
+| `--gist <gistId/file.ext>` | — | Gist shorthand for raw source |
+| `--hash <sha256>` | — | Verify SHA-256 hash for fetched code |
+| `--allow-insecure-code-url` | `false` | Allow insecure `http://` code URLs for this request |
 | `--net <mode>` | `none` | Network: `none`, `host`, `filtered` |
 | `--timeout <ms>` | `30000` | Execution timeout |
 | `--memory <limit>` | `512m` | Memory limit |
@@ -97,7 +104,8 @@ const isol8 = new DockerIsol8({
 await isol8.start();
 
 const result = await isol8.execute({
-  code: 'print("hello")',
+  codeUrl: "https://raw.githubusercontent.com/user/repo/main/script.py",
+  codeHash: "<sha256>",
   runtime: "python",
   installPackages: ["numpy"],  // optional
 });

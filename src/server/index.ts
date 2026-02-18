@@ -89,7 +89,9 @@ export async function createServer(options: ServerOptions) {
     logger.debug(
       `[Server] POST /execute runtime=${body.request.runtime} sessionId=${body.sessionId ?? "ephemeral"}`
     );
-    logger.debug(`[Server] Code length: ${body.request.code.length} chars`);
+    logger.debug(
+      `[Server] Code source: ${body.request.codeUrl ? `url=${body.request.codeUrl}` : `inline (${body.request.code?.length ?? 0} chars)`}`
+    );
 
     const engineOptions: Isol8Options = {
       network: config.defaults.network,
@@ -98,6 +100,7 @@ export async function createServer(options: ServerOptions) {
       timeoutMs: config.defaults.timeoutMs,
       sandboxSize: config.defaults.sandboxSize,
       tmpSize: config.defaults.tmpSize,
+      remoteCode: config.remoteCode,
       ...body.options,
       mode: body.sessionId ? "persistent" : "ephemeral",
       audit: config.audit,
@@ -165,7 +168,9 @@ export async function createServer(options: ServerOptions) {
     }>();
 
     logger.debug(`[Server] POST /execute/stream runtime=${body.request.runtime}`);
-    logger.debug(`[Server] Code length: ${body.request.code.length} chars`);
+    logger.debug(
+      `[Server] Code source: ${body.request.codeUrl ? `url=${body.request.codeUrl}` : `inline (${body.request.code?.length ?? 0} chars)`}`
+    );
 
     const engineOptions: Isol8Options = {
       network: config.defaults.network,
@@ -174,6 +179,7 @@ export async function createServer(options: ServerOptions) {
       timeoutMs: config.defaults.timeoutMs,
       sandboxSize: config.defaults.sandboxSize,
       tmpSize: config.defaults.tmpSize,
+      remoteCode: config.remoteCode,
       ...body.options,
       mode: "ephemeral",
     };

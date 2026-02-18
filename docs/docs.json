@@ -61,6 +61,7 @@
             "group": "Reference",
             "pages": [
               "configuration",
+              "remote-code",
               "runtimes",
               "benchmarks",
               "architecture",
