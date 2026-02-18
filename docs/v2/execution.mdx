@@ -1,0 +1,130 @@
+---
+title: "Execution & Runtimes"
+description: "How to run code securely with isol8: inline execution, file handling, and real-time streaming."
+---
+
+The core of isol8 is its execution engine, which takes untrusted code and runs it inside an isolated Docker container. This page covers how to execute code, the supported runtimes, and performance benchmarks.
+
+## Supported Runtimes
+
+isol8 supports 5 runtimes out of the box. Each has its own optimized Docker image.
+
+| Runtime | Image | Extension | Command | Notes |
+|:--------|:------|:----------|:--------|:------|
+| **Python** | `isol8:python` | `.py` | `python3` | Includes `pip` |
+| **Node.js** | `isol8:node` | `.js`, `.mjs`, `.cjs` | `node` | Includes `npm` |
+| **Bun** | `isol8:bun` | `.ts`, `.tsx` | `bun` | Fast startup, TS support |
+| **Deno** | `isol8:deno` | `.mts` | `deno` | Secure by default, no inline code |
+| **Bash** | `isol8:bash` | `.sh` | `bash` | System commands |
+
+<Note>
+  `.ts` files default to **Bun**. Use `.mts` or `--runtime deno` to force Deno. Deno does **not** support inline code execution (`-e`).
+</Note>
+
+## How to Execute Code
+
+You can run code in three ways: inline strings, files, or stdin.
+
+### 1. Inline Execution (`-e`)
+
+Perfect for quick snippets or testing.
+
+```bash
+# Python (default)
+isol8 run -e "print(2 ** 10)"
+
+# Specific runtime
+isol8 run -e "console.log('Hello Node')" --runtime node
+```
+
+### 2. File Execution
+
+Run a script file. The runtime is auto-detected from the extension.
+
+```bash
+isol8 run script.py      # Python
+isol8 run app.js         # Node.js
+isol8 run index.ts       # Bun
+isol8 run handler.mts    # Deno
+isol8 run deploy.sh      # Bash
+```
+
+### 3. Stdin Piping
+
+Pipe code or data into isol8.
+
+```bash
+# Pipe code to execute
+echo "console.log('Piped code')" | isol8 run --runtime node
+
+# Pipe data to a script's stdin
+echo '{"key": "val"}' | isol8 run script.py
+```
+
+## Real-Time Streaming
+
+Don't wait for execution to finish. Stream stdout and stderr as they happen.
+
+### CLI Streaming
+
+Use the `--stream` flag (enabled by default in some contexts, use `--no-stream` to disable).
+
+```bash
+isol8 run long_task.py --stream
+```
+
+### Library Streaming
+
+Use `executeStream()` to get an async iterable of events.
+
+```typescript
+for await (const event of isol8.executeStream({
+  code: 'import time; time.sleep(1); print("done")',
+  runtime: "python",
+})) {
+  if (event.type === "stdout") process.stdout.write(event.data);
+}
+```
+
+### Server-Sent Events (SSE)
+
+The HTTP server exposes a streaming endpoint.
+
+```bash
+curl -N -X POST http://localhost:3000/execute/stream 
+  -d '{"code": "print(1)", "runtime": "python"}'
+```
+
+## Benchmarks & Performance
+
+isol8 is designed for low latency.
+
+### Cold Start vs Warm Pool
+
+| Runtime | Cold Start (ms) | Warm Pool (ms) | Speedup |
+|:--------|:----------------|:---------------|:--------|
+| Python  | ~280ms          | ~130ms         | 2.3x    |
+| Node.js | ~260ms          | ~140ms         | 2.0x    |
+| Bun     | ~230ms          | ~130ms         | 1.9x    |
+| Bash    | ~220ms          | ~125ms         | 1.8x    |
+
+The **warm pool** pre-starts containers so they are ready instantly. When you run code, isol8 grabs a warm container, executes your code, wipes it clean, and returns it to the pool.
+
+<Tip>
+  Use ephemeral mode (default) to leverage the warm pool. Persistent mode creates a dedicated container which has a one-time setup cost.
+</Tip>
+
+### Latency Breakdown
+
+Where does the time go?
+
+- **Create + Start**: ~90-120ms (Eliminated by warm pool)
+- **Write Code**: ~15ms
+- **Run**: ~20-30ms (Runtime startup)
+- **Cleanup**: ~40ms
+
+## Troubleshooting Execution
+
+- **Timeout**: Use `--timeout <ms>` if your code runs long. Default is 30s.
+- **Memory Limit**: Use `--memory <size>` (e.g., `1g`) if you hit OOM errors.
+- **Output Truncation**: Output is capped at 1MB by default. Use `--max-output` to increase it.

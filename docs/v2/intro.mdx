@@ -1,0 +1,75 @@
+---
+title: "Introduction (v2)"
+description: "Welcome to isol8 v2 - Secure, high-performance code execution for AI agents."
+mode: "wide"
+---
+
+isol8 is a secure code execution engine designed specifically for AI agents and LLMs. It runs untrusted code inside Docker containers with strict resource limits, network controls, and output sanitization.
+
+<CardGroup cols={2}>
+  <Card title="Multi-Runtime Support" icon="code" href="/v2/execution">
+    Execute Python, Node.js, Bun, Deno, and Bash out of the box. Each runtime has its own optimized Docker image.
+  </Card>
+  <Card title="Container Isolation" icon="shield" href="/v2/security">
+    Every execution runs in a Docker container with read-only root filesystem, PID limits, memory/CPU caps, and `no-new-privileges`.
+  </Card>
+  <Card title="Network Control" icon="globe" href="/v2/security#network-control">
+    Choose between `none` (blocked), `host` (full access), or `filtered` (HTTP/HTTPS proxy with whitelist/blacklist).
+  </Card>
+  <Card title="Real-Time Streaming" icon="bolt" href="/v2/execution#streaming">
+    Stream stdout and stderr as code executes via library or Server-Sent Events (SSE).
+  </Card>
+</CardGroup>
+
+## Why isol8?
+
+Building reliable code execution for AI agents is hard. You need to handle security, timeouts, resource exhaustion, and dependency management. isol8 solves these problems with a battle-hardened engine that provides:
+
+- **Sub-150ms Latency**: A warm container pool keeps pre-started containers ready for immediate use.
+- **Secret Masking**: Automatically masks sensitive values in stdout/stderr to prevent leakage.
+- **File I/O**: Inject input files and retrieve output files easily.
+- **Package Management**: Install packages on the fly or bake them into custom images.
+
+## Core Features
+
+<CardGroup cols={3}>
+  <Card title="Execution" icon="terminal" href="/v2/execution">
+    Run code inline or from files. Support for multiple runtimes and streaming output.
+  </Card>
+  <Card title="Security" icon="lock" href="/v2/security">
+    Configure network access, resource limits, seccomp profiles, and secret masking.
+  </Card>
+  <Card title="Persistence" icon="database" href="/v2/persistence">
+    Maintain state across multiple executions with persistent sessions.
+  </Card>
+  <Card title="Packages" icon="box" href="/v2/packages">
+    Manage dependencies with on-the-fly installation or custom Docker images.
+  </Card>
+  <Card title="Remote API" icon="server" href="/v2/remote">
+    Deploy isol8 as a standalone HTTP service for remote execution.
+  </Card>
+  <Card title="Observability" icon="eye" href="/v2/observability">
+    Enable audit logging, debug mode, and track resource usage.
+  </Card>
+</CardGroup>
+
+## Architecture
+
+Deep dive into how isol8 works under the hood, including the container pool, execution pipeline, and network filtering.
+
+<Card title="Architecture Deep Dive" icon="sitemap" href="/v2/architecture">
+  Learn about the internal design of isol8.
+</Card>
+
+## Community & Support
+
+- **GitHub Repository**: [https://github.com/Illusion47586/isol8](https://github.com/Illusion47586/isol8)
+- **Contributing Guidelines**: Check out `CONTRIBUTING.md` in the repo.
+- **Agents Skill**: To install the isol8 agents skill, copy the `skill/isol8` directory to your agents skills folder:
+  ```bash
+  cp -r skill/isol8 ~/.agents/skills/isol8
+  ```
+
+<Note>
+  This documentation covers v2 features. For v1 documentation, please refer to the legacy tabs.
+</Note>

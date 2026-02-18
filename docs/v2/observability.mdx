@@ -1,0 +1,164 @@
+---
+title: "Observability"
+description: "How to monitor, debug, and audit isol8 executions."
+---
+
+Running code is only half the battle. You need to know *what* happened, *when*, and *why*. isol8 provides powerful observability tools for this purpose.
+
+## Audit Logging
+
+For compliance and forensics, enable audit logging. Every execution is recorded with detailed metadata.
+
+### Configuration
+
+Enable in `isol8.config.json`.
+
+```json
+{
+  "audit": {
+    "enabled": true,
+    "logDir": "/var/log/isol8",
+    "retentionDays": 90,
+    "trackResources": true
+  }
+}
+```
+
+### Log Format
+
+Each line is a JSON object (JSONL).
+
+```json
+{
+  "executionId": "550e8400-e29b-41d4-a716-446655440000",
+  "userId": "user-123",
+  "timestamp": "2026-02-14T12:00:00.000Z",
+  "runtime": "python",
+  "codeHash": "a1b2c3d4...",
+  "containerId": "abc123",
+  "exitCode": 0,
+  "durationMs": 82,
+  "resourceUsage": {
+    "cpuPercent": 12.5,
+    "memoryMB": 64,
+    "networkBytesIn": 0,
+    "networkBytesOut": 0
+  },
+  "securityEvents": [],
+  "metadata": {
+    "tenantId": "tenant-456"
+  }
+}
+```
+
+### Security Events
+
+When using `filtered` network mode, blocked requests are logged as security events.
+
+```json
+{
+  "type": "network_blocked",
+  "message": "Security event: network_blocked",
+  "details": {
+    "method": "CONNECT",
+    "host": "evil.com",
+    "reason": "filter_mismatch"
+  },
+  "timestamp": "2026-02-17T20:00:00Z"
+}
+```
+
+## Debugging
+
+Is execution failing? Use debug flags to investigate.
+
+### `--debug` (Verbose Logs)
+
+Enable internal engine logs. Prints container lifecycle events, pool operations, and cleanup decisions.
+
+```bash
+isol8 run script.py --debug
+```
+
+**Output:**
+
+```
+[DEBUG] Acquiring container from pool for image isol8:python
+[DEBUG] Pool hit: reusing warm container abc123
+[DEBUG] Executing code in container abc123
+[DEBUG] Execution completed in 52ms
+[DEBUG] Releasing container abc123 back to pool
+```
+
+### `--persist` (Inspect Container)
+
+Keep the container running after execution. This lets you `docker exec` into it to inspect files and state.
+
+```bash
+isol8 run script.py --persist
+# Container ID: abc123
+```
+
+Then inspect:
+
+```bash
+docker exec -it abc123 sh
+ls -la /sandbox/
+cat /sandbox/output.txt
+```
+
+<Warning>
+  You must manually clean up persistent containers when done: `docker rm -f <id>` or `isol8 cleanup`.
+</Warning>
+
+## Troubleshooting
+
+Common issues and solutions.
+
+### "Docker not running"
+
+Ensure the Docker daemon is active.
+
+```bash
+docker info
+```
+
+If on Linux, check permissions (`sudo usermod -aG docker $USER`).
+
+### "Execution timed out"
+
+The code ran longer than `--timeout` (default 30s). Increase it.
+
+```bash
+isol8 run script.py --timeout 60000
+```
+
+### "OOM Killed"
+
+The container ran out of memory (default 512MB). Increase it.
+
+```bash
+isol8 run script.py --memory 1g
+```
+
+### "No space left on device"
+
+The `/sandbox` or `/tmp` filesystem is full (default 512MB / 256MB). Increase sizes.
+
+```bash
+isol8 run script.py --sandbox-size 1g --tmp-size 512m
+```
+
+### "Operation not permitted" (Package Install)
+
+Some packages (like `numpy`) install shared libraries (`.so`) that need execution permission. isol8 installs to `/sandbox` which allows execution. If you see this, check if you're trying to run a binary from `/tmp` (which is `noexec`).
+
+### Server Binary Download Fails
+
+If `isol8 serve` fails to download the binary, try forcing an update.
+
+```bash
+isol8 serve --update
+```
+
+Check your internet connection and GitHub access.

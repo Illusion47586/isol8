@@ -1,0 +1,139 @@
+---
+title: "Data & Persistence"
+description: "How to handle files, state, and persistent sessions in isol8."
+---
+
+By default, isol8 runs in **ephemeral mode**, where every execution starts with a clean slate. However, you can use **persistent mode** to maintain state across multiple executions, or simply use file I/O to transfer data in and out.
+
+## Ephemeral vs. Persistent
+
+### Ephemeral Mode (Default)
+- **State**: None. `/sandbox` is wiped after every run.
+- **Latency**: Fast (~130ms warm).
+- **Use Case**: One-off scripts, stateless functions.
+
+### Persistent Mode (`--persistent`)
+- **State**: Files and variables persist between runs.
+- **Latency**: Initial setup (~300ms), subsequent runs fast (~120ms).
+- **Use Case**: REPL sessions, multi-step workflows, data pipelines.
+
+<Warning>
+  Persistent containers are locked to a single runtime. You cannot switch from Python to Node.js in the same persistent session.
+</Warning>
+
+## File I/O
+
+Transfer files into and out of the container easily.
+
+### 1. Injecting Files (`files`)
+
+Pass files before execution starts. Works in both modes.
+
+```typescript
+const result = await isol8.execute({
+  code: 'print(open("/sandbox/data.txt").read())',
+  runtime: "python",
+  files: {
+    "/sandbox/data.txt": "hello world",
+    "/sandbox/config.json": JSON.stringify({ key: "val" }),
+  },
+});
+```
+
+### 2. Retrieving Files (`outputPaths`)
+
+Get files back after execution finishes. Works in both modes.
+
+```typescript
+const result = await isol8.execute({
+  code: 'open("/sandbox/out.csv", "w").write("a,b
+1,2")',
+  runtime: "python",
+  outputPaths: ["/sandbox/out.csv"],
+});
+
+// Files are base64 encoded
+const content = Buffer.from(result.files["/sandbox/out.csv"], "base64");
+```
+
+### 3. Direct File Transfer (Persistent Only)
+
+In persistent mode, use `putFile()` and `getFile()` directly on the engine instance.
+
+```typescript
+const isol8 = new DockerIsol8({ mode: "persistent" });
+await isol8.start();
+
+// Upload file
+await isol8.putFile("/sandbox/dataset.csv", "id,val
+1,100");
+
+// Execute code using the file
+await isol8.execute({
+  code: 'import pandas as pd; df = pd.read_csv("/sandbox/dataset.csv")',
+  runtime: "python",
+});
+
+// Download result
+const report = await isol8.getFile("/sandbox/report.txt");
+```
+
+## Persistent Sessions
+
+### CLI Usage
+
+Use `--persistent` to keep state between runs.
+
+```bash
+# Run 1: Set variable
+isol8 run --persistent -e "x = 42" --runtime python
+
+# Run 2: Read variable (same container reused)
+isol8 run --persistent -e "print(x)" --runtime python
+```
+
+### Library Usage
+
+Set `mode: "persistent"` in the constructor.
+
+```typescript
+const isol8 = new DockerIsol8({ mode: "persistent" });
+await isol8.start();
+
+// Every execute() call reuses the same container
+await isol8.execute({ code: "x = 10", runtime: "python" });
+await isol8.execute({ code: "x += 5", runtime: "python" });
+await isol8.execute({ code: "print(x)", runtime: "python" }); // 15
+
+await isol8.stop(); // Destroys the container
+```
+
+### Server Sessions
+
+Use `sessionId` to identify persistent sessions on the server.
+
+```bash
+# Create session "session-123"
+curl -X POST http://localhost:3000/execute 
+  -d '{"request": {"code": "x=1", "runtime": "python"}, "sessionId": "session-123"}'
+
+# Reuse session "session-123"
+curl -X POST http://localhost:3000/execute 
+  -d '{"request": {"code": "print(x)", "runtime": "python"}, "sessionId": "session-123"}'
+```
+
+Sessions are automatically pruned after 1 hour of inactivity (configurable via `cleanup.maxContainerAgeMs`).
+
+## Stdin/Stdout
+
+For simple text data, piping via stdin/stdout is often easiest.
+
+```bash
+# Pipe JSON data
+echo '{"name": "Alice"}' | isol8 run script.py
+
+# Script reads from sys.stdin
+# import sys, json
+# data = json.load(sys.stdin)
+# print(f"Hello {data['name']}")
+```

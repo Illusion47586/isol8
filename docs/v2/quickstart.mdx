@@ -1,0 +1,130 @@
+---
+title: "Quickstart"
+description: "Get up and running with isol8 in under 5 minutes."
+---
+
+Ready to execute code safely? This guide will walk you through installing isol8, setting up the environment, and running your first sandboxed code.
+
+## Prerequisites
+
+- **[Docker](https://docs.docker.com/get-docker/)**: Must be installed and running.
+- **[Bun](https://bun.sh)** (recommended) or **Node.js 18+**.
+
+## Installation
+
+Install the CLI globally to use `isol8` from anywhere:
+
+<CodeGroup>
+```bash npm
+npm install -g isol8
+```
+
+```bash bun
+bun install -g isol8
+```
+</CodeGroup>
+
+Or add it to your project:
+
+<CodeGroup>
+```bash npm
+npm install isol8
+```
+
+```bash bun
+bun add isol8
+```
+</CodeGroup>
+
+## Setup
+
+Before running code, you need to build the Docker images. This command verifies your Docker connection and builds the optimized runtime images.
+
+```bash
+isol8 setup
+```
+
+<Check>
+  This step is only needed once (or when you want to update images). It builds `isol8:python`, `isol8:node`, `isol8:bun`, `isol8:deno`, and `isol8:bash`.
+</Check>
+
+## Hello World
+
+Run your first snippet of code securely. The `--eval` flag lets you pass code directly.
+
+<CodeGroup>
+```bash Python
+isol8 run -e "print('Hello form the sandbox!')" --runtime python
+```
+
+```bash Node.js
+isol8 run -e "console.log('Hello from Node!')" --runtime node
+```
+
+```bash Bun
+isol8 run -e "console.log('Hello from Bun!')" --runtime bun
+```
+
+```bash Bash
+isol8 run -e "echo 'Hello from Bash!'" --runtime bash
+```
+</CodeGroup>
+
+## Feature Highlights
+
+Now that you have it running, explore what isol8 can do:
+
+### 1. Install Packages on the Fly
+
+Need `numpy`? Just ask for it. isol8 installs it in the container before running your code.
+
+```bash
+isol8 run -e "import numpy; print(numpy.array([1, 2, 3]))" 
+  --runtime python --install numpy
+```
+
+### 2. Stream Output in Real-Time
+
+Don't wait for the process to finish. Stream stdout and stderr as they happen.
+
+```bash
+isol8 run -e "import time; print('Start'); time.sleep(1); print('End')" 
+  --runtime python --stream
+```
+
+### 3. Use Network Filters
+
+Need to call an API? Use `filtered` mode to allow only specific domains.
+
+```bash
+isol8 run script.py --net filtered --allow "^api\.openai\.com$"
+```
+
+### 4. Persist State
+
+Keep variables and files between executions using persistent mode.
+
+```bash
+# Set a variable
+isol8 run --persistent -e "x = 42" --runtime python
+
+# Read it back in a new execution
+isol8 run --persistent -e "print(x)" --runtime python
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Execution" icon="terminal" href="/v2/execution">
+    Learn about runtimes, file execution, and CLI flags.
+  </Card>
+  <Card title="Security" icon="shield" href="/v2/security">
+    Understand how isol8 keeps your host safe.
+  </Card>
+  <Card title="TypeScript Library" icon="code" href="/library/overview">
+    Integrate isol8 into your app programmatically.
+  </Card>
+  <Card title="HTTP Server" icon="server" href="/v2/remote">
+    Deploy isol8 as a remote execution service.
+  </Card>
+</CardGroup>

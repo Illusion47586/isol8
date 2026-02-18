@@ -1,0 +1,147 @@
+---
+title: "Remote & API"
+description: "Deploy isol8 as a secure HTTP service for remote code execution."
+---
+
+Running code locally is great, but often you need a centralized execution service. isol8 can run as a standalone HTTP server, exposing a REST API for execution, streaming, and file management.
+
+## Starting the Server
+
+The server is distributed as a single binary. No Bun installation required.
+
+### CLI Command
+
+```bash
+isol8 serve --port 3000 --key my-secret-api-key
+```
+
+- **`--port`**: Port to listen on (default: 3000).
+- **`--key`**: API key for Bearer token auth (required).
+- **`--debug`**: Enable verbose request logging.
+- **`--update`**: Force update the server binary.
+
+### Environment Variables
+
+You can also set the API key via `ISOL8_API_KEY`.
+
+```bash
+export ISOL8_API_KEY=secret123
+isol8 serve
+```
+
+## API Reference
+
+All endpoints (except `/health`) require `Authorization: Bearer <key>`.
+
+### Execution (`POST /execute`)
+
+Execute code and return the result.
+
+```bash
+curl -X POST http://localhost:3000/execute 
+  -H "Authorization: Bearer secret123" 
+  -H "Content-Type: application/json" 
+  -d '{
+    "request": {
+      "code": "print('Hello')",
+      "runtime": "python"
+    }
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "stdout": "Hello
+",
+  "stderr": "",
+  "exitCode": 0,
+  "executionId": "...",
+  "durationMs": 50
+}
+```
+
+### Streaming (`POST /execute/stream`)
+
+Stream output via Server-Sent Events (SSE).
+
+```bash
+curl -N -X POST http://localhost:3000/execute/stream 
+  -H "Authorization: Bearer secret123" 
+  -d '{"request": {"code": "print(1)", "runtime": "python"}}'
+```
+
+**Events:**
+
+```
+data: {"type":"stdout","data":"1
+"}
+data: {"type":"exit","data":"0"}
+```
+
+### File Management
+
+Upload and download files for persistent sessions.
+
+- **Upload (`POST /file`)**: Send file content (base64).
+- **Download (`GET /file`)**: Retrieve file content (base64).
+
+### Session Management
+
+- **Delete Session (`DELETE /session/:id`)**: Explicitly destroy a session container.
+
+Sessions are automatically pruned after 1 hour of inactivity (configurable).
+
+## Remote Client (`RemoteIsol8`)
+
+Connect to a remote server from your application using the TypeScript library.
+
+```typescript
+import { RemoteIsol8 } from "isol8";
+
+const isol8 = new RemoteIsol8(
+  {
+    host: "http://execution-service:3000",
+    apiKey: "secret123",
+    sessionId: "optional-session-id",
+  },
+  {
+    network: "none",
+    memoryLimit: "512m",
+  }
+);
+
+await isol8.start(); // Verify server health
+
+const result = await isol8.execute({
+  code: 'print("Remote execution")',
+  runtime: "python",
+});
+
+console.log(result.stdout);
+
+await isol8.stop(); // Clean up session
+```
+
+## Server Configuration
+
+Configure the server via `isol8.config.json`.
+
+```json
+{
+  "maxConcurrent": 20,
+  "defaults": {
+    "timeoutMs": 30000,
+    "memoryLimit": "512m"
+  },
+  "cleanup": {
+    "autoPrune": true,
+    "maxContainerAgeMs": 3600000
+  }
+}
+```
+
+- **`maxConcurrent`**: Limits parallel executions.
+- **`cleanup.autoPrune`**: Enables periodic session cleanup.
+- **`defaults`**: Default execution options for all requests.
