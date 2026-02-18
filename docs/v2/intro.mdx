@@ -1,56 +1,69 @@
 ---
 title: "Introduction (v2)"
 sidebarTitle: "Welcome"
-description: "Welcome to isol8 v2 - Secure, high-performance code execution for AI agents."
+description: "The Safe Sandbox for AI Code Execution."
 icon: "house"
 ---
 
-isol8 is a secure code execution engine designed specifically for AI agents and LLMs. It runs untrusted code inside Docker containers with strict resource limits, network controls, and output sanitization.
+Give your AI agents the power to write and run code without risking your infrastructure. **isol8** provides a secure, ephemeral, and high-performance environment designed specifically for untrusted code execution by LLMs.
 
 <CardGroup cols={2}>
-  <Card title="Multi-Runtime Support" icon="code" href="/v2/execution">
-    Execute Python, Node.js, Bun, Deno, and Bash out of the box. Each runtime has its own optimized Docker image.
+  <Card title="Zero Trust Security" icon="shield-check">
+    Read-only root filesystem, non-root user, and no network access by default.
   </Card>
-  <Card title="Container Isolation" icon="shield" href="/v2/security">
-    Every execution runs in a Docker container with read-only root filesystem, PID limits, memory/CPU caps, and `no-new-privileges`.
+  <Card title="Instant Start" icon="bolt">
+    Warm container pool delivers **sub-150ms latency** for real-time agent interactions.
   </Card>
-  <Card title="Network Control" icon="globe" href="/v2/security#network-control">
-    Choose between `none` (blocked), `host` (full access), or `filtered` (HTTP/HTTPS proxy with whitelist/blacklist).
+  <Card title="Data Control" icon="lock">
+    Strict egress filtering, automatic secret masking, and resource quotas.
   </Card>
-  <Card title="Real-Time Streaming" icon="bolt" href="/v2/execution#streaming">
-    Stream stdout and stderr as code executes via library or Server-Sent Events (SSE).
+  <Card title="Universal Support" icon="code">
+    Execute Python, Node.js, Bun, Deno, and Bash out of the box.
   </Card>
 </CardGroup>
 
+## Designed for Agents
+
+isol8 is built to be the "Code Interpreter" for your custom agents. It handles the complexity of sandboxing so you can focus on reasoning.
+
+```typescript
+// Example: An agent tool for executing code
+import { DockerIsol8 } from "isol8";
+
+const sandbox = new DockerIsol8({
+  mode: "ephemeral",
+  network: "filtered", // Allow only specific APIs
+  timeoutMs: 30000,
+});
+
+async function executeTool(code: string) {
+  const result = await sandbox.execute({
+    code,
+    runtime: "python",
+    installPackages: ["pandas", "requests"], // Install on the fly
+  });
+
+  return result.stdout; // Safe to return to the LLM
+}
+```
+
 ## Why isol8?
 
-Building reliable code execution for AI agents is hard. You need to handle security, timeouts, resource exhaustion, and dependency management. isol8 solves these problems with a battle-hardened engine that provides:
+Building reliable code execution for AI is hard. You need to handle security break-outs, infinite loops, resource exhaustion, and dependency management. isol8 solves these problems with a battle-hardened engine:
 
-- **Sub-150ms Latency**: A warm container pool keeps pre-started containers ready for immediate use.
-- **Secret Masking**: Automatically masks sensitive values in stdout/stderr to prevent leakage.
-- **File I/O**: Inject input files and retrieve output files easily.
-- **Package Management**: Install packages on the fly or bake them into custom images.
+- **Security First**: Every run happens in a fresh, isolated Docker container.
+- **Dependency Management**: Install packages on the fly or bake them into custom images.
+- **File I/O**: Easily inject datasets and retrieve generated charts or files.
+- **Observability**: Full audit logs for compliance and debugging.
 
-## Core Features
+## Get Started
 
-<CardGroup cols={3}>
-  <Card title="Execution" icon="terminal" href="/v2/execution">
-    Run code inline or from files. Support for multiple runtimes and streaming output.
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="bolt" href="/v2/quickstart">
+    Run your first secure code snippet in under 5 minutes.
   </Card>
-  <Card title="Security" icon="lock" href="/v2/security">
-    Configure network access, resource limits, seccomp profiles, and secret masking.
-  </Card>
-  <Card title="Persistence" icon="database" href="/v2/persistence">
-    Maintain state across multiple executions with persistent sessions.
-  </Card>
-  <Card title="Packages" icon="box" href="/v2/packages">
-    Manage dependencies with on-the-fly installation or custom Docker images.
-  </Card>
-  <Card title="Remote API" icon="server" href="/v2/remote">
-    Deploy isol8 as a standalone HTTP service for remote execution.
-  </Card>
-  <Card title="Observability" icon="eye" href="/v2/observability">
-    Enable audit logging, debug mode, and track resource usage.
+  <Card title="Execution Guide" icon="terminal" href="/v2/execution">
+    Learn how to run code, handle files, and stream output.
   </Card>
 </CardGroup>
 
