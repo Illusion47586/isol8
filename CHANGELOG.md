@@ -1,3 +1,10 @@
+## [0.10.2](https://github.com/Illusion47586/isol8/compare/v0.10.1...v0.10.2) (2026-02-18)
+
+
+### Performance Improvements
+
+* fix benchmark regression and add fast pool strategy for sub-100ms execution ([#48](https://github.com/Illusion47586/isol8/issues/48)) ([bb69861](https://github.com/Illusion47586/isol8/commit/bb698619cd8a8351ec694cb7decaa92a4a8fcfae))
+
 ## [0.10.1](https://github.com/Illusion47586/isol8/compare/v0.10.0...v0.10.1) (2026-02-18)
 
 
