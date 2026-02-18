@@ -4,13 +4,11 @@
 
 import { beforeAll } from "bun:test";
 import { execSync } from "node:child_process";
-import Docker from "dockerode";
 
 // Check Docker availability - FAIL HARD if not available
-async function checkDocker(): Promise<void> {
+function checkDocker(): void {
   try {
-    const docker = new Docker();
-    await docker.ping();
+    execSync("docker info", { stdio: "pipe" });
   } catch {
     throw new Error(
       "\n" +
@@ -55,6 +53,6 @@ async function prebuildImages(): Promise<void> {
 
 // Global setup
 beforeAll(async () => {
-  await checkDocker();
+  checkDocker();
   await prebuildImages();
 }, 300_000); // 5 minute timeout
