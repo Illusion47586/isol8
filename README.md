@@ -78,6 +78,7 @@ isol8 setup --node lodash,axios
 | `--bun <pkgs>` | Comma-separated bun packages |
 | `--deno <pkgs>` | Comma-separated Deno module URLs to cache |
 | `--bash <pkgs>` | Comma-separated Alpine apk packages |
+| `--force` | Force rebuild even if images are up to date |
 
 ### `isol8 run`
 
