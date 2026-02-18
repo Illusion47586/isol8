@@ -33,65 +33,147 @@ isol8 serve
 
 All endpoints (except `/health`) require `Authorization: Bearer <key>`.
 
-### Execution (`POST /execute`)
+### POST /execute
 
 Execute code and return the result.
 
+<ParamField body="request" type="object" required>
+  The execution request details.
+  <Expandable title="properties">
+    <ParamField body="code" type="string" required>
+      Source code to execute.
+    </ParamField>
+    <ParamField body="runtime" type="string" required>
+      One of: `python`, `node`, `bun`, `deno`, `bash`.
+    </ParamField>
+    <ParamField body="timeoutMs" type="number">
+      Execution timeout in milliseconds.
+    </ParamField>
+    <ParamField body="env" type="object">
+      Environment variables to inject.
+    </ParamField>
+    <ParamField body="stdin" type="string">
+      Data to pipe to stdin.
+    </ParamField>
+    <ParamField body="files" type="object">
+      Files to inject (path -> content).
+    </ParamField>
+    <ParamField body="outputPaths" type="string[]">
+      Paths of files to retrieve.
+    </ParamField>
+    <ParamField body="installPackages" type="string[]">
+      Packages to install before execution.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="sessionId" type="string">
+  Optional session ID for persistent mode.
+</ParamField>
+
+<ParamField body="options" type="object">
+  Overrides for defaults (network, memory, etc).
+</ParamField>
+
+#### Response
+
+<ResponseField name="stdout" type="string">
+  Standard output from the process.
+</ResponseField>
+
+<ResponseField name="stderr" type="string">
+  Standard error from the process.
+</ResponseField>
+
+<ResponseField name="exitCode" type="number">
+  Process exit code (0 = success).
+</ResponseField>
+
+<ResponseField name="durationMs" type="number">
+  Execution duration in milliseconds.
+</ResponseField>
+
+<ResponseField name="executionId" type="string">
+  Unique ID for this execution.
+</ResponseField>
+
 ```bash
-curl -X POST http://localhost:3000/execute 
-  -H "Authorization: Bearer secret123" 
-  -H "Content-Type: application/json" 
+curl -X POST http://localhost:3000/execute \
+  -H "Authorization: Bearer secret123" \
+  -H "Content-Type: application/json" \
   -d '{
     "request": {
-      "code": "print('Hello')",
+      "code": "print(\"Hello\")",
       "runtime": "python"
     }
   }'
 ```
 
-**Response:**
-
-```json
-{
-  "stdout": "Hello
-",
-  "stderr": "",
-  "exitCode": 0,
-  "executionId": "...",
-  "durationMs": 50
-}
-```
-
-### Streaming (`POST /execute/stream`)
+### POST /execute/stream
 
 Stream output via Server-Sent Events (SSE).
 
+<ParamField body="request" type="object" required>
+  Same as `/execute` request.
+</ParamField>
+
+#### Response (SSE Events)
+
+<ResponseField name="type" type="string">
+  Event type: `stdout`, `stderr`, `exit`, `error`.
+</ResponseField>
+
+<ResponseField name="data" type="string">
+  Chunk content or exit code.
+</ResponseField>
+
 ```bash
-curl -N -X POST http://localhost:3000/execute/stream 
-  -H "Authorization: Bearer secret123" 
+curl -N -X POST http://localhost:3000/execute/stream \
+  -H "Authorization: Bearer secret123" \
   -d '{"request": {"code": "print(1)", "runtime": "python"}}'
 ```
 
-**Events:**
+### POST /file
 
-```
-data: {"type":"stdout","data":"1
-"}
-data: {"type":"exit","data":"0"}
-```
+Upload a file to a persistent session.
 
-### File Management
+<ParamField body="sessionId" type="string" required>
+  Target session ID.
+</ParamField>
 
-Upload and download files for persistent sessions.
+<ParamField body="path" type="string" required>
+  Absolute path inside container (e.g., `/sandbox/data.csv`).
+</ParamField>
 
-- **Upload (`POST /file`)**: Send file content (base64).
-- **Download (`GET /file`)**: Retrieve file content (base64).
+<ParamField body="content" type="string" required>
+  Base64-encoded file content.
+</ParamField>
 
-### Session Management
+### GET /file
 
-- **Delete Session (`DELETE /session/:id`)**: Explicitly destroy a session container.
+Download a file from a persistent session.
 
-Sessions are automatically pruned after 1 hour of inactivity (configurable).
+<ParamField query="sessionId" type="string" required>
+  Target session ID.
+</ParamField>
+
+<ParamField query="path" type="string" required>
+  Absolute path inside container.
+</ParamField>
+
+#### Response
+
+<ResponseField name="content" type="string">
+  Base64-encoded file content.
+</ResponseField>
+
+### DELETE /session/:id
+
+Stop and remove a persistent session.
+
+<ParamField path="id" type="string" required>
+  Session ID to destroy.
+</ParamField>
 
 ## Remote Client (`RemoteIsol8`)
 
