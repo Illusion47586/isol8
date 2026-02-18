@@ -31,11 +31,18 @@ jobs:
       - name: Run production tests
         id: tests
         run: |
+          set -o pipefail
+          
           echo ""
           echo "=========================================="
           echo "Running Production Tests"
           echo "=========================================="
           bun run test:prod 2>&1 | tee test-output.log
+          TEST_EXIT_CODE=${PIPESTATUS[0]}
+          
+          if [ $TEST_EXIT_CODE -ne 0 ]; then
+            echo "Tests failed with exit code: $TEST_EXIT_CODE"
+          fi
           
           PASS=$(grep -E "^\s+[0-9]+ pass" test-output.log | grep -oE "[0-9]+" | head -1)
           FAIL=$(grep -E "^\s+[0-9]+ fail" test-output.log | grep -oE "[0-9]+" | head -1)
