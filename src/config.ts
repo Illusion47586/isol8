@@ -37,6 +37,28 @@ const DEFAULT_CONFIG: Isol8Config = {
   security: {
     seccomp: "strict",
   },
+  remoteCode: {
+    enabled: false,
+    allowedSchemes: ["https"],
+    allowedHosts: [],
+    blockedHosts: [
+      "^localhost$",
+      "^127(?:\\.[0-9]{1,3}){3}$",
+      "^\\[::1\\]$",
+      "^::1$",
+      "^10(?:\\.[0-9]{1,3}){3}$",
+      "^172\\.(?:1[6-9]|2[0-9]|3[0-1])(?:\\.[0-9]{1,3}){2}$",
+      "^192\\.168(?:\\.[0-9]{1,3}){2}$",
+      "^169\\.254(?:\\.[0-9]{1,3}){2}$",
+      "^metadata\\.google\\.internal$",
+      "^169\\.254\\.169\\.254$",
+    ],
+    maxCodeSize: 10 * 1024 * 1024,
+    fetchTimeoutMs: 30_000,
+    requireHash: false,
+    enableCache: true,
+    cacheTtl: 3600,
+  },
   audit: {
     enabled: false,
     destination: "filesystem",
@@ -115,6 +137,13 @@ function mergeConfig(defaults: Isol8Config, overrides: Partial<Isol8Config>): Is
       seccomp: overrides.security?.seccomp ?? defaults.security.seccomp,
       customProfilePath:
         overrides.security?.customProfilePath ?? defaults.security.customProfilePath,
+    },
+    remoteCode: {
+      ...defaults.remoteCode,
+      ...overrides.remoteCode,
+      allowedSchemes: overrides.remoteCode?.allowedSchemes ?? defaults.remoteCode.allowedSchemes,
+      allowedHosts: overrides.remoteCode?.allowedHosts ?? defaults.remoteCode.allowedHosts,
+      blockedHosts: overrides.remoteCode?.blockedHosts ?? defaults.remoteCode.blockedHosts,
     },
     audit: {
       ...defaults.audit,

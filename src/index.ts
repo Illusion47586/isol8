@@ -36,6 +36,7 @@ export type {
   Isol8Options,
   NetworkFilterConfig,
   NetworkMode,
+  RemoteCodePolicy,
   Runtime,
   StreamEvent,
 } from "./types";

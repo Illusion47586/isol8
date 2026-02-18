@@ -32,8 +32,26 @@ export type NetworkMode = "none" | "host" | "filtered";
  * A request to execute code inside isol8.
  */
 export interface ExecutionRequest {
-  /** Source code to execute. */
-  code: string;
+  /**
+   * Source code to execute.
+   * Mutually exclusive with {@link codeUrl}.
+   */
+  code?: string;
+
+  /**
+   * Remote URL to fetch source code from before execution.
+   * Mutually exclusive with {@link code}.
+   */
+  codeUrl?: string;
+
+  /** Expected SHA-256 hash (hex) of the fetched source code. */
+  codeHash?: string;
+
+  /**
+   * Allow `http://` code URLs for this request.
+   * By default, only `https://` is allowed.
+   */
+  allowInsecureCodeUrl?: boolean;
 
   /** Target runtime. Must match a registered {@link RuntimeAdapter}. */
   runtime: Runtime;
@@ -301,6 +319,9 @@ export interface Isol8Options {
   /** Audit logging configuration. */
   audit?: AuditConfig;
 
+  /** Remote code fetching policy. */
+  remoteCode?: RemoteCodePolicy;
+
   /**
    * Pool strategy for container reuse.
    * - "secure": Clean container before returning (slower but ensures clean state)
@@ -376,6 +397,28 @@ export interface NetworkFilterConfig {
 
   /** Regex patterns for blocked hostnames. Matching hosts are always denied, even if whitelisted. */
   blacklist: string[];
+}
+
+/** Policy for fetching remote source code. */
+export interface RemoteCodePolicy {
+  /** Enable URL-based source fetching. @default false */
+  enabled: boolean;
+  /** Allowed URL schemes. @default ["https"] */
+  allowedSchemes: string[];
+  /** Allowed hostname regex patterns. Empty means allow all (subject to blocklist). */
+  allowedHosts: string[];
+  /** Blocked hostname regex patterns. */
+  blockedHosts: string[];
+  /** Max fetched source size in bytes. @default 10485760 (10MB) */
+  maxCodeSize: number;
+  /** Fetch timeout in milliseconds. @default 30000 */
+  fetchTimeoutMs: number;
+  /** Require `ExecutionRequest.codeHash` for URL-based execution. @default false */
+  requireHash: boolean;
+  /** Cache support toggle for future use. @default true */
+  enableCache: boolean;
+  /** Cache TTL in seconds for future use. @default 3600 */
+  cacheTtl: number;
 }
 
 // ─── Configuration ───
@@ -484,6 +527,9 @@ export interface Isol8Config {
   /** Security settings. */
   security: SecurityConfig;
 
+  /** Remote code fetching policy. */
+  remoteCode: RemoteCodePolicy;
+
   /** Audit logging configuration. */
   audit: AuditConfig;
 
@@ -519,6 +565,9 @@ export interface Isol8UserConfig {
 
   /** Security settings. */
   security?: SecurityConfig;
+
+  /** Remote code fetching policy. (Partial override allowed). */
+  remoteCode?: Partial<RemoteCodePolicy>;
 
   /** Audit logging configuration. */
   audit?: Partial<AuditConfig>;
