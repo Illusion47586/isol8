@@ -5,27 +5,6 @@
 import { beforeAll } from "bun:test";
 import { execSync } from "node:child_process";
 
-// Check Docker availability - FAIL HARD if not available
-function checkDocker(): void {
-  try {
-    execSync("docker info", { stdio: "pipe" });
-  } catch {
-    throw new Error(
-      "\n" +
-        "=".repeat(70) +
-        "\nDOCKER IS REQUIRED FOR PRODUCTION TESTS\n" +
-        "=".repeat(70) +
-        "\n\nDocker is not available or not running.\n" +
-        "Production tests require an actual Docker daemon.\n\n" +
-        "To run locally:\n" +
-        "  - macOS: open -a Docker\n" +
-        "  - Linux: sudo systemctl start docker\n\n" +
-        "=".repeat(70) +
-        "\n"
-    );
-  }
-}
-
 // Get the isol8 version to test
 export function getTestVersion(): string {
   return process.env.ISOL8_TEST_VERSION || "latest";
@@ -53,6 +32,5 @@ async function prebuildImages(): Promise<void> {
 
 // Global setup
 beforeAll(async () => {
-  checkDocker();
   await prebuildImages();
 }, 300_000); // 5 minute timeout
