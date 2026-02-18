@@ -590,9 +590,15 @@ export class DockerIsol8 implements Isol8Engine {
       }
 
       const output = Buffer.concat(chunks).toString("utf-8").trim();
+      logger.debug(
+        `[NetworkLogs] Raw output length: ${output.length}, first 100 chars: ${output.substring(0, 100).replace(/\\n/g, "\\n")}`
+      );
       // Filter to only lines that contain valid JSON
       // Find the JSON object by looking for the first { and last }
       const jsonLines = output.split("\n").filter((line) => line.includes("timestamp"));
+      logger.debug(
+        `[NetworkLogs] Found ${jsonLines.length} JSON lines out of ${output.split("\n").length} total lines`
+      );
       for (const line of jsonLines) {
         // Extract JSON by finding the first { and last }
         const startIdx = line.indexOf("{");
@@ -611,10 +617,14 @@ export class DockerIsol8 implements Isol8Engine {
             action: entry.action || "ALLOW",
             durationMs: entry.durationMs || 0,
           });
-        } catch {
-          // Skip malformed lines
+          logger.debug(`[NetworkLogs] Successfully parsed line: ${JSON.stringify(entry)}`);
+        } catch (e) {
+          logger.debug(
+            `[NetworkLogs] Failed to parse line: ${line.substring(0, 50)}..., error: ${e}`
+          );
         }
       }
+      logger.debug(`[NetworkLogs] Total parsed logs: ${logs.length}`);
     } catch {
       // No network logs file or container doesn't exist anymore
     }
