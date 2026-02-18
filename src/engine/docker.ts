@@ -6,7 +6,6 @@
  * output sanitization.
  */
 
-import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { PassThrough, type Readable } from "node:stream";
@@ -42,7 +41,8 @@ import {
  * This bypasses the `putArchive` limitation where Docker rejects archive
  * uploads when `ReadonlyRootfs` is enabled — even to writable tmpfs mounts.
  *
- * Uses attached stdin to prevent leaking file content in process arguments (ps).
+ * Uses base64 encoding. Small files use direct command (fast), large files
+ * use chunked approach to avoid command line length limits.
  */
 async function writeFileViaExec(
   container: Docker.Container,
@@ -50,38 +50,59 @@ async function writeFileViaExec(
   content: Buffer | string
 ): Promise<void> {
   const data = typeof content === "string" ? Buffer.from(content, "utf-8") : content;
+  const b64 = data.toString("base64");
 
-  return new Promise((resolve, reject) => {
-    const child = spawn(
-      "docker",
-      ["exec", "-i", "-u", "sandbox", container.id, "sh", "-c", `cat > ${filePath}`],
-      {
-        stdio: ["pipe", "ignore", "pipe"],
-      }
-    );
-
-    child.on("error", (err) => {
-      reject(new Error(`Failed to spawn docker exec: ${err.message}`));
+  // Fast path for small files (< 20KB)
+  if (b64.length < 20_000) {
+    const exec = await container.exec({
+      Cmd: ["sh", "-c", `printf '%s' '${b64}' | base64 -d > ${filePath}`],
+      User: "sandbox",
     });
 
-    // Handle stderr to capture errors
-    let stderr = "";
-    child.stderr.on("data", (chunk) => (stderr += chunk.toString()));
+    await exec.start({ Detach: true });
 
-    // Write content to stdin
-    // Note: If data is very large, we might need to handle backpressure,
-    // but for typical source code/config files, this is fine.
-    child.stdin.write(data);
-    child.stdin.end();
+    let info = await exec.inspect();
+    while (info.Running) {
+      await new Promise((r) => setTimeout(r, 5));
+      info = await exec.inspect();
+    }
 
-    child.on("close", (code) => {
-      if (code !== 0) {
-        reject(new Error(`Failed to write file ${filePath}: ${stderr} (exit code ${code})`));
-      } else {
-        resolve();
-      }
+    if (info.ExitCode !== 0) {
+      throw new Error(`Failed to write file ${filePath} in container (exit code ${info.ExitCode})`);
+    }
+    return;
+  }
+
+  // Chunked approach for larger files
+  const tempPath = `/tmp/b64_${Date.now()}.tmp`;
+
+  const chunkSize = 8000;
+  for (let i = 0; i < b64.length; i += chunkSize) {
+    const chunk = b64.slice(i, i + chunkSize);
+    const exec = await container.exec({
+      Cmd: ["sh", "-c", `printf '%s' '${chunk}' >> ${tempPath}`],
+      User: "sandbox",
     });
+    await exec.start({ Detach: true });
+    await exec.inspect();
+  }
+
+  // Decode
+  const decodeExec = await container.exec({
+    Cmd: ["sh", "-c", `base64 -d ${tempPath} > ${filePath} && rm ${tempPath}`],
+    User: "sandbox",
   });
+  await decodeExec.start({ Detach: true });
+
+  let info = await decodeExec.inspect();
+  while (info.Running) {
+    await new Promise((r) => setTimeout(r, 5));
+    info = await decodeExec.inspect();
+  }
+
+  if (info.ExitCode !== 0) {
+    throw new Error(`Failed to write file ${filePath} in container (exit code ${info.ExitCode})`);
+  }
 }
 
 /**
@@ -370,11 +391,14 @@ export class DockerIsol8 implements Isol8Engine {
   private readonly security: SecurityConfig;
   private readonly persist: boolean;
   private readonly logNetwork: boolean;
+  private readonly poolStrategy: "secure" | "fast";
+  private readonly poolSize: number | { clean: number; dirty: number };
   private readonly auditLogger?: AuditLogger;
 
   private container: Docker.Container | null = null;
   private persistentRuntime: RuntimeAdapter | null = null;
   private pool: ContainerPool | null = null;
+  private readonly imageCache = new Map<string, string>();
 
   /**
    * @param options - Sandbox configuration options.
@@ -399,6 +423,8 @@ export class DockerIsol8 implements Isol8Engine {
     this.persist = options.persist ?? false;
     this.security = options.security ?? { seccomp: "strict" };
     this.logNetwork = options.logNetwork ?? false;
+    this.poolStrategy = options.poolStrategy ?? "fast";
+    this.poolSize = options.poolSize ?? { clean: 1, dirty: 1 };
 
     // Initialize audit logger if audit config is provided
     if (options.audit) {
@@ -777,14 +803,24 @@ export class DockerIsol8 implements Isol8Engine {
     if (this.overrideImage) {
       return this.overrideImage;
     }
-    // Prefer custom image if it exists
+
+    const cacheKey = adapter.image;
+    const cached = this.imageCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const customTag = `${adapter.image}-custom`;
+    let resolvedImage: string;
     try {
       await this.docker.getImage(customTag).inspect();
-      return customTag;
+      resolvedImage = customTag;
     } catch {
-      return adapter.image;
+      resolvedImage = adapter.image;
     }
+
+    this.imageCache.set(cacheKey, resolvedImage);
+    return resolvedImage;
   }
 
   private async executeEphemeral(
@@ -799,7 +835,10 @@ export class DockerIsol8 implements Isol8Engine {
     if (!this.pool) {
       this.pool = new ContainerPool({
         docker: this.docker,
-        poolSize: 2,
+        poolStrategy: this.poolStrategy,
+        poolSize: this.poolSize,
+        networkMode: this.network,
+        securityMode: this.security.seccomp ?? "strict",
         createOptions: {
           Cmd: ["sleep", "infinity"],
           WorkingDir: SANDBOX_WORKDIR,
@@ -933,8 +972,11 @@ export class DockerIsol8 implements Isol8Engine {
       if (this.persist) {
         logger.debug(`[Persist] Leaving container running for inspection: ${container.id}`);
       } else {
-        // Return container to pool for reuse (pool will clean sandbox)
-        await this.pool!.release(container, image);
+        // Return container to pool for reuse - fire-and-forget for performance
+        this.pool!.release(container, image).catch((err) => {
+          logger.debug(`[Pool] release failed: ${err}`);
+          container.remove({ force: true }).catch(() => {});
+        });
       }
     }
   }

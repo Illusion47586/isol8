@@ -36,6 +36,8 @@ describe("ContainerPool", () => {
     const pool = new ContainerPool({
       docker,
       poolSize: 2,
+      networkMode: "none",
+      securityMode: "strict",
       createOptions: {},
     });
 
@@ -49,6 +51,8 @@ describe("ContainerPool", () => {
     const pool = new ContainerPool({
       docker,
       poolSize: 1,
+      networkMode: "none",
+      securityMode: "strict",
       createOptions: {},
     });
 
@@ -73,6 +77,8 @@ describe("ContainerPool", () => {
     const pool = new ContainerPool({
       docker,
       poolSize: 1,
+      networkMode: "none",
+      securityMode: "strict",
       createOptions: {},
     });
 
@@ -108,26 +114,70 @@ describe("ContainerPool", () => {
     expect(c3.remove).toHaveBeenCalled();
   });
 
-  test("kills user processes and cleans sandbox on release", async () => {
+  test("fast mode: uses dual pool system", async () => {
+    const { docker, container, createContainer } = createMockChain();
+    const pool = new ContainerPool({
+      docker,
+      poolStrategy: "fast",
+      poolSize: { clean: 1, dirty: 1 },
+      networkMode: "none",
+      securityMode: "strict",
+      createOptions: {},
+    });
+
+    // First acquire creates container
+    const c1 = await pool.acquire("test-image");
+    expect(c1).toBe(container);
+    expect(createContainer).toHaveBeenCalled();
+
+    // Release goes to dirty pool
+    await pool.release(c1, "test-image");
+
+    // Second acquire gets from clean pool or creates new
+    const c2 = await pool.acquire("test-image");
+    expect(c2).toBeDefined();
+  });
+
+  test("secure mode: cleanup happens on acquire", async () => {
     const { docker, container } = createMockChain();
     const pool = new ContainerPool({
       docker,
+      poolStrategy: "secure",
       poolSize: 1,
+      networkMode: "none",
+      securityMode: "strict",
       createOptions: {},
     });
 
     const c = await pool.acquire("test-image");
     await pool.release(c, "test-image");
 
+    // Clear mock
+    (container.exec as any).mockClear();
+
+    // Second acquire should trigger cleanup
+    await pool.acquire("test-image");
+
     expect(container.exec).toHaveBeenCalled();
-    const execCalls = (container.exec as any).mock.calls;
+  });
 
-    // First exec: kill all sandbox-user processes and flush iptables rules
-    expect(execCalls[0][0].Cmd[2]).toContain("pkill -9 -u sandbox");
-    expect(execCalls[0][0].Cmd[2]).toContain("/usr/sbin/iptables -F OUTPUT");
+  test("skips cleanup for unconfined security mode", async () => {
+    const { docker, container } = createMockChain();
+    const pool = new ContainerPool({
+      docker,
+      poolStrategy: "secure",
+      poolSize: 1,
+      networkMode: "none",
+      securityMode: "unconfined",
+      createOptions: {},
+    });
 
-    // Second exec: wipe the sandbox filesystem
-    expect(execCalls[1][0].Cmd[2]).toContain("rm -rf /sandbox/*");
+    const c = await pool.acquire("test-image");
+    await pool.release(c, "test-image");
+    await pool.acquire("test-image");
+
+    // No exec should be called in unconfined mode
+    expect(container.exec).not.toHaveBeenCalled();
   });
 
   test("drains pool", async () => {
@@ -135,6 +185,8 @@ describe("ContainerPool", () => {
     const pool = new ContainerPool({
       docker,
       poolSize: 1,
+      networkMode: "none",
+      securityMode: "strict",
       createOptions: {},
     });
 

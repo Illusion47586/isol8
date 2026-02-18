@@ -34,7 +34,14 @@ All user code runs as a non-root `sandbox` user (uid 100) inside the container. 
 - User code **cannot** escalate privileges (`no-new-privileges` is set)
 - User code **cannot** access or modify root-owned system files
 
-When containers are returned to the warm pool for reuse, **all processes owned by the `sandbox` user are killed** (`pkill -9 -u sandbox`) before the filesystem is wiped. This prevents background processes from one execution from persisting into the next execution.
+When containers are returned to the warm pool for reuse, **all processes owned by the `sandbox` user are killed** (`pkill -9 -u sandbox`) before the filesystem is wiped. This prevents background processes from one execution persisting into the next execution.
+
+In **fast mode** (default), the pool uses a dual-pool system:
+- Containers are returned to a "dirty" pool after use
+- Background cleanup runs every 5 seconds to clean dirty containers
+- If a clean container is needed but none are available, immediate cleanup is attempted on acquire
+
+In **secure mode**, cleanup happens synchronously in `acquire()` — slower but guarantees a clean container.
 
 ```mermaid
 flowchart LR

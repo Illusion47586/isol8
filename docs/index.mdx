@@ -86,8 +86,8 @@ Timeout-enforced sandbox`"]
   <Card title="File I/O" icon="file">
     Inject input files into the container before execution and retrieve output files after — even in ephemeral mode. Files are transferred as tar archives via the Docker API.
   </Card>
-  <Card title="Sub-100ms Latency" icon="gauge-high">
-    The warm container pool keeps pre-started containers ready for immediate use, reducing execution latency from ~200-400ms (cold start) to ~55-95ms (warm). Containers are cleaned and recycled after each run.
+  <Card title="Sub-150ms Latency" icon="gauge-high">
+    The warm container pool keeps pre-started containers ready for immediate use, reducing execution latency from ~250-300ms (cold start) to ~125-145ms (warm). Containers are cleaned and recycled after each run.
   </Card>
   <Card title="Secret Masking" icon="eye-slash">
     Pass sensitive values via the `secrets` option. isol8 automatically replaces any occurrence of secret values in stdout and stderr with `***`, preventing accidental leakage.
