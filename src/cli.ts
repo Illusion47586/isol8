@@ -51,6 +51,7 @@ program
   .option("--bun <packages>", "Additional Bun packages (comma-separated)")
   .option("--deno <packages>", "Additional Deno packages (comma-separated)")
   .option("--bash <packages>", "Additional Bash packages (comma-separated)")
+  .option("--force", "Force rebuild even if images are up to date")
   .action(async (opts) => {
     const docker = new Docker();
     logger.debug("[Setup] Connecting to Docker daemon");
@@ -70,26 +71,30 @@ program
 
     // Build base images
     spinner.start("Building isol8 images...");
-    logger.debug("[Setup] Building base images");
-    await buildBaseImages(docker, (progress) => {
-      const status =
-        progress.status === "error" ? "[ERR]" : progress.status === "done" ? "[OK]" : "[..]";
-      if (progress.status === "building") {
-        spinner.text = `Building ${progress.runtime}...`;
-        logger.debug(`[Setup] Building base image for ${progress.runtime}`);
-      } else if (progress.status === "done" || progress.status === "error") {
-        logger.debug(
-          `[Setup] Base image ${progress.runtime}: ${progress.status}${progress.message ? ` (${progress.message})` : ""}`
-        );
-        spinner.stopAndPersist({
-          symbol: status,
-          text: `${progress.runtime}${progress.message ? `: ${progress.message}` : ""}`,
-        });
-        if (progress.status !== "error") {
-          spinner.start();
+    logger.debug(`[Setup] Building base images (force=${opts.force ?? false})`);
+    await buildBaseImages(
+      docker,
+      (progress) => {
+        const status =
+          progress.status === "error" ? "[ERR]" : progress.status === "done" ? "[OK]" : "[..]";
+        if (progress.status === "building") {
+          spinner.text = `Building ${progress.runtime}...`;
+          logger.debug(`[Setup] Building base image for ${progress.runtime}`);
+        } else if (progress.status === "done" || progress.status === "error") {
+          logger.debug(
+            `[Setup] Base image ${progress.runtime}: ${progress.status}${progress.message ? ` (${progress.message})` : ""}`
+          );
+          spinner.stopAndPersist({
+            symbol: status,
+            text: `${progress.runtime}${progress.message ? `: ${progress.message}` : ""}`,
+          });
+          if (progress.status !== "error") {
+            spinner.start();
+          }
         }
-      }
-    });
+      },
+      opts.force ?? false
+    );
     if (spinner.isSpinning) {
       spinner.stop();
     }
@@ -130,25 +135,30 @@ program
         JSON.stringify(config.dependencies)
       );
       spinner.start("Building custom images with dependencies...");
-      await buildCustomImages(docker, config, (progress) => {
-        const status =
-          progress.status === "error" ? "[ERR]" : progress.status === "done" ? "[OK]" : "[..]";
-        if (progress.status === "building") {
-          spinner.text = `Building custom ${progress.runtime}...`;
-          logger.debug(`[Setup] Building custom image for ${progress.runtime}`);
-        } else if (progress.status === "done" || progress.status === "error") {
-          logger.debug(
-            `[Setup] Custom image ${progress.runtime}: ${progress.status}${progress.message ? ` (${progress.message})` : ""}`
-          );
-          spinner.stopAndPersist({
-            symbol: status,
-            text: `${progress.runtime}${progress.message ? ` (${progress.message})` : ""}`,
-          });
-          if (progress.status !== "error") {
-            spinner.start();
+      await buildCustomImages(
+        docker,
+        config,
+        (progress) => {
+          const status =
+            progress.status === "error" ? "[ERR]" : progress.status === "done" ? "[OK]" : "[..]";
+          if (progress.status === "building") {
+            spinner.text = `Building custom ${progress.runtime}...`;
+            logger.debug(`[Setup] Building custom image for ${progress.runtime}`);
+          } else if (progress.status === "done" || progress.status === "error") {
+            logger.debug(
+              `[Setup] Custom image ${progress.runtime}: ${progress.status}${progress.message ? ` (${progress.message})` : ""}`
+            );
+            spinner.stopAndPersist({
+              symbol: status,
+              text: `${progress.runtime}${progress.message ? ` (${progress.message})` : ""}`,
+            });
+            if (progress.status !== "error") {
+              spinner.start();
+            }
           }
-        }
-      });
+        },
+        opts.force ?? false
+      );
       if (spinner.isSpinning) {
         spinner.stop();
       }

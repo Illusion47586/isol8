@@ -6,10 +6,13 @@
  * packages on top of the base images.
  */
 
-import { existsSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import type Docker from "dockerode";
 import { RuntimeRegistry } from "../runtime";
 import type { Isol8Config } from "../types";
+import { logger } from "../utils/logger";
 
 /**
  * Resolve the `docker/` directory containing the Dockerfile and proxy.
@@ -31,6 +34,82 @@ function resolveDockerDir(): string {
 
 const DOCKERFILE_DIR = resolveDockerDir();
 
+/** Label keys for image metadata */
+const LABELS = {
+  dockerHash: "org.isol8.build.hash",
+  depsHash: "org.isol8.deps.hash",
+} as const;
+
+/** Files in docker directory that affect the build */
+const DOCKER_BUILD_FILES = ["Dockerfile", "proxy.sh", "proxy-handler.sh"];
+
+/**
+ * Computes a SHA256 hash of all relevant files in the docker directory.
+ * This is used to detect when the Dockerfile or proxy scripts have changed.
+ */
+function computeDockerDirHash(): string {
+  const hash = createHash("sha256");
+
+  // Sort files for consistent hashing
+  const files = [...DOCKER_BUILD_FILES].sort();
+
+  for (const file of files) {
+    const filePath = join(DOCKERFILE_DIR, file);
+    if (existsSync(filePath)) {
+      const content = readFileSync(filePath);
+      hash.update(file);
+      hash.update(content);
+    }
+  }
+
+  return hash.digest("hex");
+}
+
+/**
+ * Computes a SHA256 hash of the dependency list for a specific runtime.
+ */
+function computeDepsHash(runtime: string, packages: string[]): string {
+  const hash = createHash("sha256");
+  hash.update(runtime);
+  // Sort packages for consistent hashing
+  for (const pkg of [...packages].sort()) {
+    hash.update(pkg);
+  }
+  return hash.digest("hex");
+}
+
+/**
+ * Gets the labels from an existing Docker image.
+ * Returns null if the image doesn't exist.
+ */
+async function getImageLabels(
+  docker: Docker,
+  imageName: string
+): Promise<Record<string, string> | null> {
+  try {
+    const image = docker.getImage(imageName);
+    const inspect = await image.inspect();
+    return (inspect.Config?.Labels as Record<string, string>) ?? {};
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Removes a Docker image by ID.
+ * Silently fails if the image doesn't exist or can't be removed.
+ */
+async function removeImage(docker: Docker, imageId: string): Promise<void> {
+  try {
+    const image = docker.getImage(imageId);
+    await image.remove();
+    logger.debug(`[ImageBuilder] Removed old image: ${imageId.slice(0, 12)}`);
+  } catch (err) {
+    // Image might be in use or already removed - log but don't fail
+    logger.debug(`[ImageBuilder] Could not remove image ${imageId.slice(0, 12)}: ${err}`);
+  }
+}
+
 /** Progress update emitted during image builds. */
 interface BuildProgress {
   /** Runtime being built (e.g. `"python"`). */
@@ -47,26 +126,60 @@ type ProgressCallback = (progress: BuildProgress) => void;
  * Builds the base `isol8:<runtime>` images for all registered runtimes.
  * Each image is built from the multi-stage Dockerfile in `docker/`.
  *
+ * Uses smart build logic: computes a hash of the docker directory contents
+ * and skips builds if the image already exists with matching hash.
+ * Cleans up dangling images after rebuilding.
+ *
  * @param docker - Dockerode instance.
  * @param onProgress - Optional callback for build progress updates.
+ * @param force - If true, always rebuild even if image is up to date.
  */
 export async function buildBaseImages(
   docker: Docker,
-  onProgress?: ProgressCallback
+  onProgress?: ProgressCallback,
+  force = false
 ): Promise<void> {
   const runtimes = RuntimeRegistry.list();
+  const dockerHash = computeDockerDirHash();
+  logger.debug(`[ImageBuilder] Docker directory hash: ${dockerHash.slice(0, 16)}...`);
 
   for (const adapter of runtimes) {
     const target = adapter.name;
+    const imageName = adapter.image;
+
+    // Check if we can skip the build
+    if (!force) {
+      const labels = await getImageLabels(docker, imageName);
+      if (labels && labels[LABELS.dockerHash] === dockerHash) {
+        logger.debug(`[ImageBuilder] Base image ${target} is up to date, skipping build`);
+        onProgress?.({ runtime: target, status: "done", message: "Up to date" });
+        continue;
+      }
+    }
+
+    // Get the old image ID before building (for cleanup)
+    let oldImageId: string | null = null;
+    try {
+      const oldImage = await docker.getImage(imageName).inspect();
+      oldImageId = oldImage.Id;
+      logger.debug(`[ImageBuilder] Existing image ${target} ID: ${oldImageId.slice(0, 12)}`);
+    } catch {
+      // Image doesn't exist yet
+      logger.debug(`[ImageBuilder] No existing image for ${target}`);
+    }
+
     onProgress?.({ runtime: target, status: "building" });
 
     try {
       const stream = await docker.buildImage(
-        { context: DOCKERFILE_DIR, src: ["Dockerfile", "proxy.sh", "proxy-handler.sh"] },
+        { context: DOCKERFILE_DIR, src: DOCKER_BUILD_FILES },
         {
-          t: adapter.image,
+          t: imageName,
           target,
           dockerfile: "Dockerfile",
+          labels: {
+            [LABELS.dockerHash]: dockerHash,
+          },
         }
       );
 
@@ -81,6 +194,11 @@ export async function buildBaseImages(
         });
       });
 
+      // Clean up the old image if it existed and was replaced
+      if (oldImageId) {
+        await removeImage(docker, oldImageId);
+      }
+
       onProgress?.({ runtime: target, status: "done" });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -94,31 +212,37 @@ export async function buildBaseImages(
  * Builds custom images with user-specified dependencies layered on top of
  * the base images. Reads package lists from the config's `dependencies` field.
  *
+ * Uses smart build logic: computes a hash of the dependency list and
+ * skips builds if the image already exists with matching hash.
+ * Cleans up dangling images after rebuilding.
+ *
  * @param docker - Dockerode instance.
  * @param config - Resolved isol8 configuration.
  * @param onProgress - Optional callback for build progress updates.
+ * @param force - If true, always rebuild even if image is up to date.
  */
 export async function buildCustomImages(
   docker: Docker,
   config: Isol8Config,
-  onProgress?: ProgressCallback
+  onProgress?: ProgressCallback,
+  force = false
 ): Promise<void> {
   const deps = config.dependencies;
 
   if (deps.python?.length) {
-    await buildCustomImage(docker, "python", deps.python, onProgress);
+    await buildCustomImage(docker, "python", deps.python, onProgress, force);
   }
   if (deps.node?.length) {
-    await buildCustomImage(docker, "node", deps.node, onProgress);
+    await buildCustomImage(docker, "node", deps.node, onProgress, force);
   }
   if (deps.bun?.length) {
-    await buildCustomImage(docker, "bun", deps.bun, onProgress);
+    await buildCustomImage(docker, "bun", deps.bun, onProgress, force);
   }
   if (deps.deno?.length) {
-    await buildCustomImage(docker, "deno", deps.deno, onProgress);
+    await buildCustomImage(docker, "deno", deps.deno, onProgress, force);
   }
   if (deps.bash?.length) {
-    await buildCustomImage(docker, "bash", deps.bash, onProgress);
+    await buildCustomImage(docker, "bash", deps.bash, onProgress, force);
   }
 }
 
@@ -126,9 +250,34 @@ async function buildCustomImage(
   docker: Docker,
   runtime: string,
   packages: string[],
-  onProgress?: ProgressCallback
+  onProgress?: ProgressCallback,
+  force = false
 ): Promise<void> {
   const tag = `isol8:${runtime}-custom`;
+  const depsHash = computeDepsHash(runtime, packages);
+  logger.debug(`[ImageBuilder] ${runtime} custom deps hash: ${depsHash.slice(0, 16)}...`);
+
+  // Check if we can skip the build
+  if (!force) {
+    const labels = await getImageLabels(docker, tag);
+    if (labels && labels[LABELS.depsHash] === depsHash) {
+      logger.debug(`[ImageBuilder] Custom image ${runtime} is up to date, skipping build`);
+      onProgress?.({ runtime, status: "done", message: "Up to date" });
+      return;
+    }
+  }
+
+  // Get the old image ID before building (for cleanup)
+  let oldImageId: string | null = null;
+  try {
+    const oldImage = await docker.getImage(tag).inspect();
+    oldImageId = oldImage.Id;
+    logger.debug(`[ImageBuilder] Existing custom image ${runtime} ID: ${oldImageId.slice(0, 12)}`);
+  } catch {
+    // Image doesn't exist yet
+    logger.debug(`[ImageBuilder] No existing custom image for ${runtime}`);
+  }
+
   onProgress?.({ runtime, status: "building", message: `Custom: ${packages.join(", ")}` });
 
   // Generate a Dockerfile that extends the base image
@@ -157,7 +306,6 @@ async function buildCustomImage(
   const dockerfileContent = `FROM isol8:${runtime}\n${installCmd}\n`;
 
   // Build using dockerode with an inline tar containing just the Dockerfile
-  // Build using dockerode with an inline tar containing just the Dockerfile
   const { createTarBuffer, validatePackageName } = await import("./utils");
   const { Readable } = await import("node:stream");
 
@@ -169,6 +317,9 @@ async function buildCustomImage(
   const stream = await docker.buildImage(Readable.from(tarBuffer), {
     t: tag,
     dockerfile: "Dockerfile",
+    labels: {
+      [LABELS.depsHash]: depsHash,
+    },
   });
 
   await new Promise<void>((resolve, reject) => {
@@ -180,6 +331,11 @@ async function buildCustomImage(
       }
     });
   });
+
+  // Clean up the old image if it existed and was replaced
+  if (oldImageId) {
+    await removeImage(docker, oldImageId);
+  }
 
   onProgress?.({ runtime, status: "done" });
 }

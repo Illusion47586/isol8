@@ -17,22 +17,29 @@ isol8 setup [options]
 flowchart TD
     A[isol8 setup] --> B{Docker running?}
     B -->|No| C[Exit with error]
-    B -->|Yes| D[Build base images]
-    D --> D1[isol8:python]
-    D --> D2[isol8:node]
-    D --> D3[isol8:bun]
-    D --> D4[isol8:deno]
-    D --> D5[isol8:bash]
-    D1 & D2 & D3 & D4 & D5 --> E{Packages specified?}
-    E -->|No| F[Done]
-    E -->|Yes| G[Build custom images]
-    G --> H["isol8:{runtime}-custom"]
-    H --> F
+    B -->|Yes| D{Images up to date?}
+    D -->|Yes| E[Skip build]
+    D -->|No| F[Build base images]
+    F --> F1[isol8:python]
+    F --> F2[isol8:node]
+    F --> F3[isol8:bun]
+    F --> F4[isol8:deno]
+    F --> F5[isol8:bash]
+    E & F1 & F2 & F3 & F4 & F5 --> G{Packages specified?}
+    G -->|No| H[Done]
+    G -->|Yes| I{Custom images up to date?}
+    I -->|Yes| H
+    I -->|No| J[Build custom images]
+    J --> K["isol8:{runtime}-custom"]
+    K --> L[Remove old dangling images]
+    L --> H
 ```
 
 1. **Verify Docker** — Pings the Docker daemon to confirm it's running and accessible.
-2. **Build base images** — Builds all 5 runtime images from the multi-stage `docker/Dockerfile`. Each runtime is a separate build target (`python`, `node`, `bun`, `deno`, `bash`).
-3. **Build custom images** — If package flags are provided (via CLI flags or `config.dependencies`), builds custom images with dependencies pre-installed.
+2. **Smart build detection** — Computes SHA256 hashes of the `docker/` directory contents and dependency lists. If images exist with matching hashes, they are skipped.
+3. **Build base images** — Builds all 5 runtime images from the multi-stage `docker/Dockerfile`. Each runtime is a separate build target (`python`, `node`, `bun`, `deno`, `bash`).
+4. **Build custom images** — If package flags are provided (via CLI flags or `config.dependencies`), builds custom images with dependencies pre-installed.
+5. **Cleanup** — After rebuilding, removes old dangling images to prevent disk space accumulation.
 
 ## Options
 
@@ -41,6 +48,14 @@ flowchart TD
 
   ```bash
   isol8 setup --python numpy,pandas,scipy
+  ```
+</ResponseField>
+
+<ResponseField name="--force" type="boolean">
+  Force rebuild even if images are up to date. Use this when you want to ensure a fresh build regardless of the smart build detection.
+
+  ```bash
+  isol8 setup --force
   ```
 </ResponseField>
 
@@ -103,6 +118,38 @@ Custom images extend the base image with runtime-specific install commands. The 
 | `bash` | `FROM isol8:bash`<br/>`RUN apk add --no-cache jq curl` |
 
 CLI flags are merged with any packages already specified in `config.dependencies`, so both sources contribute to the custom image.
+
+## Smart Builds
+
+`isol8 setup` uses intelligent caching to skip unnecessary rebuilds. It works by:
+
+1. **Computing hashes** — SHA256 hashes of:
+   - `docker/` directory contents (Dockerfile, proxy.sh, proxy-handler.sh)
+   - Dependency lists for each runtime
+2. **Storing metadata** — Hashes are stored as Docker labels on each image:
+   - `org.isol8.build.hash` — Hash of docker/ directory
+   - `org.isol8.deps.hash` — Hash of dependency list
+3. **Comparing** — Before building, isol8 checks if an image exists with matching hashes
+4. **Skipping** — If hashes match, the build is skipped and "Up to date" is displayed
+
+This means:
+- Running `isol8 setup` twice without changes skips all builds
+- Modifying `docker/Dockerfile` triggers rebuilds
+- Changing `config.dependencies` triggers custom image rebuilds
+- Adding packages via `--python`, `--node`, etc. triggers rebuilds
+
+### Forcing Rebuilds
+
+Use `--force` to bypass smart detection and rebuild all images:
+
+```bash
+isol8 setup --force
+```
+
+This is useful when:
+- You want to ensure a completely fresh build
+- Docker layer caching has issues
+- You're troubleshooting image problems
 
 ## Base Images
 
