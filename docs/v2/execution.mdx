@@ -8,59 +8,118 @@ The core of isol8 is its execution engine, which takes untrusted code and runs i
 
 ## Supported Runtimes
 
-isol8 supports 5 runtimes out of the box. Each has its own optimized Docker image.
+isol8 supports Python, Node.js, Bun, Deno, and Bash.
 
-| Runtime | Image | Extension | Command | Notes |
-|:--------|:------|:----------|:--------|:------|
-| **Python** | `isol8:python` | `.py` | `python3` | Includes `pip` |
-| **Node.js** | `isol8:node` | `.js`, `.mjs`, `.cjs` | `node` | Includes `npm` |
-| **Bun** | `isol8:bun` | `.ts`, `.tsx` | `bun` | Fast startup, TS support |
-| **Deno** | `isol8:deno` | `.mts` | `deno` | Secure by default, no inline code |
-| **Bash** | `isol8:bash` | `.sh` | `bash` | System commands |
+<Card title="Runtime Reference" icon="layer-group" href="/v2/runtimes">
+  View details for all supported runtimes, including Docker images and package managers.
+</Card>
 
-<Note>
-  `.ts` files default to **Bun**. Use `.mts` or `--runtime deno` to force Deno. Deno does **not** support inline code execution (`-e`).
-</Note>
+## Execution Methods
 
-## How to Execute Code
-
-You can run code in three ways: inline strings, files, or stdin.
-
-### 1. Inline Execution (`-e`)
+### 1. Inline Code
 
 Perfect for quick snippets or testing.
 
-```bash
-# Python (default)
-isol8 run -e "print(2 ** 10)"
+<Tabs>
+  <Tab title="CLI">
+    Use the `-e` or `--eval` flag.
 
-# Specific runtime
-isol8 run -e "console.log('Hello Node')" --runtime node
-```
+    ```bash
+    isol8 run -e "print(2 ** 10)" --runtime python
+    ```
+  </Tab>
+  <Tab title="Library">
+    Pass the code string to `execute`.
+
+    ```typescript
+    const result = await isol8.execute({
+      code: 'print(2 ** 10)',
+      runtime: 'python'
+    });
+    ```
+  </Tab>
+  <Tab title="API">
+    Send a POST request.
+
+    ```bash
+    curl -X POST http://localhost:3000/execute \
+      -H "Authorization: Bearer <key>" \
+      -d '{ "request": { "code": "print(2**10)", "runtime": "python" } }'
+    ```
+  </Tab>
+</Tabs>
 
 ### 2. File Execution
 
-Run a script file. The runtime is auto-detected from the extension.
+Run a script file. The runtime is auto-detected from the extension in CLI.
 
-```bash
-isol8 run script.py      # Python
-isol8 run app.js         # Node.js
-isol8 run index.ts       # Bun
-isol8 run handler.mts    # Deno
-isol8 run deploy.sh      # Bash
-```
+<Tabs>
+  <Tab title="CLI">
+    Pass the file path.
+
+    ```bash
+    isol8 run script.py
+    ```
+  </Tab>
+  <Tab title="Library">
+    Read the file and pass content.
+
+    ```typescript
+    import { readFileSync } from 'fs';
+    const result = await isol8.execute({
+      code: readFileSync('script.py', 'utf-8'),
+      runtime: 'python',
+      fileExtension: '.py' // Hint for Deno/Bun
+    });
+    ```
+  </Tab>
+  <Tab title="API">
+    Send file content as code.
+
+    ```bash
+    curl -X POST http://localhost:3000/execute \
+      -d '{ "request": { "code": "...", "runtime": "python" } }'
+    ```
+  </Tab>
+</Tabs>
 
 ### 3. Stdin Piping
 
-Pipe code or data into isol8.
+Pipe data into the process.
 
-```bash
-# Pipe code to execute
-echo "console.log('Piped code')" | isol8 run --runtime node
+<Tabs>
+  <Tab title="CLI">
+    Pipe via shell.
 
-# Pipe data to a script's stdin
-echo '{"key": "val"}' | isol8 run script.py
-```
+    ```bash
+    echo '{"key": "val"}' | isol8 run script.py
+    ```
+  </Tab>
+  <Tab title="Library">
+    Use the `stdin` field.
+
+    ```typescript
+    const result = await isol8.execute({
+      code: 'import sys; print(sys.stdin.read())',
+      runtime: 'python',
+      stdin: '{"key": "val"}'
+    });
+    ```
+  </Tab>
+  <Tab title="API">
+    Use the `stdin` field in the request body.
+
+    ```json
+    {
+      "request": {
+        "code": "import sys; print(sys.stdin.read())",
+        "runtime": "python",
+        "stdin": "{\"key\": \"val\"}"
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
 
 ## Execution Lifecycle
 

@@ -28,56 +28,90 @@ Transfer files into and out of the container easily.
 
 ### 1. Injecting Files (`files`)
 
-Pass files before execution starts. Works in both modes.
+Pass files before execution starts.
 
-```typescript
-const result = await isol8.execute({
-  code: 'print(open("/sandbox/data.txt").read())',
-  runtime: "python",
-  files: {
-    "/sandbox/data.txt": "hello world",
-    "/sandbox/config.json": JSON.stringify({ key: "val" }),
-  },
-});
-```
+<Tabs>
+  <Tab title="Library">
+    ```typescript
+    const result = await isol8.execute({
+      code: 'print(open("/sandbox/data.txt").read())',
+      runtime: "python",
+      files: {
+        "/sandbox/data.txt": "hello world",
+      },
+    });
+    ```
+  </Tab>
+  <Tab title="API">
+    ```json
+    {
+      "request": {
+        "files": {
+          "/sandbox/data.txt": "hello world"
+        }
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="CLI">
+    *Note: The CLI currently does not support injecting arbitrary files via flags. Use stdin for data.*
+  </Tab>
+</Tabs>
 
 ### 2. Retrieving Files (`outputPaths`)
 
-Get files back after execution finishes. Works in both modes.
+Get files back after execution finishes.
 
-```typescript
-const result = await isol8.execute({
-  code: 'open("/sandbox/out.csv", "w").write("a,b
-1,2")',
-  runtime: "python",
-  outputPaths: ["/sandbox/out.csv"],
-});
-
-// Files are base64 encoded
-const content = Buffer.from(result.files["/sandbox/out.csv"], "base64");
-```
+<Tabs>
+  <Tab title="Library">
+    ```typescript
+    const result = await isol8.execute({
+      code: 'open("/sandbox/out.csv", "w").write("a,b")',
+      runtime: "python",
+      outputPaths: ["/sandbox/out.csv"],
+    });
+    ```
+  </Tab>
+  <Tab title="API">
+    ```json
+    {
+      "request": {
+        "outputPaths": ["/sandbox/out.csv"]
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="CLI">
+    *Note: The CLI currently writes stdout to file via `--out`. Retrieval of internal files is not supported via flags.*
+  </Tab>
+</Tabs>
 
 ### 3. Direct File Transfer (Persistent Only)
 
-In persistent mode, use `putFile()` and `getFile()` directly on the engine instance.
+Upload/download files to a running session without executing code.
 
-```typescript
-const isol8 = new DockerIsol8({ mode: "persistent" });
-await isol8.start();
+<Tabs>
+  <Tab title="Library">
+    ```typescript
+    const isol8 = new DockerIsol8({ mode: "persistent" });
+    await isol8.putFile("/sandbox/data.csv", "1,2,3");
+    const content = await isol8.getFile("/sandbox/data.csv");
+    ```
+  </Tab>
+  <Tab title="API">
+    ```bash
+    # Upload
+    curl -X POST http://localhost:3000/file \
+      -d '{"sessionId": "...", "path": "/sandbox/data.csv", "content": "base64..."}'
 
-// Upload file
-await isol8.putFile("/sandbox/dataset.csv", "id,val
-1,100");
-
-// Execute code using the file
-await isol8.execute({
-  code: 'import pandas as pd; df = pd.read_csv("/sandbox/dataset.csv")',
-  runtime: "python",
-});
-
-// Download result
-const report = await isol8.getFile("/sandbox/report.txt");
-```
+    # Download
+    curl http://localhost:3000/file?sessionId=...&path=/sandbox/data.csv
+    ```
+  </Tab>
+  <Tab title="CLI">
+    *Not supported.*
+  </Tab>
+</Tabs>
 
 ## Persistent Sessions
 

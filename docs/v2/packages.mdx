@@ -13,35 +13,43 @@ Dependency management is crucial for robust code execution. isol8 offers two str
 
 Great for prototyping or when you need different packages for every run.
 
-### CLI Usage (`--install`)
+<Tabs>
+  <Tab title="CLI">
+    Use `--install <package>` (can be repeated).
 
-Use `--install <package>` (can be repeated).
+    ```bash
+    # Python
+    isol8 run -e "import numpy" --runtime python --install numpy
 
-```bash
-# Python: pip install
-isol8 run -e "import numpy; print(numpy.__version__)" 
-  --runtime python --install numpy
+    # Node.js
+    isol8 run -e "require('lodash')" --runtime node --install lodash
+    ```
+  </Tab>
+  <Tab title="Library">
+    Pass an array of package names.
 
-# Node.js: npm install
-isol8 run -e "const _ = require('lodash'); console.log(_.chunk([1,2,3,4], 2))" 
-  --runtime node --install lodash
+    ```typescript
+    const result = await isol8.execute({
+      code: 'import pandas as pd',
+      runtime: "python",
+      installPackages: ["pandas", "numpy"],
+    });
+    ```
+  </Tab>
+  <Tab title="API">
+    Include `installPackages` in the request body.
 
-# Bun: bun add
-isol8 run -e "import { z } from 'zod'; console.log(z.string().parse('hello'))" 
-  --runtime bun --install zod
-```
-
-### Library Usage (`installPackages`)
-
-Pass an array of package names.
-
-```typescript
-const result = await isol8.execute({
-  code: 'import pandas as pd; print(pd.__version__)',
-  runtime: "python",
-  installPackages: ["pandas", "numpy"],
-});
-```
+    ```json
+    {
+      "request": {
+        "code": "import numpy",
+        "runtime": "python",
+        "installPackages": ["numpy"]
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
 
 <Warning>
   Installation happens inside the container before code execution. This adds overhead (seconds to minutes depending on package size). For frequently used packages, prefer custom images.

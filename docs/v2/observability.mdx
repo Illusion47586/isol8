@@ -77,23 +77,29 @@ When using `filtered` network mode, blocked requests are logged as security even
 
 Is execution failing? Use debug flags to investigate.
 
-### `--debug` (Verbose Logs)
+<Tabs>
+  <Tab title="CLI">
+    Use the `--debug` flag to see internal engine logs.
 
-Enable internal engine logs. Prints container lifecycle events, pool operations, and cleanup decisions.
+    ```bash
+    isol8 run script.py --debug
+    ```
+  </Tab>
+  <Tab title="Library">
+    Set `debug: true` in the constructor.
 
-```bash
-isol8 run script.py --debug
-```
+    ```typescript
+    const isol8 = new DockerIsol8({ debug: true });
+    ```
+  </Tab>
+  <Tab title="Server (API)">
+    Start the server with `--debug` to log all request details.
 
-**Output:**
-
-```
-[DEBUG] Acquiring container from pool for image isol8:python
-[DEBUG] Pool hit: reusing warm container abc123
-[DEBUG] Executing code in container abc123
-[DEBUG] Execution completed in 52ms
-[DEBUG] Releasing container abc123 back to pool
-```
+    ```bash
+    isol8 serve --debug
+    ```
+  </Tab>
+</Tabs>
 
 ### `--persist` (Inspect Container)
 
