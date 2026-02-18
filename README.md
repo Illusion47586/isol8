@@ -125,8 +125,23 @@ isol8 run script.py --host http://server:3000 --key my-api-key
 | `--tmp-size <size>` | Tmp tmpfs size (e.g. `256m`, `512m`) | `256m` |
 | `--stdin <data>` | Data to pipe to stdin | — |
 | `--install <pkg>` | Install package for runtime (repeatable) | — |
+| `--url <url>` | Fetch code from URL (requires `remoteCode.enabled=true`) | — |
+| `--github <owner/repo/ref/path>` | GitHub shorthand for raw source | — |
+| `--gist <gistId/file.ext>` | Gist shorthand for raw source | — |
+| `--hash <sha256>` | Verify SHA-256 hash for fetched code | — |
+| `--allow-insecure-code-url` | Allow insecure `http://` code URLs for this request | `false` |
 | `--host <url>` | Remote server URL | — |
 | `--key <key>` | API key for remote server | `$ISOL8_API_KEY` |
+
+### Remote Code URLs
+
+```bash
+# URL source
+isol8 run --url https://raw.githubusercontent.com/user/repo/main/script.py --runtime python
+
+# GitHub shorthand with hash verification
+isol8 run --github user/repo/main/script.py --hash <sha256> --runtime python
+```
 
 ### `isol8 cleanup`
 

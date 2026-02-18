@@ -20,11 +20,13 @@ import type {
   Isol8Options,
   NetworkFilterConfig,
   NetworkMode,
+  RemoteCodePolicy,
   SecurityConfig,
   StreamEvent,
 } from "../types";
 import { logger } from "../utils/logger";
 import { AuditLogger } from "./audit";
+import { fetchRemoteCode } from "./code-fetcher";
 import { Semaphore } from "./concurrency";
 import { ContainerPool } from "./pool";
 import { type ContainerResourceUsage, calculateResourceDelta, getContainerStats } from "./stats";
@@ -394,11 +396,41 @@ export class DockerIsol8 implements Isol8Engine {
   private readonly poolStrategy: "secure" | "fast";
   private readonly poolSize: number | { clean: number; dirty: number };
   private readonly auditLogger?: AuditLogger;
+  private readonly remoteCodePolicy: RemoteCodePolicy;
 
   private container: Docker.Container | null = null;
   private persistentRuntime: RuntimeAdapter | null = null;
   private pool: ContainerPool | null = null;
   private readonly imageCache = new Map<string, string>();
+
+  private async resolveExecutionRequest(
+    req: ExecutionRequest
+  ): Promise<ExecutionRequest & { code: string }> {
+    const inlineCode = req.code?.trim();
+    const codeUrl = req.codeUrl?.trim();
+
+    if (inlineCode && codeUrl) {
+      throw new Error("ExecutionRequest.code and ExecutionRequest.codeUrl are mutually exclusive.");
+    }
+    if (!(inlineCode || codeUrl)) {
+      throw new Error("ExecutionRequest must include either code or codeUrl.");
+    }
+
+    if (inlineCode) {
+      return { ...req, code: req.code! };
+    }
+
+    const fetched = await fetchRemoteCode(
+      {
+        codeUrl: codeUrl!,
+        codeHash: req.codeHash,
+        allowInsecureCodeUrl: req.allowInsecureCodeUrl,
+      },
+      this.remoteCodePolicy
+    );
+
+    return { ...req, code: fetched.code };
+  }
 
   /**
    * @param options - Sandbox configuration options.
@@ -425,6 +457,17 @@ export class DockerIsol8 implements Isol8Engine {
     this.logNetwork = options.logNetwork ?? false;
     this.poolStrategy = options.poolStrategy ?? "fast";
     this.poolSize = options.poolSize ?? { clean: 1, dirty: 1 };
+    this.remoteCodePolicy = options.remoteCode ?? {
+      enabled: false,
+      allowedSchemes: ["https"],
+      allowedHosts: [],
+      blockedHosts: [],
+      maxCodeSize: 10 * 1024 * 1024,
+      fetchTimeoutMs: 30_000,
+      requireHash: false,
+      enableCache: true,
+      cacheTtl: 3600,
+    };
 
     // Initialize audit logger if audit config is provided
     if (options.audit) {
@@ -477,10 +520,11 @@ export class DockerIsol8 implements Isol8Engine {
     await this.semaphore.acquire();
     const startTime = Date.now();
     try {
+      const request = await this.resolveExecutionRequest(req);
       const result =
         this.mode === "persistent"
-          ? await this.executePersistent(req, startTime)
-          : await this.executeEphemeral(req, startTime);
+          ? await this.executePersistent(request, startTime)
+          : await this.executeEphemeral(request, startTime);
 
       return result;
     } finally {
@@ -492,7 +536,7 @@ export class DockerIsol8 implements Isol8Engine {
    * Record an audit entry for the execution.
    */
   private async recordAudit(
-    req: ExecutionRequest,
+    req: ExecutionRequest & { code: string },
     result: ExecutionResult,
     startTime: number,
     container?: Docker.Container
@@ -716,8 +760,9 @@ export class DockerIsol8 implements Isol8Engine {
   async *executeStream(req: ExecutionRequest): AsyncIterable<StreamEvent> {
     await this.semaphore.acquire();
     try {
-      const adapter = this.getAdapter(req.runtime);
-      const timeoutMs = req.timeoutMs ?? this.defaultTimeoutMs;
+      const request = await this.resolveExecutionRequest(req);
+      const adapter = this.getAdapter(request.runtime);
+      const timeoutMs = request.timeoutMs ?? this.defaultTimeoutMs;
       const image = await this.resolveImage(adapter);
 
       // Create container (always ephemeral-style for streaming)
@@ -740,29 +785,29 @@ export class DockerIsol8 implements Isol8Engine {
         }
 
         // Write code
-        const ext = req.fileExtension ?? adapter.getFileExtension();
+        const ext = request.fileExtension ?? adapter.getFileExtension();
         const filePath = `${SANDBOX_WORKDIR}/main${ext}`;
-        await writeFileViaExec(container, filePath, req.code);
+        await writeFileViaExec(container, filePath, request.code);
 
         // Install packages if requested
-        if (req.installPackages?.length) {
-          await installPackages(container, req.runtime, req.installPackages);
+        if (request.installPackages?.length) {
+          await installPackages(container, request.runtime, request.installPackages);
         }
 
         // Inject input files
-        if (req.files) {
-          for (const [fPath, fContent] of Object.entries(req.files)) {
+        if (request.files) {
+          for (const [fPath, fContent] of Object.entries(request.files)) {
             await writeFileViaExec(container, fPath, fContent);
           }
         }
 
         // Build command
-        const rawCmd = adapter.getCommand(req.code, filePath);
+        const rawCmd = adapter.getCommand(request.code, filePath);
         const timeoutSec = Math.ceil(timeoutMs / 1000);
         let cmd: string[];
-        if (req.stdin) {
+        if (request.stdin) {
           const stdinPath = `${SANDBOX_WORKDIR}/_stdin`;
-          await writeFileViaExec(container, stdinPath, req.stdin);
+          await writeFileViaExec(container, stdinPath, request.stdin);
           const cmdStr = rawCmd.map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(" ");
           cmd = wrapWithTimeout(["sh", "-c", `cat ${stdinPath} | ${cmdStr}`], timeoutSec);
         } else {
@@ -771,7 +816,7 @@ export class DockerIsol8 implements Isol8Engine {
 
         const exec = await container.exec({
           Cmd: cmd,
-          Env: this.buildEnv(req.env),
+          Env: this.buildEnv(request.env),
           AttachStdout: true,
           AttachStderr: true,
           WorkingDir: SANDBOX_WORKDIR,
@@ -824,7 +869,7 @@ export class DockerIsol8 implements Isol8Engine {
   }
 
   private async executeEphemeral(
-    req: ExecutionRequest,
+    req: ExecutionRequest & { code: string },
     startTime: number
   ): Promise<ExecutionResult> {
     const adapter = this.getAdapter(req.runtime);
@@ -982,7 +1027,7 @@ export class DockerIsol8 implements Isol8Engine {
   }
 
   private async executePersistent(
-    req: ExecutionRequest,
+    req: ExecutionRequest & { code: string },
     startTime: number
   ): Promise<ExecutionResult> {
     const adapter = this.getAdapter(req.runtime);

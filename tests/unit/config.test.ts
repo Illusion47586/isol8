@@ -13,6 +13,8 @@ describe("loadConfig", () => {
     expect(config.defaults.timeoutMs).toBe(30_000);
     expect(config.defaults.network).toBe("none");
     expect(config.defaults.memoryLimit).toBe("512m");
+    expect(config.remoteCode.enabled).toBe(false);
+    expect(config.remoteCode.allowedSchemes).toEqual(["https"]);
   });
 
   test("loads config from CWD", () => {
@@ -98,6 +100,28 @@ describe("loadConfig", () => {
     const config = loadConfig(tmpDir);
     expect(config.dependencies.python).toEqual(["numpy", "pandas"]);
     expect(config.dependencies.node).toEqual(["lodash"]);
+
+    rmSync(tmpDir, { recursive: true });
+  });
+
+  test("merges remoteCode policy from config", () => {
+    mkdirSync(tmpDir, { recursive: true });
+    writeFileSync(
+      join(tmpDir, "isol8.config.json"),
+      JSON.stringify({
+        remoteCode: {
+          enabled: true,
+          allowedHosts: ["^raw\\.githubusercontent\\.com$"],
+          requireHash: true,
+        },
+      })
+    );
+
+    const config = loadConfig(tmpDir);
+    expect(config.remoteCode.enabled).toBe(true);
+    expect(config.remoteCode.allowedSchemes).toEqual(["https"]);
+    expect(config.remoteCode.allowedHosts).toEqual(["^raw\\.githubusercontent\\.com$"]);
+    expect(config.remoteCode.requireHash).toBe(true);
 
     rmSync(tmpDir, { recursive: true });
   });

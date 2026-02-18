@@ -62,7 +62,13 @@
           },
           {
             "group": "Reference",
-            "pages": ["passing-values", "configuration", "cli", "library"]
+            "pages": [
+              "passing-values",
+              "configuration",
+              "remote-code",
+              "cli",
+              "library"
+            ]
           },
           {
             "group": "Help",

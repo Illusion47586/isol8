@@ -58,10 +58,204 @@ Use this as a complete reference template. In real configs, you can provide only
     "deno": [],
     "bash": []
   },
+  "remoteCode": {
+    "enabled": false,
+    "allowedSchemes": ["https"],
+    "allowedHosts": [],
+    "blockedHosts": ["^localhost$", "^127(?:\\.[0-9]{1,3}){3}$", "^169\\.254\\.169\\.254$"],
+    "maxCodeSize": 10485760,
+    "fetchTimeoutMs": 30000,
+    "requireHash": false,
+    "enableCache": true,
+    "cacheTtl": 3600
+  },
   "security": {
     "seccomp": "strict",
     "customProfilePath": "./seccomp.json"
   },
+  "audit": {
+    "enabled": false,
+    "destination": "filesystem",
+    "logDir": "./.isol8_audit",
+    "postLogScript": "./scripts/on-audit.sh",
+    "trackResources": true,
+    "retentionDays": 90,
+    "includeCode": false,
+    "includeOutput": false
+  }
+}
+```
+
+## Fields
+
+### Top-Level
+
+<ResponseField name="maxConcurrent" type="number" default="10">
+  Maximum number of concurrent container executions. Enforced by a global semaphore in the server.
+</ResponseField>
+
+### defaults
+
+Default values for execution options. These are used when a request doesn't specify its own values.
+
+<ResponseField name="defaults.timeoutMs" type="number" default="30000">
+  Default execution timeout in milliseconds.
+</ResponseField>
+
+<ResponseField name="defaults.memoryLimit" type="string" default="512m">
+  Default memory limit. Accepts Docker format: `256m`, `512m`, `1g`.
+</ResponseField>
+
+<ResponseField name="defaults.cpuLimit" type="number" default="1.0">
+  Default CPU limit as fraction of one core.
+</ResponseField>
+
+<ResponseField name="defaults.network" type="string" default="none">
+  Default network mode: `none`, `host`, or `filtered`.
+</ResponseField>
+
+<ResponseField name="defaults.sandboxSize" type="string" default="64m">
+  Default size of the `/sandbox` tmpfs mount.
+</ResponseField>
+
+<ResponseField name="defaults.tmpSize" type="string" default="64m">
+  Default size of the `/tmp` tmpfs mount.
+</ResponseField>
+
+### network
+
+Network filtering rules for `filtered` network mode.
+
+<ResponseField name="network.whitelist" type="string[]" default="[]">
+  Regex patterns for allowed hostnames. When non-empty, only matching hostnames can be accessed.
+</ResponseField>
+
+<ResponseField name="network.blacklist" type="string[]" default="[]">
+  Regex patterns for blocked hostnames. Matching hostnames are denied.
+</ResponseField>
+
+### cleanup
+
+Server cleanup behavior for stale containers.
+
+<ResponseField name="cleanup.autoPrune" type="boolean" default="true">
+  Whether the server should periodically clean up old containers.
+</ResponseField>
+
+<ResponseField name="cleanup.maxContainerAgeMs" type="number" default="3600000">
+  Maximum age of a container in milliseconds before it's eligible for auto-pruning (default: 1 hour).
+</ResponseField>
+
+### dependencies
+
+Packages to bake into custom Docker images when running `isol8 setup`.
+
+<ResponseField name="dependencies.python" type="string[]" default="[]">
+  Python packages (pip install).
+</ResponseField>
+
+<ResponseField name="dependencies.node" type="string[]" default="[]">
+  Node.js packages (npm install -g).
+</ResponseField>
+
+<ResponseField name="dependencies.bun" type="string[]" default="[]">
+  Bun packages (bun install -g).
+</ResponseField>
+
+<ResponseField name="dependencies.deno" type="string[]" default="[]">
+  Deno module URLs (deno cache).
+</ResponseField>
+
+<ResponseField name="dependencies.bash" type="string[]" default="[]">
+  Alpine apk packages.
+</ResponseField>
+
+### remoteCode
+
+Controls URL-based source fetching (`ExecutionRequest.codeUrl`, `isol8 run --url`).
+
+<ResponseField name="remoteCode.enabled" type="boolean" default="false">
+  Enable remote code fetching. Disabled by default for security.
+</ResponseField>
+
+<ResponseField name="remoteCode.allowedSchemes" type="string[]" default='["https"]'>
+  Allowed URL schemes. Keep this as `https` in production.
+</ResponseField>
+
+<ResponseField name="remoteCode.allowedHosts" type="string[]" default="[]">
+  Hostname regex allowlist. Empty means all hosts are allowed unless blocked.
+</ResponseField>
+
+<ResponseField name="remoteCode.blockedHosts" type="string[]" default="[localhost/private ranges/metadata]">
+  Hostname regex blocklist used for SSRF protection.
+</ResponseField>
+
+<ResponseField name="remoteCode.maxCodeSize" type="number" default="10485760">
+  Maximum bytes allowed when fetching remote source code.
+</ResponseField>
+
+<ResponseField name="remoteCode.fetchTimeoutMs" type="number" default="30000">
+  Timeout for remote source downloads.
+</ResponseField>
+
+<ResponseField name="remoteCode.requireHash" type="boolean" default="false">
+  Require `codeHash` on every URL-based execution.
+</ResponseField>
+
+
+### seccomp
+
+Security computing mode profile configuration.
+
+<ResponseField name="security.seccomp" type="string" default="safety">
+  The seccomp profile to use:
+  - `safety`: Blocks known dangerous syscalls (mount, ptrace, kernel modules) while allowing standard runtime operations (blacklist approach).
+  - `unconfined`: Disables seccomp filtering (use with caution).
+  - `path/to/profile.json`: Path to a custom seccomp profile JSON file.
+</ResponseField>
+
+### audit
+
+Audit logging configuration for execution provenance and compliance tracking.
+
+<ResponseField name="audit.enabled" type="boolean" default="false">
+  Enable audit logging. When enabled, every execution is recorded with metadata including code hash, timestamps, and resource usage.
+</ResponseField>
+
+<ResponseField name="audit.destination" type="string" default="filesystem">
+  Destination for audit logs. Options:
+  - `filesystem` or `file`: Write to log files (default)
+  - `stdout`: Print to console
+</ResponseField>
+
+<ResponseField name="audit.logDir" type="string">
+  Custom directory for audit log files. Defaults to `./.isol8_audit` in the current working directory, or the value of `ISOL8_AUDIT_DIR` environment variable.
+</ResponseField>
+
+<ResponseField name="audit.postLogScript" type="string">
+  Path to a script that runs after each audit log entry is written. The script receives the log file path as its first argument. Useful for integrating with external systems like CloudWatch, Splunk, or custom log aggregators.
+</ResponseField>
+
+<ResponseField name="audit.trackResources" type="boolean" default="true">
+  Track resource usage (CPU percentage, memory MB, network bytes) during execution. Adds slight overhead but useful for billing and monitoring.
+</ResponseField>
+
+<ResponseField name="audit.retentionDays" type="number" default="90">
+  Number of days to retain audit log files. Files older than this are automatically cleaned up when the AuditLogger initializes.
+</ResponseField>
+
+<ResponseField name="audit.includeCode" type="boolean" default="false">
+  Include the full source code in audit logs. Disabled by default for privacy. Enable only when you need complete code provenance.
+</ResponseField>
+
+<ResponseField name="audit.includeOutput" type="boolean" default="false">
+  Include stdout and stderr in audit logs. Disabled by default for privacy. Useful for debugging and compliance scenarios.
+</ResponseField>
+
+**Example audit configuration:**
+
+```json
+{
   "audit": {
     "enabled": false,
     "destination": "filesystem",
