@@ -30,6 +30,8 @@ interface SessionState {
   engine: DockerIsol8;
   /** Timestamp of last access (for stale session cleanup). */
   lastAccessedAt: number;
+  /** Whether the session is currently executing a request. */
+  isActive: boolean;
 }
 
 const sessions = new Map<string, SessionState>();
@@ -110,11 +112,12 @@ export async function createServer(options: ServerOptions) {
         logger.debug(`[Server] Reusing existing session: ${body.sessionId}`);
         engine = session.engine;
         session.lastAccessedAt = Date.now();
+        session.isActive = true;
       } else {
         logger.debug(`[Server] Creating new session: ${body.sessionId}`);
         engine = new DockerIsol8(engineOptions, config.maxConcurrent);
         await engine.start();
-        sessions.set(body.sessionId, { engine, lastAccessedAt: Date.now() });
+        sessions.set(body.sessionId, { engine, lastAccessedAt: Date.now(), isActive: true });
       }
     } else {
       logger.debug("[Server] Creating ephemeral engine");
@@ -139,8 +142,14 @@ export async function createServer(options: ServerOptions) {
       logger.debug(`[Server] Execution error: ${message}`);
       return c.json({ error: message }, 500);
     } finally {
-      // Cleanup ephemeral engine
-      if (!body.sessionId) {
+      // Cleanup ephemeral engine and update session state
+      if (body.sessionId) {
+        const session = sessions.get(body.sessionId);
+        if (session) {
+          session.isActive = false;
+          session.lastAccessedAt = Date.now();
+        }
+      } else {
         logger.debug("[Server] Cleaning up ephemeral engine");
         await engine.stop();
       }
@@ -277,6 +286,10 @@ export async function createServer(options: ServerOptions) {
       const now = Date.now();
 
       for (const [id, session] of sessions) {
+        // Skip active sessions - they are currently executing
+        if (session.isActive) {
+          continue;
+        }
         if (now - session.lastAccessedAt > maxAge) {
           logger.debug(`[Server] Auto-pruning stale session: ${id}`);
           await session.engine.stop();
