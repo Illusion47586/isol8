@@ -34,3 +34,28 @@ All responses are JSON.
   "error": "Session not found"
 }
 ```
+
+## Server-Only Features
+
+Unlike the ephemeral CLI, the server is a long-running process that provides centralized management capabilities.
+
+### 1. Global Concurrency Control
+The server enforces a **global limit** on parallel executions across *all* connected clients.
+- Controlled by `maxConcurrent` in config (default: 10).
+- Requests exceeding the limit are queued automatically.
+- This protects the host machine from resource exhaustion during traffic spikes.
+
+### 2. Automatic Session Pruning
+The server runs a background task to clean up abandoned persistent sessions.
+- **Interval**: Checks every 60 seconds.
+- **Policy**: Removes sessions that have been idle for more than 1 hour (configurable via `cleanup.maxContainerAgeMs`).
+- **Benefit**: Prevents memory leaks from clients that forget to call `DELETE /session`.
+
+### 3. Centralized Configuration
+Server-side defaults in `isol8.config.json` are automatically merged into every incoming request.
+- **Baseline Security**: Enforce `network: "none"` or memory limits globally.
+- **Consistency**: Ensure all clients use the same seccomp profiles and timeouts.
+- **Overrides**: Clients can override specific settings in the `options` body if needed.
+
+### 4. Health Monitoring
+The `GET /health` endpoint allows load balancers (AWS ALB, Nginx) and monitoring tools (Datadog, Prometheus) to verify the engine is responsive without authentication.
