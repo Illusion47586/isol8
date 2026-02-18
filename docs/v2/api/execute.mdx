@@ -1,0 +1,67 @@
+---
+title: "Execute Code"
+api: "POST /execute"
+description: "Run code in an isolated container and return the result."
+---
+
+### Body
+
+<ParamField body="request" type="object" required>
+  The execution request details.
+  <Expandable title="properties">
+    <ParamField body="code" type="string" required>
+      Source code to execute.
+    </ParamField>
+    <ParamField body="runtime" type="string" required>
+      One of: `python`, `node`, `bun`, `deno`, `bash`.
+    </ParamField>
+    <ParamField body="timeoutMs" type="number">
+      Execution timeout in milliseconds.
+    </ParamField>
+    <ParamField body="env" type="object">
+      Environment variables to inject.
+    </ParamField>
+    <ParamField body="stdin" type="string">
+      Data to pipe to stdin.
+    </ParamField>
+    <ParamField body="files" type="object">
+      Files to inject (path -> content).
+    </ParamField>
+    <ParamField body="outputPaths" type="string[]">
+      Paths of files to retrieve.
+    </ParamField>
+    <ParamField body="installPackages" type="string[]">
+      Packages to install before execution.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="sessionId" type="string">
+  Optional session ID for persistent mode.
+</ParamField>
+
+<ParamField body="options" type="object">
+  Overrides for engine defaults (network, memory, etc).
+</ParamField>
+
+### Response
+
+<ResponseField name="stdout" type="string">
+  Standard output from the process.
+</ResponseField>
+
+<ResponseField name="stderr" type="string">
+  Standard error from the process.
+</ResponseField>
+
+<ResponseField name="exitCode" type="number">
+  Process exit code (0 = success).
+</ResponseField>
+
+<ResponseField name="durationMs" type="number">
+  Execution duration in milliseconds.
+</ResponseField>
+
+<ResponseField name="executionId" type="string">
+  Unique ID for this execution.
+</ResponseField>

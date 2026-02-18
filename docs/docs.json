@@ -63,6 +63,27 @@
         ]
       },
       {
+        "tab": "API Reference (v2)",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": ["v2/api/introduction", "v2/api/health"]
+          },
+          {
+            "group": "Execution",
+            "pages": ["v2/api/execute", "v2/api/stream"]
+          },
+          {
+            "group": "Files",
+            "pages": ["v2/api/upload", "v2/api/download"]
+          },
+          {
+            "group": "Sessions",
+            "pages": ["v2/api/delete-session"]
+          }
+        ]
+      },
+      {
         "tab": "Documentation",
         "groups": [
           {

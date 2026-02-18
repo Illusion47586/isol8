@@ -1,0 +1,21 @@
+---
+title: "Download File"
+api: "GET /file"
+description: "Download a file from a persistent session container."
+---
+
+### Query Parameters
+
+<ParamField query="sessionId" type="string" required>
+  The target session ID.
+</ParamField>
+
+<ParamField query="path" type="string" required>
+  Absolute path inside the container.
+</ParamField>
+
+### Response
+
+<ResponseField name="content" type="string">
+  Base64-encoded file content.
+</ResponseField>

@@ -1,0 +1,36 @@
+---
+title: "API Introduction"
+description: "Welcome to the isol8 Server API."
+icon: "server"
+---
+
+The isol8 server exposes a REST API for remote code execution, streaming, and file management.
+
+## Base URL
+
+By default, the server listens on port 3000.
+
+```bash
+http://localhost:3000
+```
+
+## Authentication
+
+All endpoints (except `GET /health`) require a Bearer token. This token corresponds to the API key configured when starting the server.
+
+```bash
+Authorization: Bearer <your-api-key>
+```
+
+## Response Format
+
+All responses are JSON.
+
+- **Success**: HTTP 2xx codes.
+- **Errors**: HTTP 4xx/5xx codes with an `error` field in the body.
+
+```json
+{
+  "error": "Session not found"
+}
+```

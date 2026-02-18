@@ -1,0 +1,25 @@
+---
+title: "Upload File"
+api: "POST /file"
+description: "Upload a file to a persistent session container."
+---
+
+### Body
+
+<ParamField body="sessionId" type="string" required>
+  The target session ID.
+</ParamField>
+
+<ParamField body="path" type="string" required>
+  Absolute path inside the container (e.g. `/sandbox/data.csv`).
+</ParamField>
+
+<ParamField body="content" type="string" required>
+  Base64-encoded file content.
+</ParamField>
+
+### Response
+
+<ResponseField name="ok" type="boolean">
+  `true` if successful.
+</ResponseField>
