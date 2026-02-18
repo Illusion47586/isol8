@@ -196,7 +196,7 @@ program
   .option("--github <path>", "GitHub shorthand: owner/repo/ref/path/to/file")
   .option("--gist <path>", "Gist shorthand: gistId/file.ext")
   .option("--hash <sha256>", "Expected SHA-256 hash of fetched code")
-  .option("--allow-http", "Allow insecure HTTP code URLs")
+  .option("--allow-insecure-code-url", "Allow insecure HTTP code URLs")
   .option("--host <url>", "Execute on remote server")
   .option("--key <key>", "API key for remote server")
   .option("--no-stream", "Disable real-time output streaming") // Default is now streaming
@@ -763,7 +763,7 @@ async function resolveRunInput(file: string | undefined, opts: any) {
     }
     codeUrl = resolveCodeUrl(opts);
     codeHash = opts.hash ?? undefined;
-    allowInsecureCodeUrl = opts.allowHttp ?? false;
+    allowInsecureCodeUrl = opts.allowInsecureCodeUrl ?? false;
     runtime = (opts.runtime ?? detectRuntimeFromPath(new URL(codeUrl).pathname)) as Runtime;
     if (!runtime) {
       console.error("[ERR] Cannot detect runtime from URL path. Use --runtime to specify.");

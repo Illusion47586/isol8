@@ -129,7 +129,7 @@ isol8 run script.py --host http://server:3000 --key my-api-key
 | `--github <owner/repo/ref/path>` | GitHub shorthand for raw source | — |
 | `--gist <gistId/file.ext>` | Gist shorthand for raw source | — |
 | `--hash <sha256>` | Verify SHA-256 hash for fetched code | — |
-| `--allow-http` | Allow insecure `http://` code URLs for this request | `false` |
+| `--allow-insecure-code-url` | Allow insecure `http://` code URLs for this request | `false` |
 | `--host <url>` | Remote server URL | — |
 | `--key <key>` | API key for remote server | `$ISOL8_API_KEY` |
 

@@ -46,7 +46,7 @@ Isol8 is a secure execution engine for running untrusted code inside Docker cont
 | `--github <owner/repo/ref/path>` | — | GitHub shorthand for raw source |
 | `--gist <gistId/file.ext>` | — | Gist shorthand for raw source |
 | `--hash <sha256>` | — | Verify SHA-256 hash for fetched code |
-| `--allow-http` | `false` | Allow insecure `http://` code URLs for this request |
+| `--allow-insecure-code-url` | `false` | Allow insecure `http://` code URLs for this request |
 | `--net <mode>` | `none` | Network: `none`, `host`, `filtered` |
 | `--timeout <ms>` | `30000` | Execution timeout |
 | `--memory <limit>` | `512m` | Memory limit |
