@@ -1,3 +1,10 @@
+# [0.10.0](https://github.com/Illusion47586/isol8/compare/v0.9.0...v0.10.0) (2026-02-18)
+
+
+### Features
+
+* Network request logging and metrics ([#46](https://github.com/Illusion47586/isol8/issues/46)) ([e686186](https://github.com/Illusion47586/isol8/commit/e686186ed13174659ff6cd94ad292a6a5a607beb))
+
 # [0.9.0](https://github.com/Illusion47586/isol8/compare/v0.8.3...v0.9.0) (2026-02-17)
 
 
