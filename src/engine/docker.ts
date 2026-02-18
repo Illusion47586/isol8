@@ -590,23 +590,29 @@ export class DockerIsol8 implements Isol8Engine {
       }
 
       const output = Buffer.concat(chunks).toString("utf-8").trim();
-      if (output) {
-        for (const line of output.split("\n")) {
-          if (line.trim()) {
-            try {
-              const entry = JSON.parse(line);
-              logs.push({
-                timestamp: entry.timestamp || new Date().toISOString(),
-                method: entry.method || "UNKNOWN",
-                host: entry.host || "",
-                path: entry.path,
-                action: entry.action || "ALLOW",
-                durationMs: entry.durationMs || 0,
-              });
-            } catch {
-              // Skip malformed lines
-            }
-          }
+      // Filter to only lines that contain valid JSON
+      // Find the JSON object by looking for the first { and last }
+      const jsonLines = output.split("\n").filter((line) => line.includes("timestamp"));
+      for (const line of jsonLines) {
+        // Extract JSON by finding the first { and last }
+        const startIdx = line.indexOf("{");
+        const endIdx = line.lastIndexOf("}");
+        if (startIdx === -1 || endIdx === -1) {
+          continue;
+        }
+        const jsonStr = line.substring(startIdx, endIdx + 1);
+        try {
+          const entry = JSON.parse(jsonStr);
+          logs.push({
+            timestamp: entry.timestamp || new Date().toISOString(),
+            method: entry.method || "UNKNOWN",
+            host: entry.host || "",
+            path: entry.path,
+            action: entry.action || "ALLOW",
+            durationMs: entry.durationMs || 0,
+          });
+        } catch {
+          // Skip malformed lines
         }
       }
     } catch {

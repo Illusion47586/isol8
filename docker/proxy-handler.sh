@@ -23,8 +23,14 @@ log_network() {
   local duration_ms="$5"
 
   if [ -d "/tmp/isol8-proxy" ]; then
-    printf '{"timestamp":"%s","method":"%s","host":"%s","path":"%s","action":"%s","durationMs":%d}\n' \
-      "$(date -Iseconds)" "$method" "$host" "$path" "$action" "$duration_ms" >> /tmp/isol8-proxy/network.jsonl
+    # Handle path: output proper JSON null if path is "null", otherwise quote it
+    if [ "$path" = "null" ] || [ -z "$path" ]; then
+      printf '{"timestamp":"%s","method":"%s","host":"%s","path":null,"action":"%s","durationMs":%d}\n' \
+        "$(date -Iseconds)" "$method" "$host" "$action" "$duration_ms" >> /tmp/isol8-proxy/network.jsonl
+    else
+      printf '{"timestamp":"%s","method":"%s","host":"%s","path":"%s","action":"%s","durationMs":%d}\n' \
+        "$(date -Iseconds)" "$method" "$host" "$path" "$action" "$duration_ms" >> /tmp/isol8-proxy/network.jsonl
+    fi
   fi
 }
 
