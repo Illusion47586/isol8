@@ -1,3 +1,10 @@
+## [0.10.1](https://github.com/Illusion47586/isol8/compare/v0.10.0...v0.10.1) (2026-02-18)
+
+
+### Bug Fixes
+
+* remove dockerode dependency from production test setup ([#47](https://github.com/Illusion47586/isol8/issues/47)) ([285b88b](https://github.com/Illusion47586/isol8/commit/285b88b29fbdab89f5e360937530fb95eafc1b71))
+
 # [0.10.0](https://github.com/Illusion47586/isol8/compare/v0.9.0...v0.10.0) (2026-02-18)
 
 
