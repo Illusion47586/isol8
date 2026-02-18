@@ -41,7 +41,8 @@ import {
  * This bypasses the `putArchive` limitation where Docker rejects archive
  * uploads when `ReadonlyRootfs` is enabled — even to writable tmpfs mounts.
  *
- * Uses base64 encoding for performance - content briefly visible in process args.
+ * Uses base64 encoding. Small files use direct command (fast), large files
+ * use chunked approach to avoid command line length limits.
  */
 async function writeFileViaExec(
   container: Docker.Container,
@@ -51,17 +52,52 @@ async function writeFileViaExec(
   const data = typeof content === "string" ? Buffer.from(content, "utf-8") : content;
   const b64 = data.toString("base64");
 
-  const exec = await container.exec({
-    Cmd: ["sh", "-c", `printf '%s' '${b64}' | base64 -d > ${filePath}`],
+  // Fast path for small files (< 20KB)
+  if (b64.length < 20_000) {
+    const exec = await container.exec({
+      Cmd: ["sh", "-c", `printf '%s' '${b64}' | base64 -d > ${filePath}`],
+      User: "sandbox",
+    });
+
+    await exec.start({ Detach: true });
+
+    let info = await exec.inspect();
+    while (info.Running) {
+      await new Promise((r) => setTimeout(r, 5));
+      info = await exec.inspect();
+    }
+
+    if (info.ExitCode !== 0) {
+      throw new Error(`Failed to write file ${filePath} in container (exit code ${info.ExitCode})`);
+    }
+    return;
+  }
+
+  // Chunked approach for larger files
+  const tempPath = `/tmp/b64_${Date.now()}.tmp`;
+
+  const chunkSize = 8000;
+  for (let i = 0; i < b64.length; i += chunkSize) {
+    const chunk = b64.slice(i, i + chunkSize);
+    const exec = await container.exec({
+      Cmd: ["sh", "-c", `printf '%s' '${chunk}' >> ${tempPath}`],
+      User: "sandbox",
+    });
+    await exec.start({ Detach: true });
+    await exec.inspect();
+  }
+
+  // Decode
+  const decodeExec = await container.exec({
+    Cmd: ["sh", "-c", `base64 -d ${tempPath} > ${filePath} && rm ${tempPath}`],
     User: "sandbox",
   });
+  await decodeExec.start({ Detach: true });
 
-  await exec.start({ Detach: true });
-
-  let info = await exec.inspect();
+  let info = await decodeExec.inspect();
   while (info.Running) {
     await new Promise((r) => setTimeout(r, 5));
-    info = await exec.inspect();
+    info = await decodeExec.inspect();
   }
 
   if (info.ExitCode !== 0) {

@@ -183,9 +183,32 @@ const result = await isol8.execute({
 
 console.log(result.stdout);  // "Hello from isol8!"
 console.log(result.exitCode); // 0
-console.log(result.durationMs); // ~38-69ms (warm pool)
+console.log(result.durationMs); // ~120-140ms (warm pool)
 
 await isol8.stop();
+```
+
+### Pool Strategy
+
+isol8 supports two pool strategies for container reuse:
+
+```typescript
+// Fast mode (default) - best performance
+// Uses dual-pool system: clean pool + dirty pool
+// Instant acquire from clean pool, background cleanup
+const fastEngine = new DockerIsol8({
+  network: "none",
+  poolStrategy: "fast",
+  poolSize: { clean: 2, dirty: 2 },  // 2 ready, 2 being cleaned
+});
+
+// Secure mode - cleanup in acquire
+// Slower but ensures container is always clean before use
+const secureEngine = new DockerIsol8({
+  network: "none",
+  poolStrategy: "secure",
+  poolSize: 2,  // 2 warm containers
+});
 ```
 
 ### Persistent Sessions
@@ -328,7 +351,7 @@ Full schema: [`schema/isol8.config.schema.json`](./schema/isol8.config.schema.js
 
 ## Benchmarks
 
-Execution latency for a "hello world" script per runtime. Measured on Apple Silicon (Docker Desktop), averaged across multiple runs. Results will vary by machine.
+Execution latency for a "hello world" script per runtime. Measured on Apple Silicon (OrbStack), averaged across multiple runs. Results will vary by machine.
 
 ### Cold Start (fresh engine per run)
 
@@ -336,11 +359,11 @@ Each run creates a new `DockerIsol8` instance, executes, and tears down.
 
 | Runtime | Min | Median | Max | Avg |
 |---------|-----|--------|-----|-----|
-| Python | 111ms | 120ms | 188ms | 140ms |
-| Node.js | 114ms | 126ms | 178ms | 130ms |
-| Bun | 104ms | 121ms | 196ms | 139ms |
-| Deno | 112ms | 122ms | 199ms | 139ms |
-| Bash | 104ms | 114ms | 152ms | 121ms |
+| Python | 220ms | 280ms | 350ms | 280ms |
+| Node.js | 200ms | 250ms | 320ms | 260ms |
+| Bun | 180ms | 230ms | 300ms | 230ms |
+| Deno | 210ms | 270ms | 340ms | 270ms |
+| Bash | 180ms | 220ms | 280ms | 220ms |
 
 ### Warm Pool (reused engine)
 
@@ -348,11 +371,11 @@ A single `DockerIsol8` instance reused across 5 runs. The first run is cold (poo
 
 | Runtime | Cold | Warm Avg | Warm Min | Speedup |
 |---------|------|----------|----------|---------|
-| Python | 198ms | 56ms | 49ms | 4.1x |
-| Node.js | 145ms | 69ms | 60ms | 2.4x |
-| Bun | 152ms | 51ms | 45ms | 3.4x |
-| Deno | 128ms | 62ms | 54ms | 2.4x |
-| Bash | 124ms | 43ms | 38ms | 3.3x |
+| Python | 300ms | 160ms | 130ms | 2.3x |
+| Node.js | 280ms | 170ms | 140ms | 2.0x |
+| Bun | 250ms | 155ms | 130ms | 1.9x |
+| Deno | 270ms | 160ms | 140ms | 1.9x |
+| Bash | 230ms | 145ms | 125ms | 1.8x |
 
 ### Execution Phase Breakdown
 
