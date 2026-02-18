@@ -53,6 +53,7 @@
             "pages": [
               "library/overview",
               "library/execution",
+              "library/git-operations",
               "library/streaming",
               "library/file-io"
             ]

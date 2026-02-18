@@ -1,0 +1,96 @@
+---
+title: "Git Operations"
+description: "Clone, commit, and push repositories inside isol8 sandboxes"
+og:title: "Git Operations - isol8"
+og:description: "Run Git clone/commit/push as part of isol8 executions with built-in security controls."
+---
+
+isol8 can run Git operations as part of an execution. This is useful for AI agents that need to fetch code, apply changes, and push updates without manual shell scripting.
+
+## Requirements
+
+- Git is installed in all runtime images.
+- Credentials must be supplied via environment variables or URL-embedded tokens.
+- Git URLs are validated against `gitSecurity` rules before execution.
+
+## Library Usage
+
+```typescript
+import { DockerIsol8 } from "isol8";
+
+const isol8 = new DockerIsol8({
+  network: "host",
+});
+
+const result = await isol8.execute({
+  code: "cd /sandbox/repo && echo 'update' >> README.md",
+  runtime: "bash",
+  git: {
+    clone: { url: "https://github.com/user/repo.git", path: "repo" },
+    commit: {
+      message: "feat: update",
+      authorName: "AI Agent",
+      authorEmail: "agent@example.com",
+      repoPath: "repo",
+      all: true,
+    },
+    push: { remote: "origin", branch: "main", repoPath: "repo" },
+  },
+});
+
+console.log(result.exitCode, result.stderr);
+```
+
+## CLI Usage
+
+```bash
+isol8 run script.py --runtime python \
+  --git-clone https://github.com/user/repo.git \
+  --git-clone-path repo \
+  --git-commit "feat: update" \
+  --git-commit-author-name "AI Agent" \
+  --git-commit-author-email "agent@example.com" \
+  --git-push --git-push-branch main
+```
+
+## Git Operations Order
+
+Operations run in this order:
+
+1. `clone`
+2. `checkout`
+3. `pull`
+4. Execute code
+5. `commit`
+6. `push`
+
+## Configuring Git Security
+
+Configure Git URL validation and credential masking with `gitSecurity` in `isol8.config.json`:
+
+```json
+{
+  "gitSecurity": {
+    "allowedHosts": ["github.com", "gitlab.com"],
+    "blockedPatterns": [],
+    "allowPrivateIPs": false,
+    "credentialEnvVars": ["GIT_TOKEN", "GITHUB_TOKEN"]
+  }
+}
+```
+
+## Credentials
+
+Use environment variables for credentials. For HTTPS, you can pass a token via `GIT_TOKEN` or `GITHUB_TOKEN` and build a URL like:
+
+```
+https://user:${GIT_TOKEN}@github.com/user/repo.git
+```
+
+All values listed under `gitSecurity.credentialEnvVars` are masked from Git command output.
+
+## Notes
+
+- Private IPs and localhost are blocked by default to prevent SSRF.
+- If you need private Git hosts, set `gitSecurity.allowPrivateIPs` and add the host to `allowedHosts`.
+- Git operations run inside the sandbox as the `sandbox` user.
