@@ -10,6 +10,11 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { PassThrough, type Readable } from "node:stream";
 import Docker from "dockerode";
+import {
+  generatePostExecutionCommands,
+  generatePreExecutionCommands,
+  validateGitOperations,
+} from "../git";
 import { RuntimeRegistry } from "../runtime";
 import type { RuntimeAdapter } from "../runtime/adapter";
 import type {
@@ -756,6 +761,32 @@ export class DockerIsol8 implements Isol8Engine {
           }
         }
 
+        // Validate and execute pre-execution Git operations (clone, checkout, pull)
+        if (req.git) {
+          const gitValidation = validateGitOperations(req.git);
+          if (!gitValidation.valid) {
+            throw new Error(`Git operations validation failed: ${gitValidation.error}`);
+          }
+
+          const preExecCommands = generatePreExecutionCommands(req.git);
+          if (preExecCommands.length > 0) {
+            logger.debug(`[Git] Executing ${preExecCommands.length} pre-execution commands`);
+            const gitEnv = this.buildEnvWithGitCreds(req.env);
+            const gitResult = await this.executeGitCommands(
+              container,
+              preExecCommands,
+              gitEnv,
+              120_000
+            );
+            if (!gitResult.success) {
+              throw new Error(
+                `Git pre-execution failed (exit ${gitResult.exitCode}): ${gitResult.stderr}`
+              );
+            }
+            logger.debug("[Git] Pre-execution completed successfully");
+          }
+        }
+
         // Build command
         const rawCmd = adapter.getCommand(req.code, filePath);
         const timeoutSec = Math.ceil(timeoutMs / 1000);
@@ -781,6 +812,30 @@ export class DockerIsol8 implements Isol8Engine {
         const execStream = await exec.start({ Tty: false });
 
         yield* this.streamExecOutput(execStream, exec, container, timeoutMs);
+
+        // Execute post-execution Git operations (commit, push) if stream completed
+        if (req.git) {
+          const postExecCommands = generatePostExecutionCommands(req.git);
+          if (postExecCommands.length > 0) {
+            logger.debug(`[Git] Executing ${postExecCommands.length} post-execution commands`);
+            const gitEnv = this.buildEnvWithGitCreds(req.env);
+            const gitResult = await this.executeGitCommands(
+              container,
+              postExecCommands,
+              gitEnv,
+              120_000
+            );
+            if (gitResult.success) {
+              logger.debug("[Git] Post-execution completed successfully");
+            } else {
+              // Yield error event but don't fail the execution
+              yield {
+                type: "stderr",
+                data: `[Git Warning] Post-execution failed: ${gitResult.stderr}`,
+              };
+            }
+          }
+        }
       } finally {
         if (this.persist) {
           logger.debug(`[Persist] Leaving container running for inspection: ${container.id}`);
@@ -868,6 +923,32 @@ export class DockerIsol8 implements Isol8Engine {
       if (this.network === "filtered") {
         await startProxy(container, this.networkFilter);
         await setupIptables(container);
+      }
+
+      // Validate and execute pre-execution Git operations (clone, checkout, pull)
+      if (req.git) {
+        const gitValidation = validateGitOperations(req.git);
+        if (!gitValidation.valid) {
+          throw new Error(`Git operations validation failed: ${gitValidation.error}`);
+        }
+
+        const preExecCommands = generatePreExecutionCommands(req.git);
+        if (preExecCommands.length > 0) {
+          logger.debug(`[Git] Executing ${preExecCommands.length} pre-execution commands`);
+          const gitEnv = this.buildEnvWithGitCreds(req.env);
+          const gitResult = await this.executeGitCommands(
+            container,
+            preExecCommands,
+            gitEnv,
+            120_000
+          );
+          if (!gitResult.success) {
+            throw new Error(
+              `Git pre-execution failed (exit ${gitResult.exitCode}): ${gitResult.stderr}`
+            );
+          }
+          logger.debug("[Git] Pre-execution completed successfully");
+        }
       }
 
       // Write code to the active tmpfs via exec (putArchive fails with ReadonlyRootfs)
@@ -962,6 +1043,27 @@ export class DockerIsol8 implements Isol8Engine {
         ...(req.outputPaths ? { files: await this.retrieveFiles(container, req.outputPaths) } : {}),
       };
 
+      // Execute post-execution Git operations (commit, push) if main execution succeeded
+      if (req.git && result.exitCode === 0) {
+        const postExecCommands = generatePostExecutionCommands(req.git);
+        if (postExecCommands.length > 0) {
+          logger.debug(`[Git] Executing ${postExecCommands.length} post-execution commands`);
+          const gitEnv = this.buildEnvWithGitCreds(req.env);
+          const gitResult = await this.executeGitCommands(
+            container,
+            postExecCommands,
+            gitEnv,
+            120_000
+          );
+          if (gitResult.success) {
+            logger.debug("[Git] Post-execution completed successfully");
+          } else {
+            // Append Git error to stderr but don't fail the execution
+            result.stderr += `\n[Git Warning] Post-execution failed: ${gitResult.stderr}`;
+          }
+        }
+      }
+
       // Record audit log if audit logger is configured
       if (this.auditLogger) {
         await this.recordAudit(req, result, startTime, container);
@@ -995,6 +1097,32 @@ export class DockerIsol8 implements Isol8Engine {
       throw new Error(
         `Cannot switch runtime from "${this.persistentRuntime?.name}" to "${adapter.name}". Each persistent container supports a single runtime. Create a new Isol8 instance for a different runtime.`
       );
+    }
+
+    // Validate and execute pre-execution Git operations (clone, checkout, pull)
+    if (req.git) {
+      const gitValidation = validateGitOperations(req.git);
+      if (!gitValidation.valid) {
+        throw new Error(`Git operations validation failed: ${gitValidation.error}`);
+      }
+
+      const preExecCommands = generatePreExecutionCommands(req.git);
+      if (preExecCommands.length > 0) {
+        logger.debug(`[Git] Executing ${preExecCommands.length} pre-execution commands`);
+        const gitEnv = this.buildEnvWithGitCreds(req.env);
+        const gitResult = await this.executeGitCommands(
+          this.container!,
+          preExecCommands,
+          gitEnv,
+          120_000
+        );
+        if (!gitResult.success) {
+          throw new Error(
+            `Git pre-execution failed (exit ${gitResult.exitCode}): ${gitResult.stderr}`
+          );
+        }
+        logger.debug("[Git] Pre-execution completed successfully");
+      }
     }
 
     const ext = req.fileExtension ?? adapter.getFileExtension();
@@ -1108,6 +1236,27 @@ export class DockerIsol8 implements Isol8Engine {
         ? { files: await this.retrieveFiles(this.container!, req.outputPaths) }
         : {}),
     };
+
+    // Execute post-execution Git operations (commit, push) if main execution succeeded
+    if (req.git && result.exitCode === 0) {
+      const postExecCommands = generatePostExecutionCommands(req.git);
+      if (postExecCommands.length > 0) {
+        logger.debug(`[Git] Executing ${postExecCommands.length} post-execution commands`);
+        const gitEnv = this.buildEnvWithGitCreds(req.env);
+        const gitResult = await this.executeGitCommands(
+          this.container!,
+          postExecCommands,
+          gitEnv,
+          120_000
+        );
+        if (gitResult.success) {
+          logger.debug("[Git] Post-execution completed successfully");
+        } else {
+          // Append Git error to stderr but don't fail the execution
+          result.stderr += `\n[Git Warning] Post-execution failed: ${gitResult.stderr}`;
+        }
+      }
+    }
 
     // Record audit log if audit logger is configured
     if (this.auditLogger) {
@@ -1260,6 +1409,13 @@ export class DockerIsol8 implements Isol8Engine {
   }
 
   private buildEnv(extra?: Record<string, string>): string[] {
+    return this.buildEnvWithGitCreds(extra);
+  }
+
+  /**
+   * Build environment variables including Git credentials for masking.
+   */
+  private buildEnvWithGitCreds(extra?: Record<string, string>): string[] {
     const env: string[] = [
       "PYTHONUNBUFFERED=1",
       "PYTHONUSERBASE=/sandbox/.local",
@@ -1484,6 +1640,54 @@ export class DockerIsol8 implements Isol8Engine {
 
     // Trim trailing whitespace
     return result.trimEnd();
+  }
+
+  /**
+   * Execute Git operations in the container.
+   * Used for pre-execution (clone, checkout, pull) and post-execution (commit, push) operations.
+   *
+   * @param container - The Docker container
+   * @param commands - Array of shell commands to execute
+   * @param env - Environment variables
+   * @param timeoutMs - Timeout in milliseconds
+   * @returns Object with success status, stdout, stderr, and exit code
+   */
+  private async executeGitCommands(
+    container: Docker.Container,
+    commands: string[],
+    env: string[],
+    timeoutMs = 60_000
+  ): Promise<{ success: boolean; stdout: string; stderr: string; exitCode: number }> {
+    if (commands.length === 0) {
+      return { success: true, stdout: "", stderr: "", exitCode: 0 };
+    }
+
+    // Combine all commands into a single shell script
+    const script = commands.join(" && ");
+    const timeoutSec = Math.ceil(timeoutMs / 1000);
+    const cmd = wrapWithTimeout(["sh", "-c", script], timeoutSec);
+
+    const exec = await container.exec({
+      Cmd: cmd,
+      Env: env,
+      AttachStdout: true,
+      AttachStderr: true,
+      WorkingDir: SANDBOX_WORKDIR,
+      User: "sandbox",
+    });
+
+    const execStream = await exec.start({ Tty: false });
+
+    const { stdout, stderr } = await this.collectExecOutput(execStream, container, timeoutMs);
+    const inspectResult = await exec.inspect();
+    const exitCode = inspectResult.ExitCode ?? 1;
+
+    return {
+      success: exitCode === 0,
+      stdout,
+      stderr,
+      exitCode,
+    };
   }
 
   /**

@@ -28,6 +28,121 @@ export type Runtime = "python" | "node" | "bun" | "deno" | "bash";
  */
 export type NetworkMode = "none" | "host" | "filtered";
 
+// ─── Git Operations ───
+
+/**
+ * Git clone operation configuration.
+ */
+export interface GitCloneOptions {
+  /** Repository URL to clone (HTTPS or SSH). */
+  url: string;
+  /** Local path where the repository should be cloned (relative to /sandbox). */
+  path?: string;
+  /** Branch or tag to checkout after cloning. */
+  branch?: string;
+  /** Depth for shallow clone (e.g., 1 for latest commit only). */
+  depth?: number;
+  /** Whether to clone submodules recursively. */
+  recursive?: boolean;
+}
+
+/**
+ * Git commit operation configuration.
+ */
+export interface GitCommitOptions {
+  /** Commit message. */
+  message: string;
+  /** Author name for the commit. */
+  authorName?: string;
+  /** Author email for the commit. */
+  authorEmail?: string;
+  /** Whether to stage all changes before committing. */
+  all?: boolean;
+  /** Specific files to stage (if not using --all). */
+  files?: string[];
+  /** Path to the git repository (relative to /sandbox). */
+  repoPath?: string;
+}
+
+/**
+ * Git push operation configuration.
+ */
+export interface GitPushOptions {
+  /** Remote name (default: "origin"). */
+  remote?: string;
+  /** Branch name to push. */
+  branch: string;
+  /** Whether to force push. */
+  force?: boolean;
+  /** Whether to set upstream tracking. */
+  setUpstream?: boolean;
+  /** Path to the git repository (relative to /sandbox). */
+  repoPath?: string;
+}
+
+/**
+ * Git pull operation configuration.
+ */
+export interface GitPullOptions {
+  /** Remote name (default: "origin"). */
+  remote?: string;
+  /** Branch name to pull. */
+  branch?: string;
+  /** Whether to rebase instead of merge. */
+  rebase?: boolean;
+  /** Path to the git repository (relative to /sandbox). */
+  repoPath?: string;
+}
+
+/**
+ * Git checkout operation configuration.
+ */
+export interface GitCheckoutOptions {
+  /** Branch, tag, or commit SHA to checkout. */
+  target: string;
+  /** Whether to create a new branch. */
+  createBranch?: boolean;
+  /** Path to the git repository (relative to /sandbox). */
+  repoPath?: string;
+}
+
+/**
+ * Configuration for Git operations to perform before/after code execution.
+ * All operations are executed in the order specified.
+ */
+export interface GitOperations {
+  /** Clone a repository before execution. */
+  clone?: GitCloneOptions;
+  /** Checkout a branch/commit before execution. */
+  checkout?: GitCheckoutOptions;
+  /** Pull latest changes before execution. */
+  pull?: GitPullOptions;
+  /** Commit changes after execution. */
+  commit?: GitCommitOptions;
+  /** Push changes after execution. */
+  push?: GitPushOptions;
+}
+
+/**
+ * Security configuration for Git operations.
+ */
+export interface GitSecurityConfig {
+  /** List of allowed Git host domains (e.g., ["github.com", "gitlab.com"]).
+   * If specified, only these hosts are permitted.
+   */
+  allowedHosts?: string[];
+  /** List of blocked URL patterns (regex strings) for SSRF prevention.
+   * Matching URLs are always denied, even if whitelisted.
+   */
+  blockedPatterns?: string[];
+  /** Whether to allow private/internal IP addresses (default: false for SSRF protection). */
+  allowPrivateIPs?: boolean;
+  /** Environment variable names containing Git credentials (e.g., ["GIT_TOKEN", "GITHUB_TOKEN"]).
+   * These will be masked in output logs.
+   */
+  credentialEnvVars?: string[];
+}
+
 /**
  * A request to execute code inside isol8.
  */
@@ -85,6 +200,12 @@ export interface ExecutionRequest {
    * Passed through to audit logs when audit logging is enabled.
    */
   metadata?: Record<string, string>;
+
+  /**
+   * Git operations to perform before and after code execution.
+   * Operations are executed in order: clone → checkout → pull → (execute) → commit → push.
+   */
+  git?: GitOperations;
 }
 
 /**
