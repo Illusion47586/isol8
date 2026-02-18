@@ -1,6 +1,6 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "linden",
+  "theme": "almond",
   "name": "isol8",
   "description": "Secure code execution engine for AI agents. Run untrusted code in Docker containers with strict resource limits, network controls, and output sanitization.",
   "colors": {
