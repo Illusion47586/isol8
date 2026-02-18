@@ -65,7 +65,7 @@ Fast startup, native TypeScript support.
     - **Image**: `isol8:bun`
     - **Base**: Alpine 3.21
     - **Extension**: `.ts`, `.tsx`
-    - **Packages**: `bun add` (installs to `/sandbox/.bun-global`)
+    - **Packages**: `bun install -g` (installs to `/sandbox/.bun-global`)
   </Tab>
   <Tab title="Example">
     ```bash
@@ -117,7 +117,7 @@ For system automation and piping.
     - **Image**: `isol8:bash`
     - **Base**: Alpine 3.21
     - **Extension**: `.sh`
-    - **Packages**: `apk add` (requires sudo/root, but user is sandbox)
+    - **Packages**: `apk add` (runs as root during install step)
   </Tab>
   <Tab title="Example">
     ```bash
