@@ -116,6 +116,21 @@ All options are optional with sensible defaults.
   Keep the container running after execution completes instead of cleaning it up. Useful for debugging — inspect the container's filesystem and state post-execution. This is different from `mode: "persistent"`, which keeps a container alive between runs for stateful sessions.
 </ResponseField>
 
+<ResponseField name="poolStrategy" type="'fast' | 'secure'" default="fast">
+  Container pool strategy for ephemeral mode.
+
+  - **`fast`** (default): Uses a dual-pool system with clean and dirty pools. Instant acquire from clean pool, background cleanup every 5 seconds, immediate cleanup on acquire if clean pool is empty.
+  - **`secure`**: Single pool, cleanup happens synchronously in acquire(). Slower but ensures container is always clean before use.
+
+</ResponseField>
+
+<ResponseField name="poolSize" type="number | { clean: number; dirty: number }" default="{ clean: 1, dirty: 1 }">
+  Pool size configuration.
+
+  - For `poolStrategy: "secure"`: Number of warm containers to maintain.
+  - For `poolStrategy: "fast"`: Object with `clean` (ready containers) and `dirty` (being cleaned) counts.
+</ResponseField>
+
 <ResponseField name="debug" type="boolean" default="false">
   Enable debug logging for internal engine operations. When `true`, the engine prints detailed logs about container lifecycle, pool operations, and cleanup decisions with a `[DEBUG]` prefix. Does not affect the executed code's output.
 </ResponseField>

@@ -71,7 +71,7 @@ They are independent flags:
 | Container lifecycle | Fresh container per execution (from warm pool) | Same container reused across executions |
 | State preservation | None — `/sandbox` is wiped between runs | Full — files and env persist |
 | Runtime switching | Each execution can use a different runtime | Locked to one runtime per container |
-| Performance | ~55-95ms (warm pool) | ~200-400ms first run, then ~50ms |
+| Performance | ~125-145ms (warm pool) | ~250-300ms first run, then ~120ms |
 | Use case | Stateless one-off executions | Multi-step workflows, REPL-like sessions |
 
 Ephemeral mode (default) draws from a warm container pool. After execution, the container's `/sandbox` directory is wiped and the container is returned to the pool for reuse by the next execution. This is fast and secure — each execution starts with a clean slate.

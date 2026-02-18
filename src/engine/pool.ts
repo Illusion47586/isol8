@@ -107,13 +107,25 @@ export class ContainerPool {
         // Fire-and-forget replenishment
         this.replenish(image);
 
-        // Fire-and-forget dirty pool cleanup
-        this.cleanDirtyContainer(image);
-
         return entry.container;
       }
 
-      // No clean containers available, create new one
+      // No clean containers available
+      // Try to immediately clean one from dirty pool if available
+      if (pool.dirty.length > 0 && pool.clean.length < this.cleanPoolSize) {
+        await this.cleanDirtyImmediate(image);
+
+        // Check again after cleanup
+        const updatedPool = this.pools.get(image);
+        if (updatedPool && updatedPool.clean.length > 0) {
+          const entry = updatedPool.clean.shift()!;
+          this.pools.set(image, updatedPool);
+          this.replenish(image);
+          return entry.container;
+        }
+      }
+
+      // Create new container as fallback
       return this.createContainer(image);
     }
     // Secure mode: single pool, clean before returning
@@ -171,38 +183,8 @@ export class ContainerPool {
   }
 
   /**
-   * Clean a container from the dirty pool and move to clean pool.
-   * Runs in background.
-   */
-  private cleanDirtyContainer(image: string): void {
-    const pool = this.pools.get(image);
-    if (!pool || pool.dirty.length === 0) {
-      return;
-    }
-
-    // Take one from dirty pool
-    const entry = pool.dirty.shift()!;
-
-    // Clean in background (don't await)
-    this.cleanupContainer(entry.container)
-      .then(() => {
-        // If clean pool has space, add it back
-        if (pool.clean.length < this.cleanPoolSize) {
-          pool.clean.push(entry);
-        } else {
-          // Clean pool full, destroy
-          entry.container.remove({ force: true }).catch(() => {});
-        }
-      })
-      .catch(() => {
-        // Cleanup failed, destroy container
-        entry.container.remove({ force: true }).catch(() => {});
-      });
-  }
-
-  /**
    * Start background cleaning for fast mode.
-   * Continuously cleans dirty containers and moves them to clean pool.
+   * Runs every 5 seconds to clean dirty containers.
    */
   private startBackgroundCleaning(): void {
     this.cleaningInterval = setInterval(async () => {
@@ -221,7 +203,25 @@ export class ContainerPool {
           }
         }
       }
-    }, 10); // Run every 10ms for near-instant cleaning
+    }, 5000); // Run every 5 seconds
+  }
+
+  /**
+   * Clean a dirty container immediately and add to clean pool.
+   */
+  private async cleanDirtyImmediate(image: string): Promise<void> {
+    const pool = this.pools.get(image);
+    if (!pool || pool.dirty.length === 0 || pool.clean.length >= this.cleanPoolSize) {
+      return;
+    }
+
+    const entry = pool.dirty.shift()!;
+    try {
+      await this.cleanupContainer(entry.container);
+      pool.clean.push(entry);
+    } catch {
+      entry.container.remove({ force: true }).catch(() => {});
+    }
   }
 
   private async cleanupContainer(container: Docker.Container): Promise<void> {
@@ -286,6 +286,14 @@ export class ContainerPool {
     }
 
     await Promise.all(promises);
+  }
+
+  /**
+   * Stop the pool and clean up resources.
+   * Alias for drain() - destroys all containers and stops background cleaning.
+   */
+  async stop(): Promise<void> {
+    return this.drain();
   }
 
   /**

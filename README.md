@@ -195,7 +195,8 @@ isol8 supports two pool strategies for container reuse:
 ```typescript
 // Fast mode (default) - best performance
 // Uses dual-pool system: clean pool + dirty pool
-// Instant acquire from clean pool, background cleanup
+// Instant acquire from clean pool, immediate cleanup on acquire if needed
+// Background cleanup runs every 5 seconds
 const fastEngine = new DockerIsol8({
   network: "none",
   poolStrategy: "fast",
@@ -210,6 +211,13 @@ const secureEngine = new DockerIsol8({
   poolSize: 2,  // 2 warm containers
 });
 ```
+
+**Fast mode details:**
+- Maintains two pools: `clean` (ready to use) and `dirty` (need cleanup)
+- `acquire()` returns instantly from clean pool if available
+- If clean pool is empty but dirty has containers, tries immediate cleanup
+- Background cleanup runs every 5 seconds to process dirty containers
+- Best performance with minimal memory overhead
 
 ### Persistent Sessions
 
