@@ -50,6 +50,10 @@
           {
             "group": "Advanced",
             "pages": ["v2/remote", "v2/observability", "v2/architecture"]
+          },
+          {
+            "group": "Reference",
+            "pages": ["v2/configuration", "v2/cli", "v2/library"]
           }
         ]
       },

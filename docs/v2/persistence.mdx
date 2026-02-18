@@ -132,8 +132,13 @@ For simple text data, piping via stdin/stdout is often easiest.
 # Pipe JSON data
 echo '{"name": "Alice"}' | isol8 run script.py
 
-# Script reads from sys.stdin
-# import sys, json
-# data = json.load(sys.stdin)
-# print(f"Hello {data['name']}")
-```
+## Reference
+
+<CardGroup cols={2}>
+  <Card title="Library API" icon="code" href="/v2/library">
+    Full documentation for `putFile()`, `getFile()`, and `execute()`.
+  </Card>
+  <Card title="CLI Reference" icon="terminal" href="/v2/cli">
+    See flags for `isol8 run --persistent` and other commands.
+  </Card>
+</CardGroup>

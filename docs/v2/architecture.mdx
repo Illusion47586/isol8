@@ -90,7 +90,7 @@ For real-time output. Creates a **fresh container** for each run (bypasses pool)
 
 The secret to low latency. The `ContainerPool` keeps pre-started containers ready.
 
-- **Pool Size**: Configurable (default: 2 per image).
+- **Pool Size**: Configurable via `--pool-size` (default: `{ clean: 1, dirty: 1 }`).
 - **Lifecycle**:
     - `warm()`: Pre-creates containers.
     - `acquire()`: Returns a ready container.

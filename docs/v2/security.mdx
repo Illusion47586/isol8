@@ -21,6 +21,10 @@ By default, every execution is strictly isolated.
 ### Seccomp Profiles
 isol8 applies a "safety" seccomp profile by default. It blocks dangerous syscalls like `ptrace`, `mount`, and `kexec_load` while allowing standard application behavior.
 
+<Tip>
+  You can customize seccomp profiles in your configuration. See the [Security Configuration](/v2/configuration#security-security) for details.
+</Tip>
+
 ## Network Control
 
 Control exactly which domains your code can access.

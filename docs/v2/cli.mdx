@@ -1,0 +1,124 @@
+---
+title: "CLI Reference"
+description: "Complete command-line interface documentation for isol8."
+---
+
+The `isol8` CLI provides commands for running code, managing images, and starting the server.
+
+## Installation
+
+```bash
+npm install -g isol8
+# or
+bun install -g isol8
+```
+
+## Commands
+
+### `isol8 run`
+
+Execute code in an isolated container.
+
+```bash
+isol8 run [file] [options]
+```
+
+**Arguments:**
+
+- `[file]`: Path to a script file to execute. The runtime is auto-detected from the extension (`.py`, `.js`, `.ts`, `.sh`, `.mts`).
+
+**Options:**
+
+| Flag | Description | Default |
+|:-----|:------------|:--------|
+| `-e, --eval <code>` | Execute inline code string. | - |
+| `-r, --runtime <name>` | Force runtime: `python`, `node`, `bun`, `deno`, `bash`. | Auto-detect |
+| `--net <mode>` | Network mode: `none`, `host`, `filtered`. | `none` |
+| `--allow <regex>` | Whitelist regex for `filtered` mode (repeatable). | - |
+| `--deny <regex>` | Blacklist regex for `filtered` mode (repeatable). | - |
+| `--persistent` | Use a persistent container (state preserved between runs). | `false` |
+| `--timeout <ms>` | Execution timeout in milliseconds. | `30000` |
+| `--memory <limit>` | Memory limit (e.g., `512m`, `1g`). | `512m` |
+| `--cpu <limit>` | CPU limit as a fraction (e.g., `0.5`, `2.0`). | `1.0` |
+| `--pids-limit <n>` | Maximum number of processes. | `64` |
+| `--writable` | Disable read-only root filesystem. | `false` |
+| `--max-output <bytes>` | Maximum output size in bytes. | `1MB` |
+| `--secret <KEY=VALUE>` | Inject secret env var (value masked in output). | - |
+| `--install <package>` | Install package before execution (repeatable). | - |
+| `--sandbox-size <size>` | Size of writable `/sandbox` tmpfs (e.g., `128m`). | `512m` |
+| `--tmp-size <size>` | Size of read-only `/tmp` tmpfs (e.g., `256m`). | `256m` |
+| `--stdin <data>` | Pipe data to stdin. | - |
+| `--out <file>` | Write stdout to a file. | - |
+| `--no-stream` | Disable real-time output streaming. | `false` |
+| `--persist` | Keep container running after execution (for debugging). | `false` |
+| `--debug` | Enable verbose internal logging. | `false` |
+| `--host <url>` | Execute on a remote isol8 server. | - |
+| `--key <key>` | API key for remote server authentication. | - |
+| `--image <name>` | Override the Docker image used. | - |
+| `--log-network` | Log all network requests (requires `--net filtered`). | `false` |
+| `--pool-strategy <mode>` | Pool strategy: `fast` (default) or `secure`. | `fast` |
+| `--pool-size <size>` | Pool size (number or `clean,dirty` for fast mode). | `1,1` |
+
+### `isol8 setup`
+
+Build Docker images for all runtimes.
+
+```bash
+isol8 setup [options]
+```
+
+**Options:**
+
+| Flag | Description |
+|:-----|:------------|
+| `--python <packages>` | Bake Python packages into custom image (comma-separated). |
+| `--node <packages>` | Bake Node.js packages into custom image. |
+| `--bun <packages>` | Bake Bun packages into custom image. |
+| `--deno <packages>` | Bake Deno packages into custom image. |
+| `--bash <packages>` | Bake Bash packages into custom image. |
+| `--force` | Force rebuild even if images are up to date. |
+
+### `isol8 serve`
+
+Start the isol8 remote execution server.
+
+```bash
+isol8 serve [options]
+```
+
+**Options:**
+
+| Flag | Description | Default |
+|:-----|:------------|:--------|
+| `-p, --port <port>` | Port to listen on. | `3000` |
+| `-k, --key <key>` | API key for authentication (required). | - |
+| `--update` | Force re-download the standalone server binary. | `false` |
+| `--debug` | Enable verbose server logging. | `false` |
+
+### `isol8 config`
+
+Show the resolved configuration.
+
+```bash
+isol8 config [options]
+```
+
+**Options:**
+
+| Flag | Description |
+|:-----|:------------|
+| `--json` | Output configuration as raw JSON. |
+
+### `isol8 cleanup`
+
+Remove orphaned isol8 containers.
+
+```bash
+isol8 cleanup [options]
+```
+
+**Options:**
+
+| Flag | Description |
+|:-----|:------------|
+| `--force` | Skip interactive confirmation prompt. |
