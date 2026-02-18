@@ -15,6 +15,25 @@
 WL="${ISOL8_WHITELIST_FILE:-}"
 BL="${ISOL8_BLACKLIST_FILE:-}"
 
+log_network() {
+  local method="$1"
+  local host="$2"
+  local path="$3"
+  local action="$4"
+  local duration_ms="$5"
+
+  if [ -d "/tmp/isol8-proxy" ]; then
+    # Handle path: output proper JSON null if path is "null", otherwise quote it
+    if [ "$path" = "null" ] || [ -z "$path" ]; then
+      printf '{"timestamp":"%s","method":"%s","host":"%s","path":null,"action":"%s","durationMs":%d}\n' \
+        "$(date -Iseconds)" "$method" "$host" "$action" "$duration_ms" >> /tmp/isol8-proxy/network.jsonl
+    else
+      printf '{"timestamp":"%s","method":"%s","host":"%s","path":"%s","action":"%s","durationMs":%d}\n' \
+        "$(date -Iseconds)" "$method" "$host" "$path" "$action" "$duration_ms" >> /tmp/isol8-proxy/network.jsonl
+    fi
+  fi
+}
+
 is_allowed() {
   local host="$1"
 
@@ -75,10 +94,15 @@ if [ "$method" = "CONNECT" ]; then
     if [ -d "/tmp/isol8-proxy" ]; then
       printf '{"type":"network_blocked","timestamp":"%s","details":{"method":"CONNECT","host":"%s","reason":"filter_mismatch"}}\n' "$(date -Iseconds)" "$host" >> /tmp/isol8-proxy/security-events.jsonl
     fi
+    # Log network event
+    log_network "CONNECT" "$host" "null" "BLOCK" 0
     printf "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s" \
       "${#msg}" "$msg"
     exit 0
   fi
+
+  # Log allowed CONNECT (duration will be 0 since we can't measure after exec)
+  log_network "CONNECT" "$host" "null" "ALLOW" 0
 
   # Send 200 then replace this process with nc for bidirectional relay.
   # nc inherits the client socket on stdin/stdout from the nc -lk -e parent.
@@ -104,9 +128,16 @@ if ! is_allowed "$host"; then
   if [ -d "/tmp/isol8-proxy" ]; then
     printf '{"type":"network_blocked","timestamp":"%s","details":{"method":"%s","host":"%s","reason":"filter_mismatch"}}\n' "$(date -Iseconds)" "$method" "$host" >> /tmp/isol8-proxy/security-events.jsonl
   fi
+  # Log network event
+  log_network "$method" "$host" "$path" "BLOCK" 0
   printf "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s" \
     "${#msg}" "$msg"
   exit 0
+fi
+
+# Record start time for duration measurement
+if [ -d "/tmp/isol8-proxy" ]; then
+  start_time=$(date +%s%3N)
 fi
 
 # Open TCP connection via bash /dev/tcp
@@ -137,6 +168,13 @@ fi
 
 # Relay response back to client
 cat <&3
+
+# Calculate duration and log the network event
+if [ -n "$start_time" ] && [ -d "/tmp/isol8-proxy" ]; then
+  end_time=$(date +%s%3N)
+  duration=$((end_time - start_time))
+  log_network "$method" "$host" "$path" "ALLOW" "$duration"
+fi
 
 exec 3>&-
 exit 0

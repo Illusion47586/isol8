@@ -369,6 +369,7 @@ export class DockerIsol8 implements Isol8Engine {
   private readonly tmpSize: string;
   private readonly security: SecurityConfig;
   private readonly persist: boolean;
+  private readonly logNetwork: boolean;
   private readonly auditLogger?: AuditLogger;
 
   private container: Docker.Container | null = null;
@@ -397,6 +398,7 @@ export class DockerIsol8 implements Isol8Engine {
     this.tmpSize = options.tmpSize ?? "256m";
     this.persist = options.persist ?? false;
     this.security = options.security ?? { seccomp: "strict" };
+    this.logNetwork = options.logNetwork ?? false;
 
     // Initialize audit logger if audit config is provided
     if (options.audit) {
@@ -487,6 +489,12 @@ export class DockerIsol8 implements Isol8Engine {
         }
       }
 
+      // Collect network logs if enabled
+      let networkLogs: import("../types").NetworkLogEntry[] | undefined;
+      if (this.logNetwork && result.networkLogs) {
+        networkLogs = result.networkLogs;
+      }
+
       const audit = {
         executionId: result.executionId,
         userId: req.metadata?.userId || "",
@@ -498,6 +506,7 @@ export class DockerIsol8 implements Isol8Engine {
         durationMs: result.durationMs,
         resourceUsage: result.resourceUsage,
         securityEvents,
+        networkLogs,
         metadata: req.metadata,
       };
 
@@ -555,6 +564,72 @@ export class DockerIsol8 implements Isol8Engine {
     }
 
     return events;
+  }
+
+  /**
+   * Collect network logs from the container (requests made through the proxy).
+   */
+  private async collectNetworkLogs(
+    container: Docker.Container
+  ): Promise<import("../types").NetworkLogEntry[]> {
+    const logs: import("../types").NetworkLogEntry[] = [];
+
+    try {
+      const exec = await container.exec({
+        Cmd: ["cat", "/tmp/isol8-proxy/network.jsonl"],
+        AttachStdout: true,
+        AttachStderr: false,
+        User: "root",
+      });
+
+      const stream = await exec.start({ Tty: false });
+      const chunks: Buffer[] = [];
+
+      for await (const chunk of stream as AsyncIterable<Buffer>) {
+        chunks.push(chunk);
+      }
+
+      const output = Buffer.concat(chunks).toString("utf-8").trim();
+      logger.debug(
+        `[NetworkLogs] Raw output length: ${output.length}, first 100 chars: ${output.substring(0, 100).replace(/\\n/g, "\\n")}`
+      );
+      // Filter to only lines that contain valid JSON
+      // Find the JSON object by looking for the first { and last }
+      const jsonLines = output.split("\n").filter((line) => line.includes("timestamp"));
+      logger.debug(
+        `[NetworkLogs] Found ${jsonLines.length} JSON lines out of ${output.split("\n").length} total lines`
+      );
+      for (const line of jsonLines) {
+        // Extract JSON by finding the first { and last }
+        const startIdx = line.indexOf("{");
+        const endIdx = line.lastIndexOf("}");
+        if (startIdx === -1 || endIdx === -1) {
+          continue;
+        }
+        const jsonStr = line.substring(startIdx, endIdx + 1);
+        try {
+          const entry = JSON.parse(jsonStr);
+          logs.push({
+            timestamp: entry.timestamp || new Date().toISOString(),
+            method: entry.method || "UNKNOWN",
+            host: entry.host || "",
+            path: entry.path,
+            action: entry.action || "ALLOW",
+            durationMs: entry.durationMs || 0,
+          });
+          logger.debug(`[NetworkLogs] Successfully parsed line: ${JSON.stringify(entry)}`);
+        } catch (e) {
+          logger.debug(
+            `[NetworkLogs] Failed to parse line: ${line.substring(0, 50)}..., error: ${e}`
+          );
+        }
+      }
+      logger.debug(`[NetworkLogs] Total parsed logs: ${logs.length}`);
+    } catch {
+      // No network logs file or container doesn't exist anymore
+    }
+
+    return logs;
   }
 
   /**
@@ -820,6 +895,19 @@ export class DockerIsol8 implements Isol8Engine {
         }
       }
 
+      // Collect network logs if enabled and network mode is filtered
+      let networkLogs: ExecutionResult["networkLogs"];
+      if (this.logNetwork && this.network === "filtered") {
+        try {
+          networkLogs = await this.collectNetworkLogs(container);
+          if (networkLogs.length === 0) {
+            networkLogs = undefined;
+          }
+        } catch (err) {
+          logger.debug("Failed to collect network logs:", err);
+        }
+      }
+
       const result: ExecutionResult = {
         stdout: this.postProcessOutput(stdout, truncated),
         stderr: this.postProcessOutput(stderr, false),
@@ -831,6 +919,7 @@ export class DockerIsol8 implements Isol8Engine {
         timestamp: new Date().toISOString(),
         containerId: container.id,
         ...(resourceUsage ? { resourceUsage } : {}),
+        ...(networkLogs ? { networkLogs } : {}),
         ...(req.outputPaths ? { files: await this.retrieveFiles(container, req.outputPaths) } : {}),
       };
 
@@ -948,6 +1037,19 @@ export class DockerIsol8 implements Isol8Engine {
       }
     }
 
+    // Collect network logs if enabled and network mode is filtered
+    let networkLogs: ExecutionResult["networkLogs"];
+    if (this.logNetwork && this.network === "filtered") {
+      try {
+        networkLogs = await this.collectNetworkLogs(this.container!);
+        if (networkLogs.length === 0) {
+          networkLogs = undefined;
+        }
+      } catch (err) {
+        logger.debug("Failed to collect network logs:", err);
+      }
+    }
+
     const result: ExecutionResult = {
       stdout: this.postProcessOutput(stdout, truncated),
       stderr: this.postProcessOutput(stderr, false),
@@ -959,6 +1061,7 @@ export class DockerIsol8 implements Isol8Engine {
       timestamp: new Date().toISOString(),
       containerId: this.container?.id,
       ...(resourceUsage ? { resourceUsage } : {}),
+      ...(networkLogs ? { networkLogs } : {}),
       ...(req.outputPaths
         ? { files: await this.retrieveFiles(this.container!, req.outputPaths) }
         : {}),

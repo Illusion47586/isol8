@@ -114,6 +114,10 @@ If the extension doesn't match any registered adapter, the CLI exits with an err
   Blacklist regex pattern for `filtered` network mode. Hostnames matching the pattern are blocked by the proxy. Repeatable — use `--deny pattern1 --deny pattern2` for multiple patterns. Falls back to `config.network.blacklist`.
 </ResponseField>
 
+<ResponseField name="--log-network" type="boolean" default="false">
+  Enable network request logging. When enabled with `--net filtered`, all HTTP/HTTPS requests made through the proxy are logged with timestamp, method, host, path, action (ALLOW/BLOCK), and duration. Logs are printed to stderr after execution completes. Requires `--net filtered` — silently no-ops for other network modes.
+</ResponseField>
+
 <ResponseField name="--image" type="string">
   Override the Docker image used for execution. Bypasses the runtime adapter's default image and the `resolveImage()` custom image check entirely.
 </ResponseField>
@@ -254,7 +258,12 @@ isol8 run script.py --net filtered --deny ".*\.ru$"
 
 # Full network access (use with caution)
 isol8 run script.py --net host
+
+# Log all network requests for debugging
+isol8 run script.py --net filtered --log-network
 ```
+
+The `--log-network` flag outputs JSON log entries to stderr:
 
 ### Persistent Sessions
 
