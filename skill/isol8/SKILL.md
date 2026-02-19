@@ -202,4 +202,4 @@ Full security model: [Security](https://bingo-ccc81346.mintlify.app/security)
 - **"No space left on device"**: Increase `--sandbox-size` (default 512MB) or `--tmp-size` (default 256MB).
 - **"Operation not permitted" with numpy/packages**: Packages need `--sandbox-size` large enough for installation (512MB+ recommended).
 - **`.ts` files running with Bun instead of Deno**: `.ts` defaults to Bun. Use `--runtime deno` or `.mts` extension.
-- **Serve command failing**: Ensure the server binary can be downloaded from GitHub Releases. Use `isol8 serve --update` to force a fresh download. Use `isol8 serve --debug` to see detailed server logs.
+- **Serve command failing**: Ensure the server binary can be downloaded from GitHub Releases. Use `isol8 serve --update` to force a fresh download. Use `isol8 serve --debug` to see detailed server logs. For listen port selection, precedence is `--port` > `ISOL8_PORT` > `PORT` > `3000`; if the port is busy, `serve` can prompt for another port or auto-pick an available one.

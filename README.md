@@ -169,10 +169,12 @@ isol8 serve --update  # Force re-download the server binary
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `-p, --port <port>` | Port to listen on | `3000` |
+| `-p, --port <port>` | Port to listen on | `--port` > `$ISOL8_PORT` > `$PORT` > `3000` |
 | `-k, --key <key>` | API key for Bearer token auth | `$ISOL8_API_KEY` |
 | `--update` | Force re-download the server binary | `false` |
 | `--debug` | Enable debug logging for server operations | `false` |
+
+If the selected port is already in use, `isol8 serve` now prompts to enter another port or auto-select an available one. In non-interactive environments, it auto-falls back to a free port.
 
 ### `isol8 config`
 
