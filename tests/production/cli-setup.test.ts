@@ -28,6 +28,15 @@ describe("CLI Setup", () => {
 });
 
 describe("CLI Setup - Smart Builds", () => {
+  test("setup prints completion marker to stdout when images are up to date", async () => {
+    // First run to ensure images exist
+    await runIsol8("setup", { timeout: 300_000 });
+
+    // Second run should still emit a stable completion marker to stdout
+    const { stdout } = await runIsol8("setup", { timeout: 60_000 });
+    expect(stdout).toContain("[DONE] Setup complete!");
+  }, 300_000);
+
   test("setup skips builds when images are up to date", async () => {
     // First run to ensure images exist
     await runIsol8("setup", { timeout: 300_000 });
