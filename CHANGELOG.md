@@ -1,3 +1,10 @@
+## [0.11.1](https://github.com/Illusion47586/isol8/compare/v0.11.0...v0.11.1) (2026-02-19)
+
+
+### Bug Fixes
+
+* add benchmarking guide for local and GitHub runner workflows ([#59](https://github.com/Illusion47586/isol8/issues/59)) ([49cd576](https://github.com/Illusion47586/isol8/commit/49cd5762cdcd5ff4360745c365f92aa03432b76c))
+
 # [0.11.0](https://github.com/Illusion47586/isol8/compare/v0.10.3...v0.11.0) (2026-02-18)
 
 
