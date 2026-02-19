@@ -1,0 +1,57 @@
+---
+title: "Remote cleanup"
+description: "Trigger authenticated cleanup of sessions, containers, and optional images."
+api: "POST /cleanup"
+icon: "broom"
+---
+
+Runs server-side cleanup immediately.
+
+By default, this endpoint:
+- stops all tracked persistent sessions
+- removes all `isol8:*` containers
+- removes all `isol8:*` images
+
+<ParamField body="images" type="boolean">
+  Include Docker image cleanup. Defaults to `true`. Set `false` to clean sessions + containers only.
+</ParamField>
+
+<ResponseField name="ok" type="boolean">
+  `true` when cleanup completed.
+</ResponseField>
+
+<ResponseField name="sessions" type="object">
+  Result summary for in-memory persistent sessions (`removed`, `failed`, `errors`).
+</ResponseField>
+
+<ResponseField name="containers" type="object">
+  Result summary for container cleanup (`removed`, `failed`, `errors`).
+</ResponseField>
+
+<ResponseField name="images" type="object">
+  Present when image cleanup runs; includes (`removed`, `failed`, `errors`).
+</ResponseField>
+
+<RequestExample>
+```bash
+curl -X POST http://localhost:3000/cleanup \
+  -H "Authorization: Bearer $ISOL8_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "images": true }'
+```
+</RequestExample>
+
+<ResponseExample>
+```json
+{
+  "ok": true,
+  "sessions": { "removed": 2, "failed": 0, "errors": [] },
+  "containers": { "removed": 4, "failed": 0, "errors": [] },
+  "images": { "removed": 5, "failed": 0, "errors": [] }
+}
+```
+</ResponseExample>
+
+<Warning>
+  This endpoint is destructive. It removes all tracked sessions and all `isol8:*` containers (and images when enabled).
+</Warning>

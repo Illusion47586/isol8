@@ -217,10 +217,45 @@ let port = await resolveAvailablePort(requestedPort);
 // dockerode's transitive dependency chain which crashes on Linux.
 const { createServer } = await import("./index");
 const server = await createServer({ port, apiKey, debug });
+let bunServer: ReturnType<typeof Bun.serve> | null = null;
+let shuttingDown = false;
+
+const gracefulShutdown = async () => {
+  if (shuttingDown) {
+    return;
+  }
+  shuttingDown = true;
+  console.log("[INFO] Shutting down isol8 server...");
+  try {
+    if (bunServer) {
+      bunServer.stop();
+    }
+    await server.shutdown();
+    console.log("[INFO] Server cleanup complete");
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[ERROR] Server shutdown cleanup failed: ${message}`);
+  } finally {
+    process.exit(0);
+  }
+};
+
+process.on("SIGINT", () => {
+  gracefulShutdown().catch((err) => {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[ERROR] Shutdown handler failed: ${message}`);
+  });
+});
+process.on("SIGTERM", () => {
+  gracefulShutdown().catch((err) => {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[ERROR] Shutdown handler failed: ${message}`);
+  });
+});
 
 while (true) {
   try {
-    Bun.serve({
+    bunServer = Bun.serve({
       fetch: server.app.fetch,
       port,
     });

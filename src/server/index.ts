@@ -36,6 +36,12 @@ interface SessionState {
 
 const sessions = new Map<string, SessionState>();
 
+interface CleanupResult {
+  sessions: { removed: number; failed: number; errors: string[] };
+  containers: { removed: number; failed: number; errors: string[] };
+  images?: { removed: number; failed: number; errors: string[] };
+}
+
 /**
  * Creates and configures the isol8 HTTP server.
  *
@@ -71,6 +77,68 @@ export async function createServer(options: ServerOptions) {
 
   const app = new Hono();
   const globalSemaphore = new Semaphore(config.maxConcurrent);
+  let pruneInterval: ReturnType<typeof setInterval> | undefined;
+  let cleanupInFlight: Promise<CleanupResult> | null = null;
+
+  const cleanupSessions = async (): Promise<{
+    removed: number;
+    failed: number;
+    errors: string[];
+  }> => {
+    let removed = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    for (const [id, session] of sessions) {
+      try {
+        await session.engine.stop();
+        removed++;
+      } catch (err) {
+        failed++;
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        errors.push(`${id}: ${errorMsg}`);
+      } finally {
+        sessions.delete(id);
+      }
+    }
+
+    return { removed, failed, errors };
+  };
+
+  const runCleanup = async (includeImages: boolean): Promise<CleanupResult> => {
+    if (cleanupInFlight) {
+      return cleanupInFlight;
+    }
+
+    cleanupInFlight = (async () => {
+      logger.info(
+        `[Server] Starting cleanup (sessions=true containers=true images=${includeImages})`
+      );
+
+      const sessionsResult = await cleanupSessions();
+      const containersResult = await DockerIsol8.cleanup();
+      const result: CleanupResult = {
+        sessions: sessionsResult,
+        containers: containersResult,
+      };
+
+      if (includeImages) {
+        result.images = await DockerIsol8.cleanupImages();
+      }
+
+      logger.info(
+        `[Server] Cleanup complete: sessions=${result.sessions.removed}/${result.sessions.failed} containers=${result.containers.removed}/${result.containers.failed}${result.images ? ` images=${result.images.removed}/${result.images.failed}` : ""}`
+      );
+
+      return result;
+    })();
+
+    try {
+      return await cleanupInFlight;
+    } finally {
+      cleanupInFlight = null;
+    }
+  };
 
   // Auth middleware
   app.use("*", authMiddleware(options.apiKey));
@@ -303,9 +371,25 @@ export async function createServer(options: ServerOptions) {
     return c.json({ ok: true });
   });
 
+  // ─── Remote Cleanup ───
+  app.post("/cleanup", async (c) => {
+    const body = await c.req.json<{ images?: boolean }>().catch(() => ({}) as { images?: boolean });
+    const includeImages = body.images ?? true;
+    logger.debug(`[Server] POST /cleanup images=${includeImages}`);
+
+    try {
+      const result = await runCleanup(includeImages);
+      return c.json({ ok: true, ...result });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error(`[Server] Cleanup failed: ${message}`);
+      return c.json({ error: message }, 500);
+    }
+  });
+
   // Periodic cleanup of stale sessions
   if (config.cleanup.autoPrune) {
-    setInterval(async () => {
+    pruneInterval = setInterval(async () => {
       const maxAge = config.cleanup.maxContainerAgeMs;
       const now = Date.now();
 
@@ -327,5 +411,13 @@ export async function createServer(options: ServerOptions) {
     app,
     fetch: app.fetch,
     port: options.port,
+    cleanup: async (includeImages = true) => runCleanup(includeImages),
+    shutdown: async (includeImages = true) => {
+      if (pruneInterval) {
+        clearInterval(pruneInterval);
+        pruneInterval = undefined;
+      }
+      await runCleanup(includeImages);
+    },
   };
 }

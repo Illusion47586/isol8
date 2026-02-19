@@ -22,8 +22,9 @@ describe("Integration: Server Auto-Pruner", () => {
     });
   });
 
-  afterAll(() => {
+  afterAll(async () => {
     serverInstance.stop();
+    await server.shutdown(false);
   });
 
   test("active session should not be pruned during long execution", async () => {

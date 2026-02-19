@@ -176,6 +176,8 @@ isol8 serve --update  # Force re-download the server binary
 
 If the selected port is already in use, `isol8 serve` now prompts to enter another port or auto-select an available one. In non-interactive environments, it auto-falls back to a free port.
 
+On graceful shutdown (`SIGINT`/`SIGTERM`), the server now cleans up tracked sessions, isol8 containers, and isol8 images before exiting.
+
 ### `isol8 config`
 
 Display the resolved configuration (merged defaults + config file). Shows the source file, defaults, network rules, cleanup policy, and dependencies.
@@ -470,6 +472,7 @@ When running `isol8 serve`, these endpoints are available:
 | `POST` | `/file` | Upload file (base64) |
 | `GET` | `/file?sessionId=&path=` | Download file (base64) |
 | `DELETE` | `/session/:id` | Destroy persistent session |
+| `POST` | `/cleanup` | Run server-side cleanup for sessions/containers (and images by default) |
 
 All endpoints (except `/health`) require `Authorization: Bearer <key>`.
 

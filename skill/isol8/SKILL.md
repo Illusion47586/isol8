@@ -169,6 +169,7 @@ Full endpoint reference: [Server Endpoints](https://bingo-ccc81346.mintlify.app/
 | `POST` | `/file` | Yes | Upload file (base64) |
 | `GET` | `/file` | Yes | Download file (base64) |
 | `DELETE` | `/session/:id` | Yes | Destroy persistent session |
+| `POST` | `/cleanup` | Yes | Trigger remote cleanup for sessions/containers (images optional) |
 
 ## Configuration
 

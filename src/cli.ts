@@ -364,9 +364,42 @@ program
       logger.debug("[Serve] Running under Bun, starting server in-process");
       const { createServer } = await import("./server/index");
       const server = await createServer({ port, apiKey, debug: opts.debug ?? false });
+      let shuttingDown = false;
+      const bunServer = Bun.serve({ fetch: server.app.fetch, port });
+
+      const shutdown = async () => {
+        if (shuttingDown) {
+          return;
+        }
+        shuttingDown = true;
+        logger.info("[Serve] Shutting down server and cleaning up resources...");
+        bunServer.stop();
+        try {
+          await server.shutdown();
+          logger.info("[Serve] Cleanup complete");
+          process.exit(0);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          logger.error(`[Serve] Cleanup failed: ${message}`);
+          process.exit(1);
+        }
+      };
+
+      process.on("SIGINT", () => {
+        shutdown().catch((err) => {
+          const message = err instanceof Error ? err.message : String(err);
+          logger.error(`[Serve] Shutdown handler failed: ${message}`);
+        });
+      });
+      process.on("SIGTERM", () => {
+        shutdown().catch((err) => {
+          const message = err instanceof Error ? err.message : String(err);
+          logger.error(`[Serve] Shutdown handler failed: ${message}`);
+        });
+      });
+
       console.log(`[INFO] isol8 server v${VERSION} listening on http://localhost:${port}`);
       console.log("       Auth: Bearer token required");
-      Bun.serve({ fetch: server.app.fetch, port });
       return;
     }
 
