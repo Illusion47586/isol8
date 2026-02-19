@@ -622,7 +622,7 @@ describe("compiled server binary", () => {
 
   test("missing --key and no ISOL8_API_KEY exits with error", async () => {
     try {
-      await execAsync(`${SERVER_BINARY} --port 0`, {
+      await execAsync(`${SERVER_BINARY} --port 3000`, {
         cwd: ROOT,
         timeout: 10_000,
         env: { ...process.env, ISOL8_API_KEY: "" },
@@ -729,6 +729,79 @@ describe("compiled server binary", () => {
       for (let i = 0; i < 30; i++) {
         try {
           const res = await fetch(`http://localhost:${port}/health`);
+          if (res.ok) {
+            started = true;
+            break;
+          }
+        } catch {
+          // not ready
+        }
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      expect(started).toBe(true);
+    } finally {
+      child.kill("SIGTERM");
+      await new Promise<void>((resolve) => {
+        child.on("exit", () => resolve());
+        setTimeout(() => {
+          child.kill("SIGKILL");
+          resolve();
+        }, 3000);
+      });
+    }
+  }, 15_000);
+
+  test("ISOL8_PORT env var sets port when --port not specified", async () => {
+    const port = 30_000 + Math.floor(Math.random() * 10_000);
+    const child = spawn(SERVER_BINARY, ["--key", "env-port-key"], {
+      stdio: "pipe",
+      env: { ...process.env, ISOL8_PORT: String(port) },
+    });
+
+    try {
+      let started = false;
+      for (let i = 0; i < 30; i++) {
+        try {
+          const res = await fetch(`http://localhost:${port}/health`);
+          if (res.ok) {
+            started = true;
+            break;
+          }
+        } catch {
+          // not ready
+        }
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      expect(started).toBe(true);
+    } finally {
+      child.kill("SIGTERM");
+      await new Promise<void>((resolve) => {
+        child.on("exit", () => resolve());
+        setTimeout(() => {
+          child.kill("SIGKILL");
+          resolve();
+        }, 3000);
+      });
+    }
+  }, 15_000);
+
+  test("ISOL8_PORT takes precedence over PORT", async () => {
+    const isol8Port = 30_000 + Math.floor(Math.random() * 10_000);
+    const fallbackPort = 30_000 + Math.floor(Math.random() * 10_000);
+    const child = spawn(SERVER_BINARY, ["--key", "env-port-key"], {
+      stdio: "pipe",
+      env: {
+        ...process.env,
+        ISOL8_PORT: String(isol8Port),
+        PORT: String(fallbackPort),
+      },
+    });
+
+    try {
+      let started = false;
+      for (let i = 0; i < 30; i++) {
+        try {
+          const res = await fetch(`http://localhost:${isol8Port}/health`);
           if (res.ok) {
             started = true;
             break;

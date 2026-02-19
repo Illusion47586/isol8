@@ -340,7 +340,7 @@ program
 program
   .command("serve")
   .description("Start the isol8 remote server")
-  .option("-p, --port <port>", "Port to listen on", "3000")
+  .option("-p, --port <port>", "Port to listen on")
   .option("-k, --key <key>", "API key for authentication")
   .option("--update", "Force re-download the server binary")
   .option("--debug", "Enable debug logging")
@@ -351,8 +351,10 @@ program
       process.exit(1);
     }
 
-    const port = Number.parseInt(opts.port, 10);
-    logger.debug(`[Serve] Port: ${port}`);
+    const requestedPort = resolveServePort(opts.port);
+    const port = await resolveAvailableServePort(requestedPort);
+    logger.debug(`[Serve] Requested port: ${requestedPort}`);
+    logger.debug(`[Serve] Using port: ${port}`);
     logger.debug(`[Serve] API key: ${"*".repeat(apiKey.length)}`);
 
     // When running under Bun (e.g. `bun run dev -- serve`), start the server
@@ -492,6 +494,13 @@ async function downloadServerBinary(binaryPath: string): Promise<void> {
 
 /** Prompt the user with a Y/n question. Returns true if they answer yes. */
 async function promptYesNo(question: string): Promise<boolean> {
+  const answer = await promptText(question);
+  const normalized = answer.trim().toLowerCase();
+  return normalized === "" || normalized === "y" || normalized === "yes";
+}
+
+/** Prompt for a single line of input. */
+async function promptText(question: string): Promise<string> {
   const readline = await import("node:readline");
   const rl = readline.createInterface({
     input: process.stdin,
@@ -501,8 +510,127 @@ async function promptYesNo(question: string): Promise<boolean> {
     rl.question(question, resolve);
   });
   rl.close();
-  const normalized = answer.trim().toLowerCase();
-  return normalized === "" || normalized === "y" || normalized === "yes";
+  return answer;
+}
+
+/** Parse and validate a port from any source. */
+function parsePort(raw: string, source: string): number {
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65_535) {
+    console.error(`[ERR] Invalid port from ${source}: ${raw}. Expected 1-65535.`);
+    process.exit(1);
+  }
+  return parsed;
+}
+
+/** Resolve serve port with precedence: flag > ISOL8_PORT > PORT > 3000. */
+function resolveServePort(portFlag?: string): number {
+  if (typeof portFlag === "string") {
+    return parsePort(portFlag, "--port");
+  }
+  if (process.env.ISOL8_PORT) {
+    return parsePort(process.env.ISOL8_PORT, "ISOL8_PORT");
+  }
+  if (process.env.PORT) {
+    return parsePort(process.env.PORT, "PORT");
+  }
+  return 3000;
+}
+
+/** Check whether a TCP port can be bound. */
+async function isPortAvailable(port: number): Promise<boolean> {
+  const { createServer } = await import("node:net");
+  return await new Promise<boolean>((resolve) => {
+    const server = createServer();
+    server.once("error", () => {
+      resolve(false);
+    });
+    server.once("listening", () => {
+      server.close(() => resolve(true));
+    });
+    server.listen(port);
+  });
+}
+
+/** Ask the OS for an available ephemeral port. */
+async function findAvailablePort(): Promise<number> {
+  const { createServer } = await import("node:net");
+  return await new Promise<number>((resolve, reject) => {
+    const server = createServer();
+    server.once("error", reject);
+    server.once("listening", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close(() => reject(new Error("Failed to determine available port")));
+        return;
+      }
+      server.close((closeErr) => {
+        if (closeErr) {
+          reject(closeErr);
+          return;
+        }
+        resolve(address.port);
+      });
+    });
+    server.listen(0);
+  });
+}
+
+/** Resolve port conflicts with interactive prompt (TTY) or auto-fallback. */
+async function resolveAvailableServePort(port: number): Promise<number> {
+  if (await isPortAvailable(port)) {
+    return port;
+  }
+
+  if (!(process.stdin.isTTY && process.stdout.isTTY)) {
+    const autoPort = await findAvailablePort();
+    console.warn(`[WARN] Port ${port} is in use. Falling back to available port ${autoPort}.`);
+    return autoPort;
+  }
+
+  let candidate = port;
+  while (true) {
+    console.warn(`[WARN] Port ${candidate} is already in use.`);
+    const choice = (
+      await promptText(
+        "Choose: [1] Enter another port  [2] Find an available port  [3] Exit (default: 2): "
+      )
+    )
+      .trim()
+      .toLowerCase();
+
+    if (choice === "" || choice === "2") {
+      const autoPort = await findAvailablePort();
+      console.log(`[INFO] Using available port ${autoPort}`);
+      return autoPort;
+    }
+
+    if (choice === "1") {
+      const rawPort = (await promptText("Enter port (1-65535): ")).trim();
+      if (!rawPort) {
+        continue;
+      }
+
+      const parsed = Number(rawPort);
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65_535) {
+        console.error(`[ERR] Invalid port: ${rawPort}. Expected 1-65535.`);
+        continue;
+      }
+
+      candidate = parsed;
+      if (await isPortAvailable(candidate)) {
+        return candidate;
+      }
+      continue;
+    }
+
+    if (choice === "3") {
+      console.error("[ERR] Server startup cancelled.");
+      process.exit(1);
+    }
+
+    console.error("[ERR] Invalid selection. Enter 1, 2, or 3.");
+  }
 }
 
 /**

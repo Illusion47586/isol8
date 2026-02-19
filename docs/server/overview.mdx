@@ -12,6 +12,8 @@ The isol8 server exposes remote code execution over HTTP for centralized infrast
 isol8 serve --port 3000 --key "$ISOL8_API_KEY"
 ```
 
+Port resolution order is `--port` > `ISOL8_PORT` > `PORT` > `3000`. If the selected port is already in use, startup prompts for a different port or can auto-select one.
+
 ## What the server provides
 
 - authenticated execution APIs (`/execute`, `/execute/stream`)
