@@ -62,6 +62,7 @@ flowchart TD
 `ContainerPool` maintains pre-started containers to reduce startup overhead:
 
 - **`poolStrategy: "fast"`** (default): dual-pool behavior (`clean` + `dirty`), background cleanup.
+- In `fast` mode, clean-pool acquires trigger asynchronous replenishment to keep warm capacity available.
 - **`poolStrategy: "secure"`**: cleanup in acquire path.
 - **`poolSize`**: number or `{ clean, dirty }` depending on strategy.
 

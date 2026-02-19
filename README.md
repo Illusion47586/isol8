@@ -238,6 +238,7 @@ const secureEngine = new DockerIsol8({
 **Fast mode details:**
 - Maintains two pools: `clean` (ready to use) and `dirty` (need cleanup)
 - `acquire()` returns instantly from clean pool if available
+- Every clean-pool acquire triggers async replenishment to restore warm capacity
 - If clean pool is empty but dirty has containers, tries immediate cleanup
 - Background cleanup runs every 5 seconds to process dirty containers
 - Best performance with minimal memory overhead
