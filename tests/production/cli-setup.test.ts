@@ -33,8 +33,10 @@ describe("CLI Setup - Smart Builds", () => {
     await runIsol8("setup", { timeout: 300_000 });
 
     // Second run should skip builds and show "Up to date"
-    const { stdout } = await runIsol8("setup", { timeout: 60_000 });
-    expect(stdout).toContain("Up to date");
+    // Progress output can be written to stderr in non-TTY environments.
+    const { stdout, stderr } = await runIsol8("setup", { timeout: 60_000 });
+    const output = `${stdout}\n${stderr}`;
+    expect(output).toContain("Up to date");
   }, 300_000);
 
   test("setup --force rebuilds even when up to date", async () => {
@@ -42,10 +44,11 @@ describe("CLI Setup - Smart Builds", () => {
     await runIsol8("setup", { timeout: 300_000 });
 
     // Run with --force should rebuild (no "Up to date" messages)
-    const { stdout } = await runIsol8("setup --force", { timeout: 300_000 });
+    const { stdout, stderr } = await runIsol8("setup --force", { timeout: 300_000 });
+    const output = `${stdout}\n${stderr}`;
     expect(stdout).toContain("Setup complete");
     // Should not show "Up to date" since we're forcing rebuild
-    expect(stdout).not.toContain("Up to date");
+    expect(output).not.toContain("Up to date");
   }, 300_000);
 });
 
