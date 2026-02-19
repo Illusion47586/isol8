@@ -41,13 +41,13 @@ Isol8 is a secure execution engine for running untrusted code inside Docker cont
 | `--persistent` | `false` | Keep container alive between runs |
 | `--persist` | `false` | Keep container after execution for debugging |
 | `--debug` | `false` | Enable internal debug logging |
-| `--install <package>` | — | Install package before execution (repeatable) |
+| `--install <package>` | — | Install package before execution (repeatable). If `--net` is omitted, CLI auto-uses `filtered` and allowlists default runtime registries |
 | `--url <url>` | — | Fetch source code from URL |
 | `--github <owner/repo/ref/path>` | — | GitHub shorthand for raw source |
 | `--gist <gistId/file.ext>` | — | Gist shorthand for raw source |
 | `--hash <sha256>` | — | Verify SHA-256 hash for fetched code |
 | `--allow-insecure-code-url` | `false` | Allow insecure `http://` code URLs for this request |
-| `--net <mode>` | `none` | Network: `none`, `host`, `filtered` |
+| `--net <mode>` | `none` | Network: `none`, `host`, `filtered` (explicit value is never overridden) |
 | `--timeout <ms>` | `30000` | Execution timeout |
 | `--memory <limit>` | `512m` | Memory limit |
 | `--secret <KEY=VALUE>` | — | Secret env var, value masked in output (repeatable) |
@@ -169,6 +169,7 @@ Full endpoint reference: [Server Endpoints](https://bingo-ccc81346.mintlify.app/
 | `POST` | `/file` | Yes | Upload file (base64) |
 | `GET` | `/file` | Yes | Download file (base64) |
 | `DELETE` | `/session/:id` | Yes | Destroy persistent session |
+| `POST` | `/cleanup` | Yes | Trigger remote cleanup for sessions/containers (images optional) |
 
 ## Configuration
 
@@ -186,7 +187,7 @@ Full configuration reference: [Configuration](https://bingo-ccc81346.mintlify.ap
 | Resources | 1 CPU, 512MB memory, 30s timeout |
 | Network | Disabled (`none`), iptables enforcement in `filtered` mode |
 | Output | Truncated at 1MB, secrets masked |
-| Seccomp | "safety" (blocks mount, swap, ptrace, etc.) |
+| Seccomp | `strict` default profile (blocks mount, swap, ptrace, etc.); standalone server binaries use embedded fallback when profile files are missing |
 
 **Container Filesystem:**
 - `/sandbox` (512MB): Working directory, packages installed here, execution allowed for `.so` files
@@ -203,3 +204,4 @@ Full security model: [Security](https://bingo-ccc81346.mintlify.app/security)
 - **"Operation not permitted" with numpy/packages**: Packages need `--sandbox-size` large enough for installation (512MB+ recommended).
 - **`.ts` files running with Bun instead of Deno**: `.ts` defaults to Bun. Use `--runtime deno` or `.mts` extension.
 - **Serve command failing**: Ensure the server binary can be downloaded from GitHub Releases. Use `isol8 serve --update` to force a fresh download. Use `isol8 serve --debug` to see detailed server logs. For listen port selection, precedence is `--port` > `ISOL8_PORT` > `PORT` > `3000`; if the port is busy, `serve` can prompt for another port or auto-pick an available one.
+- **Seccomp profile load failure**: In `strict`/`custom` mode, execution fails if profile loading fails. Verify `security.customProfilePath` for custom mode.

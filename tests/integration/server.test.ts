@@ -22,8 +22,9 @@ describe("Integration: Server & Client", () => {
     });
   });
 
-  afterAll(() => {
+  afterAll(async () => {
     serverInstance.stop();
+    await server.shutdown(false);
   });
 
   test("Remote execution (Hello World)", async () => {
@@ -87,5 +88,26 @@ describe("Integration: Server & Client", () => {
     expect(content.toString()).toBe("remote-file-content");
 
     await client.stop();
+  }, 30_000);
+
+  test("Remote cleanup endpoint", async () => {
+    const res = await fetch(`http://localhost:${PORT}/cleanup`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ images: false }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      ok: boolean;
+      sessions?: unknown;
+      containers?: unknown;
+    };
+    expect(body.ok).toBe(true);
+    expect(body.sessions).toBeDefined();
+    expect(body.containers).toBeDefined();
   }, 30_000);
 });

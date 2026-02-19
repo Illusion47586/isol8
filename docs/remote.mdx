@@ -49,6 +49,7 @@ flowchart TD
 
 - **Bun/dev path**: runs server in-process.
 - **Built CLI (Node) path**: downloads/runs standalone `isol8-server` binary and can prompt for version update.
+- Both paths run graceful cleanup on `SIGINT`/`SIGTERM` (sessions, containers, and images).
 
 Use `isol8 serve --update` to force binary re-download.
 

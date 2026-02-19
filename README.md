@@ -105,7 +105,7 @@ isol8 run script.py --host http://server:3000 --key my-api-key
 |------|-------------|---------|
 | `-e, --eval <code>` | Execute inline code | — |
 | `-r, --runtime <rt>` | Force runtime: `python`, `node`, `bun`, `deno`, `bash` | auto-detect |
-| `--net <mode>` | Network mode: `none`, `host`, `filtered` | `none` |
+| `--net <mode>` | Network mode: `none`, `host`, `filtered` | `none` (unless `--install` is used without explicit `--net`, then auto `filtered`) |
 | `--allow <regex>` | Whitelist regex (repeatable, for `filtered`) | — |
 | `--deny <regex>` | Blacklist regex (repeatable, for `filtered`) | — |
 | `--out <file>` | Write stdout to file | — |
@@ -113,7 +113,7 @@ isol8 run script.py --host http://server:3000 --key my-api-key
 | `--persistent` | Keep container alive between runs | `false` |
 | `--persist` | Keep container after execution for inspection/debugging | `false` |
 | `--debug` | Enable debug logging for internal engine operations | `false` |
-| `--timeout <ms>` | Execution timeout in milliseconds | `30000` |
+| `--timeout <ms>` | Timeout in milliseconds for package install + execution phases | `30000` |
 | `--memory <limit>` | Memory limit (e.g. `512m`, `1g`) | `512m` |
 | `--cpu <limit>` | CPU limit as fraction (e.g. `0.5`, `2.0`) | `1.0` |
 | `--image <name>` | Override Docker image | — |
@@ -124,7 +124,7 @@ isol8 run script.py --host http://server:3000 --key my-api-key
 | `--sandbox-size <size>` | Sandbox tmpfs size (e.g. `512m`, `1g`) | `512m` |
 | `--tmp-size <size>` | Tmp tmpfs size (e.g. `256m`, `512m`) | `256m` |
 | `--stdin <data>` | Data to pipe to stdin | — |
-| `--install <pkg>` | Install package for runtime (repeatable) | — |
+| `--install <pkg>` | Install package for runtime (repeatable) | — (auto-adds default runtime registry allowlist in `filtered` mode) |
 | `--url <url>` | Fetch code from URL (requires `remoteCode.enabled=true`) | — |
 | `--github <owner/repo/ref/path>` | GitHub shorthand for raw source | — |
 | `--gist <gistId/file.ext>` | Gist shorthand for raw source | — |
@@ -175,6 +175,8 @@ isol8 serve --update  # Force re-download the server binary
 | `--debug` | Enable debug logging for server operations | `false` |
 
 If the selected port is already in use, `isol8 serve` now prompts to enter another port or auto-select an available one. In non-interactive environments, it auto-falls back to a free port.
+
+On graceful shutdown (`SIGINT`/`SIGTERM`), the server now cleans up tracked sessions, isol8 containers, and isol8 images before exiting.
 
 ### `isol8 config`
 
@@ -377,7 +379,7 @@ Add the `$schema` property to get autocompletion, validation, and inline documen
     "node": ["lodash"]
   },
   "security": {
-    "seccomp": "safety"
+    "seccomp": "strict"
   }
 }
 ```
@@ -441,7 +443,7 @@ bun run bench:detailed   # Phase breakdown
 | **Network** | Disabled by default; optional proxy-based filtering |
 | **Output** | Truncated at 1MB; secrets masked from stdout/stderr |
 | **Isolation** | Each execution in its own container (ephemeral) or exec (persistent) |
-| **Seccomp** | Default "safety" profile blocks dangerous syscalls (mount, swap, ptrace) but allows others for compatibility; configurable via `security.seccomp` |
+| **Seccomp** | Default `strict` mode applies the built-in profile that blocks dangerous syscalls (mount, swap, ptrace). In standalone server binaries, an embedded copy is used when profile files are not present. If strict/custom profile loading fails, execution fails. |
 
 ### Container Filesystem
 
@@ -470,6 +472,7 @@ When running `isol8 serve`, these endpoints are available:
 | `POST` | `/file` | Upload file (base64) |
 | `GET` | `/file?sessionId=&path=` | Download file (base64) |
 | `DELETE` | `/session/:id` | Destroy persistent session |
+| `POST` | `/cleanup` | Run server-side cleanup for sessions/containers (and images by default) |
 
 All endpoints (except `/health`) require `Authorization: Bearer <key>`.
 

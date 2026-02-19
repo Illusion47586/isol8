@@ -156,13 +156,13 @@ This FAQ is grounded in current code behavior (`src/`, `src/types.ts`, and `sche
   </Accordion>
 
   <Accordion title="What does seccomp `strict`/`unconfined`/`custom` mean?">
-    - `strict`: attempt to apply default profile
+    - `strict`: apply the default built-in seccomp profile
     - `unconfined`: no seccomp filter
     - `custom`: use profile from `security.customProfilePath`
   </Accordion>
 
   <Accordion title="What happens if the default seccomp profile cannot be loaded?">
-    isol8 logs a warning and runs without seccomp filter in that case.
+    Execution fails instead of running without seccomp. In standalone server binary mode, isol8 uses an embedded default profile when on-disk profile files are unavailable.
   </Accordion>
 
   <Accordion title="Can I configure seccomp from `isol8 run` flags directly?">
@@ -171,6 +171,18 @@ This FAQ is grounded in current code behavior (`src/`, `src/types.ts`, and `sche
 
   <Accordion title="Why do I not see network logs even with `--log-network`?">
     Network logs require filtered mode. `--log-network` only works when network mode is `filtered`.
+  </Accordion>
+
+  <Accordion title="What happens when I use `--install` without `--net`?">
+    CLI auto-selects `filtered` networking for that run and adds runtime-default package registry hosts to the allowlist (for example PyPI or npm registry hosts).
+  </Accordion>
+
+  <Accordion title="If I pass `--net` explicitly with `--install`, is it overridden?">
+    No. Explicit `--net` is preserved. Only the allowlist is merged when effective mode is `filtered`.
+  </Accordion>
+
+  <Accordion title="Does `--timeout` include package install time when using `--install`?">
+    Yes. The timeout now applies to both package installation and code execution, so blocked or stalled installs fail instead of hanging indefinitely.
   </Accordion>
 </AccordionGroup>
 

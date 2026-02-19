@@ -21,6 +21,7 @@ Port resolution order is `--port` > `ISOL8_PORT` > `PORT` > `3000`. If the selec
 - file upload/download for active sessions
 - global concurrency control via semaphore (`maxConcurrent`)
 - idle session cleanup (`cleanup.autoPrune` + `cleanup.maxContainerAgeMs`)
+- graceful shutdown cleanup (sessions, containers, and images)
 
 ## Authentication model
 
@@ -108,7 +109,7 @@ Default values:
 ```
 
 <Warning>
-  Auto-pruning depends on the server process being alive. If the process is terminated, in-memory session tracking stops; use `isol8 cleanup` to remove any orphaned containers.
+  Graceful shutdown (`SIGINT`/`SIGTERM`) runs cleanup for sessions, containers, and images. Abrupt termination (for example `SIGKILL`) skips graceful handlers; in that case, run `isol8 cleanup`.
 </Warning>
 
 ## Related pages

@@ -247,4 +247,40 @@ describe("DockerIsol8 engine options", () => {
       expect(engine).toBeDefined();
     });
   });
+
+  // ── seccomp profile handling ──
+
+  describe("seccomp profile handling", () => {
+    test("throws when custom seccomp profile path is invalid", () => {
+      const { docker } = createMockDocker();
+      const engine = new DockerIsol8({
+        docker,
+        security: {
+          seccomp: "custom",
+          customProfilePath: "/definitely-missing-seccomp-profile.json",
+        },
+      });
+
+      expect(() =>
+        (engine as unknown as { buildSecurityOpts: () => string[] }).buildSecurityOpts()
+      ).toThrow(/Failed to load custom seccomp profile/);
+    });
+
+    test("throws when strict seccomp profile cannot be loaded", () => {
+      const { docker } = createMockDocker();
+      const engine = new DockerIsol8({
+        docker,
+        security: { seccomp: "strict" },
+      }) as unknown as {
+        buildSecurityOpts: () => string[];
+        loadDefaultSeccompProfile: () => string;
+      };
+
+      engine.loadDefaultSeccompProfile = () => {
+        throw new Error("missing profile");
+      };
+
+      expect(() => engine.buildSecurityOpts()).toThrow(/Failed to load default seccomp profile/);
+    });
+  });
 });

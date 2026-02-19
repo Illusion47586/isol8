@@ -30,6 +30,7 @@ import { logger } from "../utils/logger";
 import { AuditLogger } from "./audit";
 import { fetchRemoteCode } from "./code-fetcher";
 import { Semaphore } from "./concurrency";
+import { EMBEDDED_DEFAULT_SECCOMP_PROFILE } from "./default-seccomp-profile";
 import { getCustomImageTag, normalizePackages } from "./image-builder";
 import { ContainerPool } from "./pool";
 import { type ContainerResourceUsage, calculateResourceDelta, getContainerStats } from "./stats";
@@ -268,7 +269,19 @@ function wrapWithTimeout(cmd: string[], timeoutSec: number): string[] {
 function getInstallCommand(runtime: string, packages: string[]): string[] {
   switch (runtime) {
     case "python":
-      return ["pip", "install", "--user", "--no-cache-dir", "--break-system-packages", ...packages];
+      return [
+        "pip",
+        "install",
+        "--user",
+        "--no-cache-dir",
+        "--break-system-packages",
+        "--disable-pip-version-check",
+        "--retries",
+        "0",
+        "--timeout",
+        "15",
+        ...packages,
+      ];
     case "node":
       // Install to /sandbox (local node_modules) so resolution works for both CJS and ESM
       return ["npm", "install", "--prefix", "/sandbox", ...packages];
@@ -291,9 +304,11 @@ function getInstallCommand(runtime: string, packages: string[]): string[] {
 async function installPackages(
   container: Docker.Container,
   runtime: string,
-  packages: string[]
+  packages: string[],
+  timeoutMs: number
 ): Promise<void> {
-  const cmd = getInstallCommand(runtime, packages);
+  const timeoutSec = Math.max(1, Math.ceil(timeoutMs / 1000));
+  const cmd = wrapWithTimeout(getInstallCommand(runtime, packages), timeoutSec);
   // Debug log
   logger.debug(`Installing packages: ${JSON.stringify(cmd)}`);
 
@@ -309,6 +324,12 @@ async function installPackages(
     env.push("NPM_CONFIG_PREFIX=/sandbox/.npm-global");
     env.push("NPM_CONFIG_CACHE=/sandbox/.npm-cache");
     env.push("npm_config_cache=/sandbox/.npm-cache");
+    env.push("NPM_CONFIG_FETCH_RETRIES=0");
+    env.push("npm_config_fetch_retries=0");
+    env.push("NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=1000");
+    env.push("npm_config_fetch_retry_mintimeout=1000");
+    env.push("NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=2000");
+    env.push("npm_config_fetch_retry_maxtimeout=2000");
   } else if (runtime === "bun") {
     env.push("BUN_INSTALL_GLOBAL_DIR=/sandbox/.bun-global");
     env.push("BUN_INSTALL_CACHE_DIR=/sandbox/.bun-cache");
@@ -336,7 +357,14 @@ async function installPackages(
     container.modem.demuxStream(stream, stdoutStream, stderrStream);
 
     stderrStream.on("data", (chunk) => {
-      stderr += chunk.toString();
+      const text = chunk.toString();
+      stderr += text;
+      logger.debug(`[install:${runtime}:stderr] ${text.trimEnd()}`);
+    });
+
+    stdoutStream.on("data", (chunk) => {
+      const text = chunk.toString();
+      logger.debug(`[install:${runtime}:stdout] ${text.trimEnd()}`);
     });
 
     stream.on("end", async () => {
@@ -831,7 +859,7 @@ export class DockerIsol8 implements Isol8Engine {
 
         // Install packages if requested
         if (request.installPackages?.length) {
-          await installPackages(container, request.runtime, request.installPackages);
+          await installPackages(container, request.runtime, request.installPackages, timeoutMs);
         }
 
         // Inject input files
@@ -1005,7 +1033,7 @@ export class DockerIsol8 implements Isol8Engine {
 
       // Install packages if requested
       if (req.installPackages?.length) {
-        await installPackages(container, req.runtime, req.installPackages);
+        await installPackages(container, req.runtime, req.installPackages, timeoutMs);
       }
 
       // Execute the actual command, wrapped with timeout to ensure kill on expiry
@@ -1152,7 +1180,7 @@ export class DockerIsol8 implements Isol8Engine {
 
     // Install packages if requested
     if (req.installPackages?.length) {
-      await installPackages(this.container!, req.runtime, req.installPackages);
+      await installPackages(this.container!, req.runtime, req.installPackages, timeoutMs);
     }
 
     // Handle stdin
@@ -1343,7 +1371,9 @@ export class DockerIsol8 implements Isol8Engine {
         const profile = readFileSync(this.security.customProfilePath, "utf-8");
         opts.push(`seccomp=${profile}`);
       } catch (e) {
-        logger.error(`Failed to load custom seccomp profile: ${e}`);
+        throw new Error(
+          `Failed to load custom seccomp profile at ${this.security.customProfilePath}: ${e}`
+        );
       }
       return opts;
     }
@@ -1351,17 +1381,15 @@ export class DockerIsol8 implements Isol8Engine {
     // Default strict mode
     try {
       const profile = this.loadDefaultSeccompProfile();
-      if (profile) {
-        opts.push(`seccomp=${profile}`);
-      }
+      opts.push(`seccomp=${profile}`);
     } catch (e) {
-      logger.error(`Failed to load default seccomp profile: ${e}`);
+      throw new Error(`Failed to load default seccomp profile: ${e}`);
     }
 
     return opts;
   }
 
-  private loadDefaultSeccompProfile(): string | null {
+  private loadDefaultSeccompProfile(): string {
     // Try resolving relative to this file (dev mode)
     // Note: in bundled code, import.meta.url might point to dist/index.js
 
@@ -1379,11 +1407,15 @@ export class DockerIsol8 implements Isol8Engine {
       return readFileSync(prodPath, "utf-8");
     }
 
-    // 3. Fallback: Try reading absolute path if we assume standard install location?
-    // Not reliable.
+    // 3. Embedded fallback for standalone compiled binaries.
+    if (EMBEDDED_DEFAULT_SECCOMP_PROFILE.length > 0) {
+      logger.debug(
+        `Default seccomp profile file not found. Using embedded profile. Tried: ${devPath.pathname}, ${prodPath.pathname}`
+      );
+      return EMBEDDED_DEFAULT_SECCOMP_PROFILE;
+    }
 
-    logger.warn("Could not locate default seccomp profile. Running without seccomp filter.");
-    return null;
+    throw new Error("Embedded default seccomp profile is unavailable");
   }
 
   private buildEnv(extra?: Record<string, string>): string[] {

@@ -97,7 +97,8 @@
               "server/post-execute-stream",
               "server/post-file",
               "server/get-file",
-              "server/delete-session"
+              "server/delete-session",
+              "server/post-cleanup"
             ]
           }
         ]
