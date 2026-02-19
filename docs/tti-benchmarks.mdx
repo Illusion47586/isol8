@@ -1,0 +1,169 @@
+---
+title: "Benchmarks"
+description: "All local isol8 benchmark suites: cold spawn, warm pool, detailed phase breakdown, and ComputeSDK-style TTI."
+icon: "timer"
+---
+
+This page tracks all local benchmark suites shipped in `benchmarks/`:
+
+- `bench` (cold container spawn benchmark)
+- `bench:pool` (warm-pool benchmark)
+- `bench:detailed` (phase-level breakdown)
+- `bench:tti` (ComputeSDK-style TTI, cold)
+- `bench:tti:pool` (ComputeSDK-style TTI, warm pool)
+
+## Latest run snapshot
+
+Run date: `2026-02-19`
+Environment capture time (UTC): `2026-02-19T09:28:47Z`
+
+## Benchmark environment
+
+| Component | Value |
+|:--|:--|
+| Host OS | macOS 26.2 (build 25C56) |
+| Kernel | Darwin 25.2.0 (arm64) |
+| CPU | Apple M3 (8 cores) |
+| Memory | 16 GB |
+| Container runtime | Docker Server 28.5.2 via OrbStack (linux/aarch64 guest) |
+| Bun | 1.2.20 |
+| Node.js | v23.0.0 |
+
+<Note>
+  These benchmarks are host-sensitive. Re-run on your target machine before using values as SLO or regression gates.
+</Note>
+
+### `bun run bench` (cold spawn benchmark)
+
+| Runtime | Min | Median | Max | Avg |
+|:--|:--|:--|:--|:--|
+| python | 206ms | 220ms | 476ms | 301ms |
+| node | 205ms | 211ms | 235ms | 217ms |
+| bun | 190ms | 194ms | 214ms | 199ms |
+| deno | 207ms | 223ms | 239ms | 223ms |
+| bash | 181ms | 188ms | 189ms | 186ms |
+
+### `bun run bench:pool` (warm pool benchmark)
+
+| Runtime | Cold | Warm avg | Warm min | Speedup |
+|:--|:--|:--|:--|:--|
+| python | 323ms | 132ms | 126ms | 2.6x |
+| node | 237ms | 142ms | 132ms | 1.8x |
+| bun | 213ms | 126ms | 120ms | 1.8x |
+| deno | 232ms | 150ms | 144ms | 1.6x |
+| bash | 192ms | 117ms | 113ms | 1.7x |
+
+### `bun run bench:detailed` (phase breakdown, cold path)
+
+| Runtime | create | start | write | mkExec | run | cleanup | total |
+|:--|:--|:--|:--|:--|:--|:--|:--|
+| python | 75ms | 57ms | 19ms | 1ms | 20ms | 45ms | 217ms |
+| node | 45ms | 36ms | 14ms | 1ms | 28ms | 31ms | 154ms |
+| bun | 46ms | 33ms | 12ms | 1ms | 16ms | 26ms | 134ms |
+| bash | 38ms | 39ms | 13ms | 0ms | 12ms | 34ms | 136ms |
+
+## ComputeSDK-style TTI benchmark
+
+This suite is aligned to the [ComputeSDK benchmark README](https://github.com/computesdk/benchmarks/blob/master/README.md), where TTI is measured as create/init + first command execution.
+
+### `bun run bench:tti` (cold, median TTI)
+
+| Runtime | Median | Min | Max |
+|:--|:--|:--|:--|
+| bash | 0.18s | 0.18s | 0.19s |
+| bun | 0.19s | 0.19s | 0.20s |
+| python | 0.20s | 0.20s | 0.25s |
+| deno | 0.21s | 0.21s | 0.21s |
+| node | 0.21s | 0.20s | 0.22s |
+
+### `bun run bench:tti:pool` (warm pool, median TTI)
+
+| Runtime | Median | Warm min | Warm avg |
+|:--|:--|:--|:--|
+| bash | 0.12s | 0.11s | 0.12s |
+| bun | 0.12s | 0.12s | 0.12s |
+| python | 0.13s | 0.12s | 0.13s |
+| node | 0.13s | 0.13s | 0.13s |
+| deno | 0.15s | 0.14s | 0.15s |
+
+## Comparison context vs ComputeSDK benchmarks
+
+ComputeSDK's README reports direct-mode provider medians (last run shown there: `2026-02-19T00:30:31.834Z`):
+
+| Source | Median TTI range |
+|:--|:--|
+| isol8 local (this page, warm pool) | 0.12s-0.15s |
+| ComputeSDK direct mode providers | 0.29s-2.80s |
+
+<Warning>
+  This is directional context, not a strict apples-to-apples ranking.
+  Environment, provider architecture, geography, and sandbox lifecycle semantics differ.
+</Warning>
+
+## Reproduce locally (all suites)
+
+```bash
+# Cold spawn benchmark
+bun run bench
+
+# Warm-pool benchmark
+bun run bench:pool
+
+# Detailed phase breakdown
+bun run bench:detailed
+
+# ComputeSDK-style TTI (cold)
+bun run bench:tti
+
+# ComputeSDK-style TTI (warm pool)
+bun run bench:tti:pool
+```
+
+## Run benchmarks on GitHub Actions
+
+You can also run benchmarks on a GitHub-hosted runner by manually triggering [`production-test.yml`](https://github.com/Illusion47586/isol8/blob/main/.github/workflows/production-test.yml).
+
+- workflow: **Production Tests (Manual)**
+- runner: `ubuntu-latest`
+- input: set `runBenchmarks=true`
+- behavior: benchmarks run after production tests pass (the workflow executes `bun run bench:cli`)
+
+## FAQ
+
+<AccordionGroup>
+  <Accordion title="Why do warm-pool numbers matter most for interactive workloads?">
+    They represent steady-state latency after initial startup, which is the dominant user experience in long-lived services.
+  </Accordion>
+  <Accordion title="Which benchmark should I use for optimization work?">
+    Use `bench:detailed` to find phase bottlenecks, then validate impact with `bench:pool` and `bench:tti:pool`.
+  </Accordion>
+  <Accordion title="Why can cold and warm medians differ so much?">
+    Cold runs include one-time lifecycle costs that warm pools avoid (container creation/start and first-path setup).
+  </Accordion>
+  <Accordion title="Can I compare isol8 runtime medians directly with cloud sandbox providers?">
+    Treat it as directional only. Use the same region, host class, and iteration settings before drawing hard conclusions.
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting quick checks
+
+- benchmark command fails on first run: rerun sequentially, not in parallel
+- unexpectedly high warm TTI: verify pool defaults in `isol8.config.json` and container host load
+- noisy results: increase iterations and run with minimal background system activity
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Performance tuning" icon="gauge-high" href="/performance">
+    Pool and concurrency tuning guidance for better latency.
+  </Card>
+  <Card title="Server overview" icon="server" href="/server/overview">
+    How `isol8 serve` applies pooling defaults for remote execution.
+  </Card>
+  <Card title="Configuration reference" icon="gear" href="/configuration">
+    Set `poolStrategy`, `poolSize`, and other execution defaults.
+  </Card>
+  <Card title="Architecture" icon="sitemap" href="/architecture">
+    Understand execution path and pool lifecycle internals.
+  </Card>
+</CardGroup>
