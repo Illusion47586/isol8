@@ -1465,6 +1465,36 @@ except:
     expect(stdout).toMatch(/\d+\.\d+/);
   }, 120_000);
 
+  test("--install without explicit --net auto-enables filtered mode and registry allowlist", async () => {
+    try {
+      await runCLI(
+        'run -e "print(1)" -r python --install requests --host http://127.0.0.1:1 --debug --no-stream',
+        { timeout: 15_000, env: { ...process.env, ISOL8_API_KEY: "" } }
+      );
+      throw new Error("Should have failed due to missing API key");
+    } catch (err: any) {
+      const combined = `${err.stdout ?? ""}${err.stderr ?? ""}`;
+      expect(combined).toContain("using filtered network mode automatically");
+      expect(combined).toContain("Added default package registries for python");
+      expect(combined).toContain("API key required");
+    }
+  }, 30_000);
+
+  test("--install with explicit --net does not override network mode", async () => {
+    try {
+      await runCLI(
+        'run -e "print(1)" -r python --install requests --net none --host http://127.0.0.1:1 --debug --no-stream',
+        { timeout: 15_000, env: { ...process.env, ISOL8_API_KEY: "" } }
+      );
+      throw new Error("Should have failed due to missing API key");
+    } catch (err: any) {
+      const combined = `${err.stdout ?? ""}${err.stderr ?? ""}`;
+      expect(combined).not.toContain("using filtered network mode automatically");
+      expect(combined).toContain("Engine options: mode=ephemeral, network=none");
+      expect(combined).toContain("API key required");
+    }
+  }, 30_000);
+
   // ── --allow / --deny (with --net filtered) ─────────────────────
 
   test("--allow and --deny are accepted with --net filtered", async () => {

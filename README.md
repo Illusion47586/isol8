@@ -105,7 +105,7 @@ isol8 run script.py --host http://server:3000 --key my-api-key
 |------|-------------|---------|
 | `-e, --eval <code>` | Execute inline code | — |
 | `-r, --runtime <rt>` | Force runtime: `python`, `node`, `bun`, `deno`, `bash` | auto-detect |
-| `--net <mode>` | Network mode: `none`, `host`, `filtered` | `none` |
+| `--net <mode>` | Network mode: `none`, `host`, `filtered` | `none` (unless `--install` is used without explicit `--net`, then auto `filtered`) |
 | `--allow <regex>` | Whitelist regex (repeatable, for `filtered`) | — |
 | `--deny <regex>` | Blacklist regex (repeatable, for `filtered`) | — |
 | `--out <file>` | Write stdout to file | — |
@@ -124,7 +124,7 @@ isol8 run script.py --host http://server:3000 --key my-api-key
 | `--sandbox-size <size>` | Sandbox tmpfs size (e.g. `512m`, `1g`) | `512m` |
 | `--tmp-size <size>` | Tmp tmpfs size (e.g. `256m`, `512m`) | `256m` |
 | `--stdin <data>` | Data to pipe to stdin | — |
-| `--install <pkg>` | Install package for runtime (repeatable) | — |
+| `--install <pkg>` | Install package for runtime (repeatable) | — (auto-adds default runtime registry allowlist in `filtered` mode) |
 | `--url <url>` | Fetch code from URL (requires `remoteCode.enabled=true`) | — |
 | `--github <owner/repo/ref/path>` | GitHub shorthand for raw source | — |
 | `--gist <gistId/file.ext>` | Gist shorthand for raw source | — |

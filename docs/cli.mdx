@@ -48,6 +48,8 @@ isol8 run [file] [options]
   - `none`: Blocks all network access (default).
   - `filtered`: Routes traffic through a proxy with whitelist/blacklist enforcement.
   - `host`: Allows full host network access (use with extreme caution).
+
+  If `--install` is used and `--net` is not explicitly provided, CLI automatically uses `filtered`.
 </ResponseField>
 
 <Warning>
@@ -110,6 +112,9 @@ isol8 run [file] [options]
 
 <ResponseField name="--install <package>" type="repeatable">
   Install package before execution.
+
+  In `filtered` mode, CLI automatically merges default runtime package registry hosts into the allowlist.
+  Explicit `--net` is never overridden.
 </ResponseField>
 
 <ResponseField name="--secret <KEY=VALUE>" type="repeatable">

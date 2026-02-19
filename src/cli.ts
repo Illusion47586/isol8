@@ -975,6 +975,7 @@ program
 async function resolveRunInput(file: string | undefined, opts: any) {
   const config = loadConfig();
   logger.debug("[Run] Config loaded");
+  const hasExplicitNetFlag = process.argv.some((arg) => arg === "--net");
 
   let code: string | undefined;
   let codeUrl: string | undefined;
@@ -1051,6 +1052,31 @@ async function resolveRunInput(file: string | undefined, opts: any) {
     dependencies: config.dependencies,
     remoteCode: config.remoteCode,
   };
+
+  // Auto-enable filtered networking for package installs when --net is not provided.
+  if (opts.install.length > 0 && !hasExplicitNetFlag) {
+    engineOptions.network = "filtered";
+    logger.debug(
+      "[Run] --install detected without explicit --net; using filtered network mode automatically"
+    );
+  }
+
+  // If package installation is requested in filtered mode, extend whitelist
+  // with runtime package registry hosts so installs can resolve dependencies.
+  if (opts.install.length > 0 && engineOptions.network === "filtered") {
+    const runtimeRegistryAllowlist = getDefaultRegistryAllowPatterns(runtime);
+    if (runtimeRegistryAllowlist.length > 0) {
+      engineOptions.networkFilter = {
+        whitelist: Array.from(
+          new Set([...(engineOptions.networkFilter?.whitelist ?? []), ...runtimeRegistryAllowlist])
+        ),
+        blacklist: engineOptions.networkFilter?.blacklist ?? [],
+      };
+      logger.debug(
+        `[Run] Added default package registries for ${runtime}: ${runtimeRegistryAllowlist.join(", ")}`
+      );
+    }
+  }
 
   logger.debug(
     `[Run] Engine options: mode=${engineOptions.mode}, network=${engineOptions.network}`
@@ -1140,6 +1166,20 @@ function detectRuntimeFromPath(pathValue: string): Runtime | undefined {
     return RuntimeRegistry.detect(pathValue).name;
   } catch {
     return undefined;
+  }
+}
+
+function getDefaultRegistryAllowPatterns(runtime: Runtime): string[] {
+  switch (runtime) {
+    case "python":
+      return ["^pypi\\.org$", "^files\\.pythonhosted\\.org$"];
+    case "node":
+    case "bun":
+      return ["^registry\\.npmjs\\.org$"];
+    case "bash":
+      return ["^dl-cdn\\.alpinelinux\\.org$"];
+    default:
+      return [];
   }
 }
 

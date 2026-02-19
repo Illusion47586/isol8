@@ -41,13 +41,13 @@ Isol8 is a secure execution engine for running untrusted code inside Docker cont
 | `--persistent` | `false` | Keep container alive between runs |
 | `--persist` | `false` | Keep container after execution for debugging |
 | `--debug` | `false` | Enable internal debug logging |
-| `--install <package>` | — | Install package before execution (repeatable) |
+| `--install <package>` | — | Install package before execution (repeatable). If `--net` is omitted, CLI auto-uses `filtered` and allowlists default runtime registries |
 | `--url <url>` | — | Fetch source code from URL |
 | `--github <owner/repo/ref/path>` | — | GitHub shorthand for raw source |
 | `--gist <gistId/file.ext>` | — | Gist shorthand for raw source |
 | `--hash <sha256>` | — | Verify SHA-256 hash for fetched code |
 | `--allow-insecure-code-url` | `false` | Allow insecure `http://` code URLs for this request |
-| `--net <mode>` | `none` | Network: `none`, `host`, `filtered` |
+| `--net <mode>` | `none` | Network: `none`, `host`, `filtered` (explicit value is never overridden) |
 | `--timeout <ms>` | `30000` | Execution timeout |
 | `--memory <limit>` | `512m` | Memory limit |
 | `--secret <KEY=VALUE>` | — | Secret env var, value masked in output (repeatable) |

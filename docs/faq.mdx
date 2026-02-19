@@ -172,6 +172,14 @@ This FAQ is grounded in current code behavior (`src/`, `src/types.ts`, and `sche
   <Accordion title="Why do I not see network logs even with `--log-network`?">
     Network logs require filtered mode. `--log-network` only works when network mode is `filtered`.
   </Accordion>
+
+  <Accordion title="What happens when I use `--install` without `--net`?">
+    CLI auto-selects `filtered` networking for that run and adds runtime-default package registry hosts to the allowlist (for example PyPI or npm registry hosts).
+  </Accordion>
+
+  <Accordion title="If I pass `--net` explicitly with `--install`, is it overridden?">
+    No. Explicit `--net` is preserved. Only the allowlist is merged when effective mode is `filtered`.
+  </Accordion>
 </AccordionGroup>
 
 ## Runtimes, files, and package installs
