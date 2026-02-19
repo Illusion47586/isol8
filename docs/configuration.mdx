@@ -24,7 +24,7 @@ The first existing file is loaded and deep-merged with defaults. You only need t
 - Library (`DockerIsol8`): constructor options are authoritative.
 - Server API (`isol8 serve`): server config establishes defaults, request `options` may override them.
 
-For a side-by-side mapping, see [Passing values (CLI, config, API, library)](/passing-values).
+For a side-by-side mapping, see [Option mapping (CLI, config, API, library)](/option-mapping).
 
 ## Full schema shape
 
@@ -51,6 +51,8 @@ Use this as a complete reference template. In real configs, you can provide only
     "autoPrune": true,
     "maxContainerAgeMs": 3600000
   },
+  "poolStrategy": "fast",
+  "poolSize": { "clean": 1, "dirty": 1 },
   "dependencies": {
     "python": [],
     "node": [],
@@ -278,6 +280,8 @@ Audit logging configuration for execution provenance and compliance tracking.
 | `defaults` | object | safe baseline | Engine defaults for runs |
 | `network` | object | empty lists | Filter lists for filtered mode |
 | `cleanup` | object | prune enabled | Server session lifecycle |
+| `poolStrategy` | string | `fast` | Serve-time pool default |
+| `poolSize` | number/object | `{ clean: 1, dirty: 1 }` | Serve-time pool capacity default |
 | `dependencies` | object | `{}` | Custom image setup inputs |
 | `security` | object | strict seccomp | Syscall policy |
 | `audit` | object | disabled | Audit and telemetry logging |
@@ -343,6 +347,22 @@ Server-side idle session management settings.
 
 <ResponseField name="maxContainerAgeMs" type="number" default="3600000">
   Idle time threshold (in milliseconds) before a persistent container is removed. Default is 1 hour.
+</ResponseField>
+
+## `poolStrategy` and `poolSize`
+
+Server-side pool defaults for engines created by `isol8 serve`.
+
+<Note>
+  These config keys are serve defaults. Per-request `options.poolStrategy` and `options.poolSize` can still override them on API calls.
+</Note>
+
+<ResponseField name="poolStrategy" type="fast | secure" default="fast">
+  Default pool strategy used by server-created engines.
+</ResponseField>
+
+<ResponseField name="poolSize" type="number | { clean: number; dirty: number }" default="{ clean: 1, dirty: 1 }">
+  Default warm pool size used by server-created engines.
 </ResponseField>
 
 ## `dependencies`
@@ -504,7 +524,7 @@ Prints effective resolved config (human-readable or JSON), including defaults an
 ## See also
 
 <CardGroup cols={2}>
-  <Card title="Passing values" icon="sliders" href="/passing-values">
+  <Card title="Option mapping" icon="sliders" href="/option-mapping">
     See exactly where each option is set across CLI, config, API, and library.
   </Card>
   <Card title="How to CLI" icon="terminal" href="/cli">

@@ -15,6 +15,8 @@ describe("loadConfig", () => {
     expect(config.defaults.memoryLimit).toBe("512m");
     expect(config.remoteCode.enabled).toBe(false);
     expect(config.remoteCode.allowedSchemes).toEqual(["https"]);
+    expect(config.poolStrategy).toBe("fast");
+    expect(config.poolSize).toEqual({ clean: 1, dirty: 1 });
   });
 
   test("loads config from CWD", () => {
@@ -122,6 +124,23 @@ describe("loadConfig", () => {
     expect(config.remoteCode.allowedSchemes).toEqual(["https"]);
     expect(config.remoteCode.allowedHosts).toEqual(["^raw\\.githubusercontent\\.com$"]);
     expect(config.remoteCode.requireHash).toBe(true);
+
+    rmSync(tmpDir, { recursive: true });
+  });
+
+  test("merges pool defaults from config", () => {
+    mkdirSync(tmpDir, { recursive: true });
+    writeFileSync(
+      join(tmpDir, "isol8.config.json"),
+      JSON.stringify({
+        poolStrategy: "secure",
+        poolSize: 3,
+      })
+    );
+
+    const config = loadConfig(tmpDir);
+    expect(config.poolStrategy).toBe("secure");
+    expect(config.poolSize).toBe(3);
 
     rmSync(tmpDir, { recursive: true });
   });

@@ -63,7 +63,7 @@
           {
             "group": "Reference",
             "pages": [
-              "passing-values",
+              "option-mapping",
               "configuration",
               "remote-code",
               "cli",

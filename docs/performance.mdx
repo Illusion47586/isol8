@@ -18,8 +18,8 @@ isol8 performance is mostly driven by container lifecycle decisions and dependen
 
 | Value | CLI | Config | API (`/execute`) | Library |
 |:--|:--|:--|:--|:--|
-| `poolStrategy` | `--pool-strategy` | not in `isol8.config.json` | `options.poolStrategy` | `new DockerIsol8({ poolStrategy })` |
-| `poolSize` | `--pool-size` | not in `isol8.config.json` | `options.poolSize` | `new DockerIsol8({ poolSize })` |
+| `poolStrategy` | `--pool-strategy` | `poolStrategy` (serve defaults) | `options.poolStrategy` | `new DockerIsol8({ poolStrategy })` |
+| `poolSize` | `--pool-size` | `poolSize` (serve defaults) | `options.poolSize` | `new DockerIsol8({ poolSize })` |
 | `maxConcurrent` | no `run` flag | `maxConcurrent` | server-level (from config) | `new DockerIsol8(opts, maxConcurrent)` |
 | `timeoutMs` | `--timeout` | `defaults.timeoutMs` | `request.timeoutMs` or `options.timeoutMs` | request-level or engine default |
 | `memoryLimit` | `--memory` | `defaults.memoryLimit` | `options.memoryLimit` | `memoryLimit` |
@@ -113,6 +113,8 @@ flowchart TD
     ```json
     {
       "maxConcurrent": 20,
+      "poolStrategy": "fast",
+      "poolSize": { "clean": 3, "dirty": 3 },
       "defaults": {
         "timeoutMs": 30000,
         "memoryLimit": "512m",
@@ -122,6 +124,10 @@ flowchart TD
     ```
   </Tab>
 </Tabs>
+
+<Note>
+  Config-level `poolStrategy` and `poolSize` are server defaults (`isol8 serve`). CLI flags and API request `options` still override them per execution.
+</Note>
 
 <Tip>
   Start with `poolStrategy: "fast"` and `poolSize: { clean: 1, dirty: 1 }`, then increase `clean` for steady load and `dirty` for burst absorption.

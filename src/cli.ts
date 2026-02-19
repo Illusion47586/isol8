@@ -631,6 +631,16 @@ program
       `  Max idle time:   ${config.cleanup.maxContainerAgeMs}ms (${Math.round(config.cleanup.maxContainerAgeMs / 60_000)}min)`
     );
 
+    // Pool defaults (used by serve)
+    console.log("");
+    console.log("  ── Pool Defaults (Serve) ──");
+    console.log(`  Pool strategy:   ${config.poolStrategy}`);
+    const poolSize =
+      typeof config.poolSize === "number"
+        ? String(config.poolSize)
+        : `${config.poolSize.clean},${config.poolSize.dirty}`;
+    console.log(`  Pool size:       ${poolSize}`);
+
     // Dependencies
     const deps = config.dependencies;
     const hasDeps = Object.values(deps).some((pkgs) => pkgs && pkgs.length > 0);

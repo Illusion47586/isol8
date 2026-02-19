@@ -542,6 +542,18 @@ export interface Isol8Config {
   /** Container cleanup and lifecycle settings. */
   cleanup: Isol8Cleanup;
 
+  /**
+   * Default ephemeral pool strategy used by `isol8 serve`.
+   * @default "fast"
+   */
+  poolStrategy: "secure" | "fast";
+
+  /**
+   * Default ephemeral pool size used by `isol8 serve`.
+   * @default { clean: 1, dirty: 1 }
+   */
+  poolSize: number | { clean: number; dirty: number };
+
   /** Runtime-specific packages to bake into custom Docker images. */
   dependencies: Isol8Dependencies;
 
@@ -580,6 +592,18 @@ export interface Isol8UserConfig {
 
   /** Container cleanup and lifecycle settings. (Partial override allowed). */
   cleanup?: Partial<Isol8Cleanup>;
+
+  /**
+   * Default ephemeral pool strategy used by `isol8 serve`.
+   * @default "fast"
+   */
+  poolStrategy?: "secure" | "fast";
+
+  /**
+   * Default ephemeral pool size used by `isol8 serve`.
+   * @default { clean: 1, dirty: 1 }
+   */
+  poolSize?: number | { clean: number; dirty: number };
 
   /** Runtime-specific packages to bake into custom Docker images. */
   dependencies?: Isol8Dependencies;

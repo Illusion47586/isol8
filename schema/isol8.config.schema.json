@@ -188,6 +188,37 @@
           },
           "type": "object"
         },
+        "poolSize": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "clean": {
+                  "type": "number"
+                },
+                "dirty": {
+                  "type": "number"
+                }
+              },
+              "required": ["clean", "dirty"],
+              "type": "object"
+            }
+          ],
+          "default": {
+            "clean": 1,
+            "dirty": 1
+          },
+          "description": "Default ephemeral pool size used by `isol8 serve`."
+        },
+        "poolStrategy": {
+          "default": "fast",
+          "description": "Default ephemeral pool strategy used by `isol8 serve`.",
+          "enum": ["secure", "fast"],
+          "type": "string"
+        },
         "remoteCode": {
           "additionalProperties": false,
           "description": "Remote code fetching policy. (Partial override allowed).",
