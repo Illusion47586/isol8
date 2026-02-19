@@ -1,0 +1,561 @@
+---
+title: "Option mapping (CLI, config, API, library)"
+sidebarTitle: "Option mapping"
+description: "Complete mapping of isol8 values across CLI flags, isol8.config.json, API payloads, and TypeScript options."
+icon: "list"
+---
+
+Use this reference when you need to answer: "where should I set this value?"
+
+- CLI flags (`isol8 run`, `isol8 setup`, `isol8 serve`)
+- Config (`isol8.config.json`)
+- API payloads (`POST /execute`, `POST /execute/stream`)
+- Library calls (`new DockerIsol8(...)`, `execute(...)`, `start(...)`)
+
+## Precedence rules
+
+### Local CLI (`isol8 run`)
+
+1. CLI flags
+2. `isol8.config.json` defaults
+3. built-in defaults
+
+### Library (`DockerIsol8`)
+
+1. request-level values (`execute({ ... })`) for request fields
+2. constructor-level options (`new DockerIsol8({ ... })`) for engine defaults
+3. built-in defaults
+
+### Server API (`isol8 serve`)
+
+1. request `options` (where allowed)
+2. server config (`isol8.config.json` loaded by server)
+3. built-in defaults
+
+<Note>
+  For `POST /execute`, `sessionId` forces persistent behavior on the server (`mode` is derived from `sessionId` there).
+</Note>
+
+## Same execution across interfaces
+
+<Tabs>
+  <Tab title="CLI">
+    ```bash
+    isol8 run \
+      -e "print('hello')" \
+      --runtime python \
+      --timeout 15000 \
+      --memory 512m \
+      --cpu 1 \
+      --net none
+    ```
+  </Tab>
+  <Tab title="API">
+    ```json
+    {
+      "request": {
+        "code": "print('hello')",
+        "runtime": "python",
+        "timeoutMs": 15000
+      },
+      "options": {
+        "memoryLimit": "512m",
+        "cpuLimit": 1,
+        "network": "none"
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="Library">
+    ```typescript
+    const engine = new DockerIsol8({
+      memoryLimit: "512m",
+      cpuLimit: 1,
+      network: "none",
+    });
+
+    const result = await engine.execute({
+      code: "print('hello')",
+      runtime: "python",
+      timeoutMs: 15000,
+    });
+    ```
+  </Tab>
+</Tabs>
+
+## Execution request fields (`ExecutionRequest`)
+
+<ResponseField name="code" type="string">
+  **CLI**: `-e, --eval`, file argument, or piped stdin source.
+
+  **Config**: not configurable in `isol8.config.json`.
+
+  **API**: `request.code`.
+
+  **Library**: `execute({ code })`.
+</ResponseField>
+
+<ResponseField name="codeUrl" type="string">
+  **CLI**: `--url`, `--github`, `--gist`.
+
+  **Config policy**: controlled by `remoteCode.*` (must allow URL fetches).
+
+  **API**: `request.codeUrl`.
+
+  **Library**: `execute({ codeUrl })`.
+</ResponseField>
+
+<ResponseField name="codeHash" type="string (sha256)">
+  **CLI**: `--hash`.
+
+  **Config policy**: `remoteCode.requireHash` can make hash mandatory.
+
+  **API**: `request.codeHash`.
+
+  **Library**: `execute({ codeHash })`.
+</ResponseField>
+
+<ResponseField name="allowInsecureCodeUrl" type="boolean" default="false">
+  **CLI**: `--allow-insecure-code-url`.
+
+  **Config policy**: still constrained by `remoteCode.allowedSchemes`.
+
+  **API**: `request.allowInsecureCodeUrl`.
+
+  **Library**: `execute({ allowInsecureCodeUrl: true })`.
+</ResponseField>
+
+<ResponseField name="runtime" type="'python' | 'node' | 'bun' | 'deno' | 'bash'">
+  **CLI**: `-r, --runtime` or extension auto-detection.
+
+  **Config**: not set via config.
+
+  **API**: `request.runtime`.
+
+  **Library**: `execute({ runtime })`.
+</ResponseField>
+
+<ResponseField name="timeoutMs" type="number">
+  **CLI**: `--timeout <ms>`.
+
+  **Config fallback**: `defaults.timeoutMs`.
+
+  **API**: `request.timeoutMs`.
+
+  **Library**: `execute({ timeoutMs })`.
+</ResponseField>
+
+<ResponseField name="env" type="Record<string, string>">
+  **CLI**: no generic env map flag on `run` (only `--secret KEY=VALUE`).
+
+  **Config**: not set via config.
+
+  **API**: `request.env`.
+
+  **Library**: `execute({ env })`.
+</ResponseField>
+
+<ResponseField name="fileExtension" type="string">
+  **CLI**: no direct override flag.
+
+  **API**: `request.fileExtension`.
+
+  **Library**: `execute({ fileExtension })`.
+</ResponseField>
+
+<ResponseField name="stdin" type="string">
+  **CLI**: `--stdin <data>` or shell pipe.
+
+  **API**: `request.stdin`.
+
+  **Library**: `execute({ stdin })`.
+</ResponseField>
+
+<ResponseField name="files" type="Record<string, string | Buffer>">
+  **CLI**: not exposed as a `run` flag.
+
+  **API**: `request.files`.
+
+  **Library**: `execute({ files })`.
+</ResponseField>
+
+<ResponseField name="outputPaths" type="string[]">
+  **CLI**: not exposed as a `run` flag.
+
+  **API**: `request.outputPaths`.
+
+  **Library**: `execute({ outputPaths })`.
+</ResponseField>
+
+<ResponseField name="installPackages" type="string[]">
+  **CLI**: `--install <package>` (repeatable).
+
+  **API**: `request.installPackages`.
+
+  **Library**: `execute({ installPackages })`.
+</ResponseField>
+
+<ResponseField name="metadata" type="Record<string, string>">
+  **CLI**: not exposed as a `run` flag.
+
+  **API**: `request.metadata`.
+
+  **Library**: `execute({ metadata })`.
+</ResponseField>
+
+<Warning>
+  `code` and `codeUrl` are mutually exclusive in the same request.
+</Warning>
+
+## Execution option fields (`Isol8Options`)
+
+These are engine/runtime behavior options (constructor options locally, `options` in API requests).
+
+<ResponseField name="mode" type="'ephemeral' | 'persistent'" default="ephemeral">
+  **CLI**: `--persistent` (for local run behavior).
+
+  **Config**: no `mode` key.
+
+  **API**: server derives mode from `sessionId` on `/execute`.
+
+  **Library**: `new DockerIsol8({ mode })`.
+</ResponseField>
+
+<ResponseField name="network" type="'none' | 'host' | 'filtered'" default="none">
+  **CLI**: `--net <mode>`.
+
+  **Config fallback**: `defaults.network`.
+
+  **API**: `options.network`.
+
+  **Library**: `network`.
+</ResponseField>
+
+<ResponseField name="networkFilter" type="{ whitelist: string[]; blacklist: string[] }">
+  **CLI**: `--allow <regex>`, `--deny <regex>` (for filtered mode).
+
+  **Config fallback**: `network.whitelist`, `network.blacklist`.
+
+  **API**: `options.networkFilter`.
+
+  **Library**: `networkFilter`.
+</ResponseField>
+
+<ResponseField name="cpuLimit" type="number" default="1">
+  **CLI**: `--cpu <n>`.
+
+  **Config fallback**: `defaults.cpuLimit`.
+
+  **API**: `options.cpuLimit`.
+
+  **Library**: `cpuLimit`.
+</ResponseField>
+
+<ResponseField name="memoryLimit" type="string" default="512m">
+  **CLI**: `--memory <size>`.
+
+  **Config fallback**: `defaults.memoryLimit`.
+
+  **API**: `options.memoryLimit`.
+
+  **Library**: `memoryLimit`.
+</ResponseField>
+
+<ResponseField name="pidsLimit" type="number" default="64">
+  **CLI**: `--pids-limit <n>`.
+
+  **Config**: no direct key.
+
+  **API**: `options.pidsLimit`.
+
+  **Library**: `pidsLimit`.
+</ResponseField>
+
+<ResponseField name="readonlyRootFs" type="boolean" default="true">
+  **CLI**: `--writable` sets `readonlyRootFs=false`.
+
+  **Config**: no direct key.
+
+  **API**: `options.readonlyRootFs`.
+
+  **Library**: `readonlyRootFs`.
+</ResponseField>
+
+<ResponseField name="maxOutputSize" type="number" default="1048576">
+  **CLI**: `--max-output <bytes>`.
+
+  **Config**: no direct key.
+
+  **API**: `options.maxOutputSize`.
+
+  **Library**: `maxOutputSize`.
+</ResponseField>
+
+<ResponseField name="secrets" type="Record<string, string>">
+  **CLI**: `--secret KEY=VALUE` (repeatable).
+
+  **Config**: no direct key.
+
+  **API**: `options.secrets`.
+
+  **Library**: `secrets`.
+</ResponseField>
+
+<ResponseField name="timeoutMs" type="number" default="30000">
+  **CLI**: engine default from `--timeout` per run; config fallback still applies.
+
+  **Config fallback**: `defaults.timeoutMs`.
+
+  **API**: `options.timeoutMs` (engine default for request if `request.timeoutMs` is omitted).
+
+  **Library**: constructor `timeoutMs`.
+</ResponseField>
+
+<ResponseField name="image" type="string">
+  **CLI**: `--image <name>`.
+
+  **Config**: no direct key.
+
+  **API**: `options.image`.
+
+  **Library**: `image`.
+</ResponseField>
+
+<ResponseField name="sandboxSize" type="string" default="512m">
+  **CLI**: `--sandbox-size <size>`.
+
+  **Config fallback**: `defaults.sandboxSize`.
+
+  **API**: `options.sandboxSize`.
+
+  **Library**: `sandboxSize`.
+</ResponseField>
+
+<ResponseField name="tmpSize" type="string" default="256m">
+  **CLI**: `--tmp-size <size>`.
+
+  **Config fallback**: `defaults.tmpSize`.
+
+  **API**: `options.tmpSize`.
+
+  **Library**: `tmpSize`.
+</ResponseField>
+
+<ResponseField name="debug" type="boolean" default="false">
+  **CLI**: global `--debug`.
+
+  **Config fallback**: top-level `debug`.
+
+  **API**: `options.debug`.
+
+  **Library**: `debug`.
+</ResponseField>
+
+<ResponseField name="persist" type="boolean" default="false">
+  **CLI**: `--persist`.
+
+  **Config**: no direct key.
+
+  **API**: `options.persist`.
+
+  **Library**: `persist`.
+</ResponseField>
+
+<ResponseField name="logNetwork" type="boolean" default="false">
+  **CLI**: `--log-network`.
+
+  **Config**: no direct key.
+
+  **API**: `options.logNetwork`.
+
+  **Library**: `logNetwork`.
+</ResponseField>
+
+<ResponseField name="security" type="SecurityConfig">
+  **CLI**: no `run` flag.
+
+  **Config**: `security.seccomp`, `security.customProfilePath`.
+
+  **API**: `options.security`.
+
+  **Library**: `security`.
+</ResponseField>
+
+<ResponseField name="audit" type="AuditConfig">
+  **CLI**: no `run` flag.
+
+  **Config**: `audit.*`.
+
+  **API**: `options.audit`.
+
+  **Library**: `audit`.
+</ResponseField>
+
+<ResponseField name="remoteCode" type="RemoteCodePolicy">
+  **CLI**: no direct policy flag (only per-request URL flags).
+
+  **Config**: `remoteCode.*`.
+
+  **API**: `options.remoteCode`.
+
+  **Library**: constructor `remoteCode`.
+</ResponseField>
+
+<ResponseField name="poolStrategy" type="'fast' | 'secure'" default="fast">
+  **CLI**: not exposed as a `run` flag.
+
+  **Config**: top-level `poolStrategy` (applies to `isol8 serve` defaults only).
+
+  **API**: not configurable per request (server uses config default).
+
+  **Library**: `poolStrategy`.
+</ResponseField>
+
+<ResponseField name="poolSize" type="number | { clean: number; dirty: number }" default="{ clean: 1, dirty: 1 }">
+  **CLI**: not exposed as a `run` flag.
+
+  **Config**: top-level `poolSize` (applies to `isol8 serve` defaults only).
+
+  **API**: not configurable per request (server uses config default).
+
+  **Library**: `poolSize`.
+</ResponseField>
+
+<ResponseField name="dependencies" type="Isol8Dependencies">
+  **CLI**: set through `isol8 setup` inputs (or config), then used at runtime for custom image resolution.
+
+  **Config**: `dependencies.*`.
+
+  **API**: `options.dependencies`.
+
+  **Library**: constructor `dependencies`.
+</ResponseField>
+
+<Info>
+  Top-level `poolStrategy` and `poolSize` in `isol8.config.json` define defaults for server-created engines (`isol8 serve`). Library engine options can override them, but API requests cannot.
+</Info>
+
+## Startup options (`start(options?)`)
+
+<ResponseField name="prewarm" type="boolean | { runtimes?: Runtime[] }">
+  **CLI**: not exposed directly.
+
+  **API**: not exposed as request field.
+
+  **Library**: `await engine.start({ prewarm: true })` or `await engine.start({ prewarm: { runtimes: ["python"] } })`.
+</ResponseField>
+
+## Config-only operational keys (`isol8.config.json`)
+
+These keys are config concerns, not per-execution request fields.
+
+<ResponseField name="maxConcurrent" type="number" default="10">
+  Server/global concurrency cap.
+
+  **CLI**: no dedicated `run` flag.
+
+  **Config**: top-level `maxConcurrent`.
+
+  **API**: not a request body field; applied by server.
+
+  **Library**: second constructor arg (`new DockerIsol8(options, maxConcurrent)`).
+</ResponseField>
+
+<ResponseField name="cleanup.autoPrune" type="boolean" default="true">
+  Idle session pruning in server mode.
+</ResponseField>
+
+<ResponseField name="cleanup.maxContainerAgeMs" type="number" default="3600000">
+  Idle threshold for server-side pruning.
+</ResponseField>
+
+<ResponseField name="network.whitelist / network.blacklist" type="string[]">
+  Global defaults used when filtered networking is active.
+</ResponseField>
+
+<ResponseField name="poolStrategy" type="'fast' | 'secure'" default="fast">
+  Default pool strategy for engines created by `isol8 serve`.
+</ResponseField>
+
+<ResponseField name="poolSize" type="number | { clean: number; dirty: number }" default="{ clean: 1, dirty: 1 }">
+  Default pool size for engines created by `isol8 serve`.
+</ResponseField>
+
+## `isol8 setup` dependency mapping
+
+<ResponseField name="dependencies.python" type="string[]">
+  **CLI**: `isol8 setup --python numpy,pandas`
+
+  **Config**: `dependencies.python`
+</ResponseField>
+
+<ResponseField name="dependencies.node" type="string[]">
+  **CLI**: `isol8 setup --node lodash,axios`
+
+  **Config**: `dependencies.node`
+</ResponseField>
+
+<ResponseField name="dependencies.bun" type="string[]">
+  **CLI**: `isol8 setup --bun zod`
+
+  **Config**: `dependencies.bun`
+</ResponseField>
+
+<ResponseField name="dependencies.deno" type="string[]">
+  **CLI**: `isol8 setup --deno https://deno.land/std@...`
+
+  **Config**: `dependencies.deno`
+</ResponseField>
+
+<ResponseField name="dependencies.bash" type="string[]">
+  **CLI**: `isol8 setup --bash jq,curl`
+
+  **Config**: `dependencies.bash`
+</ResponseField>
+
+<ResponseField name="rebuild behavior" type="flag">
+  **CLI**: `isol8 setup --force`
+
+  **Config**: no equivalent key
+</ResponseField>
+
+## FAQ
+
+<AccordionGroup>
+  <Accordion title="Can I set global pool defaults for `isol8 serve`?">
+    Yes. Set top-level `poolStrategy` and `poolSize` in `isol8.config.json`. They apply as server defaults for API execution.
+  </Accordion>
+  <Accordion title="What wins if both request timeout and option timeout are set?">
+    `request.timeoutMs` wins for that call. `options.timeoutMs` is the fallback default for requests that omit timeout.
+  </Accordion>
+  <Accordion title="How do I force persistent behavior on the server API?">
+    Send a `sessionId` on `POST /execute`. The server uses that to set persistent mode for the session.
+  </Accordion>
+  <Accordion title="Can I use `codeUrl` without changing config?">
+    Only if remote code policy allows it. If `remoteCode.enabled` is `false`, URL-based execution is rejected.
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting quick checks
+
+- Request rejected for URL execution: verify `remoteCode.enabled`, host/scheme policy, and hash requirements in `/remote-code`.
+- Unexpected runtime settings: run `isol8 config --json` and confirm effective defaults.
+- Filter rules not taking effect: check both request-level `networkFilter` and global `network.*` defaults.
+- Persistent session not behaving as expected over API: confirm `sessionId` is present and stable across calls.
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Configuration reference" icon="gear" href="/configuration">
+    Full schema, defaults, and merge behavior for `isol8.config.json`.
+  </Card>
+  <Card title="How to CLI" icon="terminal" href="/cli">
+    Flag-level behavior for `run`, `setup`, `serve`, `config`, and `cleanup`.
+  </Card>
+  <Card title="Library reference" icon="book-open" href="/library">
+    Complete TypeScript API contracts and lifecycle methods.
+  </Card>
+  <Card title="Remote code URLs" icon="link" href="/remote-code">
+    URL execution policy, hash verification, and SSRF controls.
+  </Card>
+</CardGroup>

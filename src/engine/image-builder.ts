@@ -79,6 +79,29 @@ function computeDepsHash(runtime: string, packages: string[]): string {
 }
 
 /**
+ * Normalize package lists for stable tags/cache hits.
+ * - trims whitespace
+ * - removes empty entries
+ * - de-duplicates
+ * - sorts lexicographically
+ */
+export function normalizePackages(packages: string[]): string[] {
+  return [...new Set(packages.map((pkg) => pkg.trim()).filter(Boolean))].sort();
+}
+
+/**
+ * Returns deterministic custom image tag for a runtime + package set.
+ * Uses a short deps hash suffix to avoid tag collisions across different
+ * dependency sets for the same runtime.
+ */
+export function getCustomImageTag(runtime: string, packages: string[]): string {
+  const normalizedPackages = normalizePackages(packages);
+  const depsHash = computeDepsHash(runtime, normalizedPackages);
+  const shortHash = depsHash.slice(0, 12);
+  return `isol8:${runtime}-custom-${shortHash}`;
+}
+
+/**
  * Gets the labels from an existing Docker image.
  * Returns null if the image doesn't exist.
  */
@@ -229,20 +252,26 @@ export async function buildCustomImages(
 ): Promise<void> {
   const deps = config.dependencies;
 
-  if (deps.python?.length) {
-    await buildCustomImage(docker, "python", deps.python, onProgress, force);
+  const python = deps.python ? normalizePackages(deps.python) : [];
+  const node = deps.node ? normalizePackages(deps.node) : [];
+  const bun = deps.bun ? normalizePackages(deps.bun) : [];
+  const deno = deps.deno ? normalizePackages(deps.deno) : [];
+  const bash = deps.bash ? normalizePackages(deps.bash) : [];
+
+  if (python.length) {
+    await buildCustomImage(docker, "python", python, onProgress, force);
   }
-  if (deps.node?.length) {
-    await buildCustomImage(docker, "node", deps.node, onProgress, force);
+  if (node.length) {
+    await buildCustomImage(docker, "node", node, onProgress, force);
   }
-  if (deps.bun?.length) {
-    await buildCustomImage(docker, "bun", deps.bun, onProgress, force);
+  if (bun.length) {
+    await buildCustomImage(docker, "bun", bun, onProgress, force);
   }
-  if (deps.deno?.length) {
-    await buildCustomImage(docker, "deno", deps.deno, onProgress, force);
+  if (deno.length) {
+    await buildCustomImage(docker, "deno", deno, onProgress, force);
   }
-  if (deps.bash?.length) {
-    await buildCustomImage(docker, "bash", deps.bash, onProgress, force);
+  if (bash.length) {
+    await buildCustomImage(docker, "bash", bash, onProgress, force);
   }
 }
 
@@ -253,8 +282,9 @@ async function buildCustomImage(
   onProgress?: ProgressCallback,
   force = false
 ): Promise<void> {
-  const tag = `isol8:${runtime}-custom`;
-  const depsHash = computeDepsHash(runtime, packages);
+  const normalizedPackages = normalizePackages(packages);
+  const tag = getCustomImageTag(runtime, normalizedPackages);
+  const depsHash = computeDepsHash(runtime, normalizedPackages);
   logger.debug(`[ImageBuilder] ${runtime} custom deps hash: ${depsHash.slice(0, 16)}...`);
 
   // Check if we can skip the build
@@ -278,26 +308,30 @@ async function buildCustomImage(
     logger.debug(`[ImageBuilder] No existing custom image for ${runtime}`);
   }
 
-  onProgress?.({ runtime, status: "building", message: `Custom: ${packages.join(", ")}` });
+  onProgress?.({
+    runtime,
+    status: "building",
+    message: `Custom: ${normalizedPackages.join(", ")}`,
+  });
 
   // Generate a Dockerfile that extends the base image
   let installCmd: string;
   switch (runtime) {
     case "python":
-      installCmd = `RUN pip install --no-cache-dir ${packages.join(" ")}`;
+      installCmd = `RUN pip install --no-cache-dir ${normalizedPackages.join(" ")}`;
       break;
     case "node":
-      installCmd = `RUN npm install -g ${packages.join(" ")}`;
+      installCmd = `RUN npm install -g ${normalizedPackages.join(" ")}`;
       break;
     case "bun":
-      installCmd = `RUN bun install -g ${packages.join(" ")}`;
+      installCmd = `RUN bun install -g ${normalizedPackages.join(" ")}`;
       break;
     case "deno":
       // Deno uses URL imports, but we can pre-cache
-      installCmd = packages.map((p) => `RUN deno cache ${p}`).join("\n");
+      installCmd = normalizedPackages.map((p) => `RUN deno cache ${p}`).join("\n");
       break;
     case "bash":
-      installCmd = `RUN apk add --no-cache ${packages.join(" ")}`;
+      installCmd = `RUN apk add --no-cache ${normalizedPackages.join(" ")}`;
       break;
     default:
       throw new Error(`Unknown runtime: ${runtime}`);
@@ -310,7 +344,7 @@ async function buildCustomImage(
   const { Readable } = await import("node:stream");
 
   // Validate all packages before building
-  packages.forEach(validatePackageName);
+  normalizedPackages.forEach(validatePackageName);
 
   const tarBuffer = createTarBuffer("Dockerfile", dockerfileContent);
 

@@ -73,7 +73,7 @@ Great for prototyping or when you need different packages for every run.
 
 ## Strategy 2: Custom Images (Recommended)
 
-Bake your dependencies into a custom Docker image (`isol8:python-custom`, etc.). This eliminates installation time during execution.
+Bake your dependencies into a custom Docker image (`isol8:python-custom-<hash>`, etc.). This eliminates installation time during execution.
 
 ### Creating Custom Images
 
@@ -87,14 +87,14 @@ isol8 setup --python numpy,pandas
 isol8 setup --node lodash
 ```
 
-This creates a new Docker image tagged `isol8:python-custom` that extends the base `isol8:python` image.
+This creates a deterministic hashed tag (for example `isol8:python-custom-a1b2c3d4e5f6`) that extends the base `isol8:python` image.
 
 ### Using Custom Images
 
 Once built, isol8 automatically prefers the custom image. You don't need any special flags.
 
 ```bash
-# Automatically uses isol8:python-custom (with numpy pre-installed)
+# Automatically uses the hashed custom image for your configured dependencies
 isol8 run \
   -e "import numpy; print(numpy.__version__)" \
   --runtime python
@@ -137,7 +137,7 @@ flowchart TD
     Base["isol8:base (tini + proxy)"]
     Py["isol8:python"]
     Node["isol8:node"]
-    CustomPy["isol8:python-custom"]
+    CustomPy["isol8:python-custom-<hash>"]
     
     Alpine --> Base
     Base --> Py
@@ -149,7 +149,7 @@ flowchart TD
 
 ### Custom Images
 
-Custom images extend the base image. For example, `isol8:python-custom` is built like this:
+Custom images extend the base image. For example, a hashed Python custom image is built like this:
 
 ```dockerfile
 FROM isol8:python
@@ -197,7 +197,7 @@ Use `--force` to bypass this check and rebuild unconditionally.
 - **Install step is too slow**: pre-bake dependencies with `isol8 setup` and `dependencies` config.
 - **Package import still fails after install**: verify runtime/package pairing (for example Python package in Python runtime).
 - **Custom image not updating**: rerun `isol8 setup --force`.
-- **Disk usage growing from images**: run `isol8 cleanup` and prune unused Docker images.
+- **Disk usage growing from images**: run `isol8 cleanup --images` to remove isol8 images.
 
 ## Reference
 

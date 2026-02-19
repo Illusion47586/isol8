@@ -15,6 +15,7 @@ import type { RuntimeAdapter } from "../runtime/adapter";
 import type {
   ExecutionRequest,
   ExecutionResult,
+  Isol8Dependencies,
   Isol8Engine,
   Isol8Mode,
   Isol8Options,
@@ -22,12 +23,14 @@ import type {
   NetworkMode,
   RemoteCodePolicy,
   SecurityConfig,
+  StartOptions,
   StreamEvent,
 } from "../types";
 import { logger } from "../utils/logger";
 import { AuditLogger } from "./audit";
 import { fetchRemoteCode } from "./code-fetcher";
 import { Semaphore } from "./concurrency";
+import { getCustomImageTag, normalizePackages } from "./image-builder";
 import { ContainerPool } from "./pool";
 import { type ContainerResourceUsage, calculateResourceDelta, getContainerStats } from "./stats";
 import {
@@ -395,6 +398,7 @@ export class DockerIsol8 implements Isol8Engine {
   private readonly logNetwork: boolean;
   private readonly poolStrategy: "secure" | "fast";
   private readonly poolSize: number | { clean: number; dirty: number };
+  private readonly dependencies: Isol8Dependencies;
   private readonly auditLogger?: AuditLogger;
   private readonly remoteCodePolicy: RemoteCodePolicy;
 
@@ -457,6 +461,7 @@ export class DockerIsol8 implements Isol8Engine {
     this.logNetwork = options.logNetwork ?? false;
     this.poolStrategy = options.poolStrategy ?? "fast";
     this.poolSize = options.poolSize ?? { clean: 1, dirty: 1 };
+    this.dependencies = options.dependencies ?? {};
     this.remoteCodePolicy = options.remoteCode ?? {
       enabled: false,
       allowedSchemes: ["https"],
@@ -480,12 +485,47 @@ export class DockerIsol8 implements Isol8Engine {
   }
 
   /**
-   * Initialize isol8. Currently a no-op — containers are created
-   * lazily on first `execute()` call.
+   * Initialize isol8.
+   *
+   * In ephemeral mode this can optionally pre-warm the container pool.
+   * In persistent mode the container is created lazily on first execute.
    */
-  async start(): Promise<void> {
-    // For persistent mode, container is started lazily on first execute
-    // For ephemeral mode, this is a no-op
+  async start(options: StartOptions = {}): Promise<void> {
+    if (this.mode !== "ephemeral") {
+      return;
+    }
+
+    const prewarm = options.prewarm;
+    if (!prewarm) {
+      return;
+    }
+
+    const pool = this.ensurePool();
+    const images = new Set<string>();
+
+    const adapters =
+      typeof prewarm === "object" && prewarm.runtimes?.length
+        ? prewarm.runtimes.map((runtime) => RuntimeRegistry.get(runtime))
+        : RuntimeRegistry.list();
+
+    for (const adapter of adapters) {
+      try {
+        images.add(await this.resolveImage(adapter));
+      } catch (err) {
+        logger.debug(`[Pool] Pre-warm image resolution failed for ${adapter.name}: ${err}`);
+      }
+    }
+
+    await Promise.all(
+      [...images].map(async (image) => {
+        try {
+          await pool.warm(image);
+          logger.debug(`[Pool] Pre-warmed image: ${image}`);
+        } catch (err) {
+          logger.debug(`[Pool] Pre-warm failed for ${image}: ${err}`);
+        }
+      })
+    );
   }
 
   /** Stop and remove the container (if one exists). Safe to call multiple times. */
@@ -855,28 +895,38 @@ export class DockerIsol8 implements Isol8Engine {
       return cached;
     }
 
-    const customTag = `${adapter.image}-custom`;
-    let resolvedImage: string;
-    try {
-      await this.docker.getImage(customTag).inspect();
-      resolvedImage = customTag;
-    } catch {
-      resolvedImage = adapter.image;
+    let resolvedImage = adapter.image;
+    const configuredDeps = this.dependencies[adapter.name];
+    const normalizedDeps = configuredDeps ? normalizePackages(configuredDeps) : [];
+
+    if (normalizedDeps.length > 0) {
+      const hashedCustomTag = getCustomImageTag(adapter.name, normalizedDeps);
+      try {
+        await this.docker.getImage(hashedCustomTag).inspect();
+        resolvedImage = hashedCustomTag;
+      } catch {
+        logger.debug(
+          `[ImageBuilder] Hashed custom image not found for ${adapter.name}: ${hashedCustomTag}`
+        );
+      }
+    }
+
+    if (resolvedImage === adapter.image) {
+      // Backward-compatible fallback to legacy non-hashed custom tag.
+      const legacyCustomTag = `${adapter.image}-custom`;
+      try {
+        await this.docker.getImage(legacyCustomTag).inspect();
+        resolvedImage = legacyCustomTag;
+      } catch {
+        // keep base image
+      }
     }
 
     this.imageCache.set(cacheKey, resolvedImage);
     return resolvedImage;
   }
 
-  private async executeEphemeral(
-    req: ExecutionRequest & { code: string },
-    startTime: number
-  ): Promise<ExecutionResult> {
-    const adapter = this.getAdapter(req.runtime);
-    const timeoutMs = req.timeoutMs ?? this.defaultTimeoutMs;
-    const image = await this.resolveImage(adapter);
-
-    // Lazily initialize the container pool
+  private ensurePool(): ContainerPool {
     if (!this.pool) {
       this.pool = new ContainerPool({
         docker: this.docker,
@@ -895,8 +945,22 @@ export class DockerIsol8 implements Isol8Engine {
       });
     }
 
+    return this.pool;
+  }
+
+  private async executeEphemeral(
+    req: ExecutionRequest & { code: string },
+    startTime: number
+  ): Promise<ExecutionResult> {
+    const adapter = this.getAdapter(req.runtime);
+    const timeoutMs = req.timeoutMs ?? this.defaultTimeoutMs;
+    const image = await this.resolveImage(adapter);
+
+    // Lazily initialize the container pool
+    const pool = this.ensurePool();
+
     // Acquire a pre-warmed container from the pool
-    const container = await this.pool.acquire(image);
+    const container = await pool.acquire(image);
 
     // Collect baseline stats if resource tracking is enabled
     let startStats: ContainerResourceUsage | undefined;
@@ -915,10 +979,29 @@ export class DockerIsol8 implements Isol8Engine {
         await setupIptables(container);
       }
 
-      // Write code to the active tmpfs via exec (putArchive fails with ReadonlyRootfs)
-      const ext = req.fileExtension ?? adapter.getFileExtension();
-      const filePath = `${SANDBOX_WORKDIR}/main${ext}`;
-      await writeFileViaExec(container, filePath, req.code);
+      // Fast path: for simple executions, avoid file write and execute inline.
+      // Falls back to file-based path for runtimes that require file input (e.g. Deno)
+      // or when request options require filesystem artifacts.
+      const canUseInline =
+        !(req.stdin || req.files || req.outputPaths) &&
+        (!req.installPackages || req.installPackages.length === 0);
+
+      let rawCmd: string[];
+      if (canUseInline) {
+        try {
+          rawCmd = adapter.getCommand(req.code);
+        } catch {
+          const ext = req.fileExtension ?? adapter.getFileExtension();
+          const filePath = `${SANDBOX_WORKDIR}/main${ext}`;
+          await writeFileViaExec(container, filePath, req.code);
+          rawCmd = adapter.getCommand(req.code, filePath);
+        }
+      } else {
+        const ext = req.fileExtension ?? adapter.getFileExtension();
+        const filePath = `${SANDBOX_WORKDIR}/main${ext}`;
+        await writeFileViaExec(container, filePath, req.code);
+        rawCmd = adapter.getCommand(req.code, filePath);
+      }
 
       // Install packages if requested
       if (req.installPackages?.length) {
@@ -926,7 +1009,6 @@ export class DockerIsol8 implements Isol8Engine {
       }
 
       // Execute the actual command, wrapped with timeout to ensure kill on expiry
-      const rawCmd = adapter.getCommand(req.code, filePath);
       const timeoutSec = Math.ceil(timeoutMs / 1000);
 
       // Handle stdin: write to file and pipe into command
@@ -1018,7 +1100,7 @@ export class DockerIsol8 implements Isol8Engine {
         logger.debug(`[Persist] Leaving container running for inspection: ${container.id}`);
       } else {
         // Return container to pool for reuse - fire-and-forget for performance
-        this.pool!.release(container, image).catch((err) => {
+        pool.release(container, image).catch((err) => {
           logger.debug(`[Pool] release failed: ${err}`);
           container.remove({ force: true }).catch(() => {});
         });
@@ -1535,7 +1617,7 @@ export class DockerIsol8 implements Isol8Engine {
    * Remove all isol8 containers (both running and stopped).
    *
    * This static utility method finds and removes all containers created by isol8,
-   * identified by images starting with `isol8:` or `isol8-custom:`.
+   * identified by images starting with `isol8:`.
    *
    * @param docker - Optional Docker instance. If not provided, creates a new one.
    * @returns Promise resolving to an object with counts of removed and failed containers.
@@ -1559,9 +1641,7 @@ export class DockerIsol8 implements Isol8Engine {
 
     // Find all isol8 containers
     const containers = await dockerInstance.listContainers({ all: true });
-    const isol8Containers = containers.filter(
-      (c) => c.Image.startsWith("isol8:") || c.Image.startsWith("isol8-custom:")
-    );
+    const isol8Containers = containers.filter((c) => c.Image.startsWith("isol8:"));
 
     let removed = 0;
     let failed = 0;
@@ -1576,6 +1656,42 @@ export class DockerIsol8 implements Isol8Engine {
         failed++;
         const errorMsg = err instanceof Error ? err.message : String(err);
         errors.push(`${containerInfo.Id.slice(0, 12)}: ${errorMsg}`);
+      }
+    }
+
+    return { removed, failed, errors };
+  }
+
+  /**
+   * Remove all isol8 Docker images.
+   *
+   * Images are identified by repo tags starting with `isol8:`
+   * (for example `isol8:python` or `isol8:python-custom-<hash>`).
+   */
+  static async cleanupImages(
+    docker?: Docker
+  ): Promise<{ removed: number; failed: number; errors: string[] }> {
+    const dockerInstance = docker ?? new Docker();
+
+    const images = await dockerInstance.listImages({ all: true });
+    const isol8Images = images.filter((img) =>
+      img.RepoTags?.some((tag) => tag.startsWith("isol8:"))
+    );
+
+    let removed = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    for (const imageInfo of isol8Images) {
+      try {
+        const image = dockerInstance.getImage(imageInfo.Id);
+        await image.remove({ force: true });
+        removed++;
+      } catch (err) {
+        failed++;
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        const imageRef = imageInfo.RepoTags?.[0] ?? imageInfo.Id.slice(0, 12);
+        errors.push(`${imageRef}: ${errorMsg}`);
       }
     }
 

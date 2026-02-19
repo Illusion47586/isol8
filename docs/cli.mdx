@@ -128,14 +128,6 @@ isol8 run [file] [options]
   Enable network request logs in results (filtered mode).
 </ResponseField>
 
-<ResponseField name="--pool-strategy <mode>" type="fast | secure" default="fast">
-  Ephemeral container pool strategy.
-</ResponseField>
-
-<ResponseField name="--pool-size <size>" type="number | clean,dirty" default="1,1">
-  Pool size. Examples: `2` or `2,2`.
-</ResponseField>
-
 ### Remote execution flags
 
 <ResponseField name="--host <url>" type="string">
@@ -225,6 +217,10 @@ isol8 serve --key <api-key> [options]
   Enable debug logs for server internals.
 </ResponseField>
 
+<Info>
+  For full server behavior and endpoints, see the Server docs tab: <a href="/server/overview">Server overview</a> and <a href="/server/routes">Server routes</a>.
+</Info>
+
 ## `isol8 config`
 
 ```bash
@@ -243,6 +239,10 @@ isol8 cleanup [options]
 
 <ResponseField name="--force" type="flag">
   Skip confirmation prompt.
+</ResponseField>
+
+<ResponseField name="--images" type="flag">
+  Also remove isol8 Docker images.
 </ResponseField>
 
 ## FAQ
@@ -269,7 +269,7 @@ isol8 cleanup [options]
 ## See also
 
 <CardGroup cols={2}>
-  <Card title="Passing values" icon="sliders" href="/passing-values">
+  <Card title="Option mapping" icon="sliders" href="/option-mapping">
     Map each CLI flag to config, API, and library equivalents.
   </Card>
   <Card title="Configuration reference" icon="settings" href="/configuration">

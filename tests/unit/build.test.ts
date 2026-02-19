@@ -261,6 +261,7 @@ describe("CLI help and version", () => {
   test("cleanup --help lists cleanup flags", async () => {
     const { stdout } = await runCLI("cleanup --help");
     expect(stdout).toContain("--force");
+    expect(stdout).toContain("--images");
   });
 });
 
@@ -309,6 +310,8 @@ describe("CLI config command", () => {
       // Cleanup
       expect(config.cleanup.autoPrune).toBe(true);
       expect(config.cleanup.maxContainerAgeMs).toBe(3_600_000);
+      expect(config.poolStrategy).toBe("fast");
+      expect(config.poolSize).toEqual({ clean: 1, dirty: 1 });
 
       // Dependencies
       expect(config.dependencies).toBeDefined();
@@ -449,6 +452,8 @@ describe("CLI config command", () => {
         },
         network: { whitelist: [".*\\.example\\.com"], blacklist: ["bad\\.com"] },
         cleanup: { autoPrune: false, maxContainerAgeMs: 1_800_000 },
+        poolStrategy: "secure",
+        poolSize: 3,
         dependencies: { python: ["flask"], bun: ["zod"] },
       })
     );
@@ -468,6 +473,8 @@ describe("CLI config command", () => {
       expect(config.network.blacklist).toEqual(["bad\\.com"]);
       expect(config.cleanup.autoPrune).toBe(false);
       expect(config.cleanup.maxContainerAgeMs).toBe(1_800_000);
+      expect(config.poolStrategy).toBe("secure");
+      expect(config.poolSize).toBe(3);
       expect(config.dependencies.python).toEqual(["flask"]);
       expect(config.dependencies.bun).toEqual(["zod"]);
     } finally {
@@ -1585,6 +1592,7 @@ describe("library bundle", () => {
       expect(config.defaults.network).toBe("none");
       expect(config.debug).toBe(false);
       expect(config.cleanup.autoPrune).toBe(true);
+      expect(config.poolStrategy).toBe("fast");
     } finally {
       rmSync(tmpDir, { recursive: true });
     }

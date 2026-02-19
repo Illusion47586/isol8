@@ -58,12 +58,18 @@
           },
           {
             "group": "Deployment & Ops",
-            "pages": ["remote", "observability", "architecture", "performance"]
+            "pages": [
+              "remote",
+              "observability",
+              "architecture",
+              "performance",
+              "tti-benchmarks"
+            ]
           },
           {
             "group": "Reference",
             "pages": [
-              "passing-values",
+              "option-mapping",
               "configuration",
               "remote-code",
               "cli",

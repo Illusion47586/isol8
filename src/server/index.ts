@@ -93,6 +93,12 @@ export async function createServer(options: ServerOptions) {
       `[Server] Code source: ${body.request.codeUrl ? `url=${body.request.codeUrl}` : `inline (${body.request.code?.length ?? 0} chars)`}`
     );
 
+    const {
+      poolStrategy: _ignoredPoolStrategy,
+      poolSize: _ignoredPoolSize,
+      ...requestOptions
+    } = body.options ?? {};
+
     const engineOptions: Isol8Options = {
       network: config.defaults.network,
       memoryLimit: config.defaults.memoryLimit,
@@ -100,8 +106,11 @@ export async function createServer(options: ServerOptions) {
       timeoutMs: config.defaults.timeoutMs,
       sandboxSize: config.defaults.sandboxSize,
       tmpSize: config.defaults.tmpSize,
+      poolStrategy: config.poolStrategy,
+      poolSize: config.poolSize,
+      dependencies: config.dependencies,
       remoteCode: config.remoteCode,
-      ...body.options,
+      ...requestOptions,
       mode: body.sessionId ? "persistent" : "ephemeral",
       audit: config.audit,
     };
@@ -172,6 +181,12 @@ export async function createServer(options: ServerOptions) {
       `[Server] Code source: ${body.request.codeUrl ? `url=${body.request.codeUrl}` : `inline (${body.request.code?.length ?? 0} chars)`}`
     );
 
+    const {
+      poolStrategy: _ignoredPoolStrategy,
+      poolSize: _ignoredPoolSize,
+      ...requestOptions
+    } = body.options ?? {};
+
     const engineOptions: Isol8Options = {
       network: config.defaults.network,
       memoryLimit: config.defaults.memoryLimit,
@@ -179,8 +194,11 @@ export async function createServer(options: ServerOptions) {
       timeoutMs: config.defaults.timeoutMs,
       sandboxSize: config.defaults.sandboxSize,
       tmpSize: config.defaults.tmpSize,
+      poolStrategy: config.poolStrategy,
+      poolSize: config.poolSize,
+      dependencies: config.dependencies,
       remoteCode: config.remoteCode,
-      ...body.options,
+      ...requestOptions,
       mode: "ephemeral",
     };
 

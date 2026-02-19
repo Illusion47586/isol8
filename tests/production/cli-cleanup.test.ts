@@ -16,5 +16,6 @@ describe("CLI Cleanup", () => {
   test("cleanup --help lists flags", async () => {
     const { stdout } = await runIsol8("cleanup --help");
     expect(stdout).toContain("--force");
+    expect(stdout).toContain("--images");
   });
 });

@@ -248,6 +248,12 @@ This FAQ is grounded in current code behavior (`src/`, `src/types.ts`, and `sche
     - `poolSize`: warm pool capacity
   </Accordion>
 
+  <Accordion title="How does `poolSize` relate to `maxConcurrent`?">
+    - `maxConcurrent` limits total parallel executions (semaphore).
+    - `poolSize` controls warm container availability per runtime image.
+    - If concurrency exceeds warm capacity for a runtime, requests can still run but may pay cold create/start latency.
+  </Accordion>
+
   <Accordion title="Does background pool cleanup matter for one-shot CLI runs?">
     Usually not much. One-shot CLI exits and calls `engine.stop()`, which drains/removes pool containers. Background cleaning is most useful for long-lived processes (`serve`, long-running app instance).
   </Accordion>

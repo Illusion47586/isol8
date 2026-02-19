@@ -337,58 +337,56 @@ export class ContainerPool {
 
   private replenish(image: string): void {
     if (this.replenishing.has(image)) {
-      if (this.replenishing.has(image)) {
-        return;
-      }
-
-      const pool = this.pools.get(image);
-      const currentSize = pool
-        ? this.poolStrategy === "fast"
-          ? pool.clean.length
-          : (pool.clean?.length ?? 0)
-        : 0;
-      const targetSize = this.poolStrategy === "fast" ? this.cleanPoolSize : this.cleanPoolSize;
-
-      if (currentSize >= targetSize) {
-        return;
-      }
-
-      this.replenishing.add(image);
-
-      const promise = this.createContainer(image)
-        .then((container) => {
-          const p = this.pools.get(image);
-          if (!p) {
-            container.remove({ force: true }).catch(() => {});
-            return;
-          }
-
-          if (this.poolStrategy === "fast") {
-            if (p.clean.length < this.cleanPoolSize) {
-              p.clean.push({ container, createdAt: Date.now() });
-            } else {
-              container.remove({ force: true }).catch(() => {});
-            }
-          } else {
-            if (!p.clean) {
-              p.clean = [];
-            }
-            if (p.clean.length < this.cleanPoolSize) {
-              p.clean.push({ container, createdAt: Date.now() });
-            } else {
-              container.remove({ force: true }).catch(() => {});
-            }
-          }
-        })
-        .catch((err) => {
-          logger.error(`[Pool] Error during replenishment for ${image}:`, err);
-        })
-        .finally(() => {
-          this.replenishing.delete(image);
-          this.pendingReplenishments.delete(promise);
-        });
-
-      this.pendingReplenishments.add(promise);
+      return;
     }
+
+    const pool = this.pools.get(image);
+    const currentSize = pool
+      ? this.poolStrategy === "fast"
+        ? pool.clean.length
+        : (pool.clean?.length ?? 0)
+      : 0;
+    const targetSize = this.cleanPoolSize;
+
+    if (currentSize >= targetSize) {
+      return;
+    }
+
+    this.replenishing.add(image);
+
+    const promise = this.createContainer(image)
+      .then((container) => {
+        const p = this.pools.get(image);
+        if (!p) {
+          container.remove({ force: true }).catch(() => {});
+          return;
+        }
+
+        if (this.poolStrategy === "fast") {
+          if (p.clean.length < this.cleanPoolSize) {
+            p.clean.push({ container, createdAt: Date.now() });
+          } else {
+            container.remove({ force: true }).catch(() => {});
+          }
+        } else {
+          if (!p.clean) {
+            p.clean = [];
+          }
+          if (p.clean.length < this.cleanPoolSize) {
+            p.clean.push({ container, createdAt: Date.now() });
+          } else {
+            container.remove({ force: true }).catch(() => {});
+          }
+        }
+      })
+      .catch((err) => {
+        logger.error(`[Pool] Error during replenishment for ${image}:`, err);
+      })
+      .finally(() => {
+        this.replenishing.delete(image);
+        this.pendingReplenishments.delete(promise);
+      });
+
+    this.pendingReplenishments.add(promise);
   }
 }

@@ -26,6 +26,10 @@ flowchart TD
   I --> J[Return Result / Stream]
 ```
 
+<Note>
+  In ephemeral mode, simple requests can skip file injection and execute inline (for example `python -c`, `node -e`, `bun -e`, `bash -c`) when no `stdin`, `files`, `outputPaths`, or package installs are requested.
+</Note>
+
 ## Execution Modes
 
 isol8 supports two execution modes, determined by your use case.
@@ -389,10 +393,10 @@ isol8 run -e "print('my-secret-value')" --secret KEY=my-secret-value
 ## Related pages
 
 <CardGroup cols={2}>
-  <Card title="Passing values" icon="sliders" href="/passing-values">
+  <Card title="Option mapping" icon="sliders" href="/option-mapping">
     Exact option mapping across CLI, config, API, and library.
   </Card>
-  <Card title="Runtime reference" icon="layers" href="/runtimes">
+  <Card title="Runtime reference" icon="square-terminal" href="/runtimes">
     Runtime-specific behavior, extensions, and package semantics.
   </Card>
   <Card title="Remote code URLs" icon="link" href="/remote-code">

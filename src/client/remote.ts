@@ -11,6 +11,7 @@ import type {
   ExecutionResult,
   Isol8Engine,
   Isol8Options,
+  StartOptions,
   StreamEvent,
 } from "../types";
 
@@ -57,7 +58,7 @@ export class RemoteIsol8 implements Isol8Engine {
   }
 
   /** Verify the remote server is reachable by hitting the `/health` endpoint. */
-  async start(): Promise<void> {
+  async start(_options?: StartOptions): Promise<void> {
     // Verify server is reachable
     const res = await this.fetch("/health");
     if (!res.ok) {

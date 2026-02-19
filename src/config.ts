@@ -33,6 +33,8 @@ const DEFAULT_CONFIG: Isol8Config = {
     autoPrune: true,
     maxContainerAgeMs: 3_600_000,
   },
+  poolStrategy: "fast",
+  poolSize: { clean: 1, dirty: 1 },
   dependencies: {},
   security: {
     seccomp: "strict",
@@ -129,6 +131,8 @@ function mergeConfig(defaults: Isol8Config, overrides: Partial<Isol8Config>): Is
       ...defaults.cleanup,
       ...overrides.cleanup,
     },
+    poolStrategy: overrides.poolStrategy ?? defaults.poolStrategy,
+    poolSize: overrides.poolSize ?? defaults.poolSize,
     dependencies: {
       ...defaults.dependencies,
       ...overrides.dependencies,

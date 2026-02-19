@@ -68,13 +68,19 @@ describe("Library: DockerIsol8 as Isol8Engine", () => {
 
   test("start() and stop() lifecycle is safe to call multiple times", async () => {
     const engine = new DockerIsol8({ mode: "ephemeral", network: "none" });
-    // start is a no-op for ephemeral, should not throw
+    // start should be idempotent and safe across repeated calls
     await engine.start();
     await engine.start();
     // stop with no container should not throw
     await engine.stop();
     await engine.stop();
   }, 10_000);
+
+  test("start() accepts prewarm options", async () => {
+    const engine = new DockerIsol8({ mode: "ephemeral", network: "none" });
+    await engine.start({ prewarm: { runtimes: ["python"] } });
+    await engine.stop();
+  }, 15_000);
 });
 
 describe("Library: Environment Variable Injection", () => {

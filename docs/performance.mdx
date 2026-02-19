@@ -18,8 +18,8 @@ isol8 performance is mostly driven by container lifecycle decisions and dependen
 
 | Value | CLI | Config | API (`/execute`) | Library |
 |:--|:--|:--|:--|:--|
-| `poolStrategy` | `--pool-strategy` | not in `isol8.config.json` | `options.poolStrategy` | `new DockerIsol8({ poolStrategy })` |
-| `poolSize` | `--pool-size` | not in `isol8.config.json` | `options.poolSize` | `new DockerIsol8({ poolSize })` |
+| `poolStrategy` | not exposed on `run` | `poolStrategy` (serve defaults) | not request-configurable | `new DockerIsol8({ poolStrategy })` |
+| `poolSize` | not exposed on `run` | `poolSize` (serve defaults) | not request-configurable | `new DockerIsol8({ poolSize })` |
 | `maxConcurrent` | no `run` flag | `maxConcurrent` | server-level (from config) | `new DockerIsol8(opts, maxConcurrent)` |
 | `timeoutMs` | `--timeout` | `defaults.timeoutMs` | `request.timeoutMs` or `options.timeoutMs` | request-level or engine default |
 | `memoryLimit` | `--memory` | `defaults.memoryLimit` | `options.memoryLimit` | `memoryLimit` |
@@ -42,6 +42,8 @@ In `fast` mode:
 - `clean` pool: ready-to-run containers
 - `dirty` pool: returned containers waiting cleanup
 - acquire path prefers clean containers for lower start latency
+- each clean acquire kicks off async replenishment so warm capacity refills in the background
+- simple no-artifact requests can execute inline (no code-file write exec), reducing warm-path overhead
 
 <Note>
   For a typical one-shot `isol8 run`, the process exits after execution and calls `engine.stop()`, which drains/removes pooled containers. Background cleanup is mainly beneficial in long-lived processes (for example `isol8 serve` or an app that keeps a `DockerIsol8` instance alive).
@@ -69,8 +71,6 @@ flowchart TD
   <Tab title="CLI">
     ```bash
     isol8 run script.py \
-      --pool-strategy fast \
-      --pool-size 3,3 \
       --timeout 30000 \
       --memory 512m \
       --cpu 1
@@ -84,8 +84,6 @@ flowchart TD
         "runtime": "python"
       },
       "options": {
-        "poolStrategy": "fast",
-        "poolSize": { "clean": 3, "dirty": 3 },
         "timeoutMs": 30000,
         "memoryLimit": "512m",
         "cpuLimit": 1
@@ -111,6 +109,8 @@ flowchart TD
     ```json
     {
       "maxConcurrent": 20,
+      "poolStrategy": "fast",
+      "poolSize": { "clean": 3, "dirty": 3 },
       "defaults": {
         "timeoutMs": 30000,
         "memoryLimit": "512m",
@@ -120,6 +120,14 @@ flowchart TD
     ```
   </Tab>
 </Tabs>
+
+<Note>
+  Config-level `poolStrategy` and `poolSize` are server defaults (`isol8 serve`). API request options cannot override them; library engine options can.
+</Note>
+
+<Note>
+  Pool tuning examples are intentionally shown in Library and Config contexts only.
+</Note>
 
 <Tip>
   Start with `poolStrategy: "fast"` and `poolSize: { clean: 1, dirty: 1 }`, then increase `clean` for steady load and `dirty` for burst absorption.
@@ -132,6 +140,21 @@ flowchart TD
 - server mode: loaded from `isol8.config.json` and applied globally
 
 If latency spikes happen under burst traffic, first check queueing pressure before raising CPU/memory limits.
+
+### How `poolSize` and `maxConcurrent` work together
+
+They control different bottlenecks:
+- `maxConcurrent`: how many executions can run at once.
+- `poolSize`: how many warm containers are available per runtime image.
+
+Example:
+- If `maxConcurrent` is `10` but Python `poolSize.clean` is `1`, a burst of Python requests can still hit cold container creation once warm capacity is exhausted.
+- Increasing `poolSize.clean` for your hottest runtime reduces cold misses and improves p95/p99 latency.
+
+Practical tuning:
+1. Set `maxConcurrent` to host capacity (CPU/memory).
+2. Set `poolSize.clean` to expected per-runtime burst.
+3. Set `poolSize.dirty` to absorb release spikes while background cleanup catches up.
 
 ## Dependency installation cost
 
@@ -197,6 +220,9 @@ flowchart TD
   </Card>
   <Card title="Configuration reference" icon="gear" href="/configuration">
     Defaults and server-level knobs including `maxConcurrent`.
+  </Card>
+  <Card title="Benchmarks" icon="timer" href="/tti-benchmarks">
+    All local benchmark suites, including ComputeSDK-style TTI.
   </Card>
   <Card title="Troubleshooting" icon="wrench" href="/troubleshooting">
     Symptom-driven fixes for latency and throughput issues.
