@@ -1,3 +1,10 @@
+## [0.11.3](https://github.com/Illusion47586/isol8/compare/v0.11.2...v0.11.3) (2026-02-19)
+
+
+### Bug Fixes
+
+* **server:** seccomp hardening, cleanup lifecycle, and install reliability ([#63](https://github.com/Illusion47586/isol8/issues/63)) ([a9232ae](https://github.com/Illusion47586/isol8/commit/a9232ae17c0b750e118d10d70568a055fc04b69f))
+
 ## [0.11.2](https://github.com/Illusion47586/isol8/compare/v0.11.1...v0.11.2) (2026-02-19)
 
 
