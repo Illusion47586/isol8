@@ -113,7 +113,7 @@ isol8 run script.py --host http://server:3000 --key my-api-key
 | `--persistent` | Keep container alive between runs | `false` |
 | `--persist` | Keep container after execution for inspection/debugging | `false` |
 | `--debug` | Enable debug logging for internal engine operations | `false` |
-| `--timeout <ms>` | Execution timeout in milliseconds | `30000` |
+| `--timeout <ms>` | Timeout in milliseconds for package install + execution phases | `30000` |
 | `--memory <limit>` | Memory limit (e.g. `512m`, `1g`) | `512m` |
 | `--cpu <limit>` | CPU limit as fraction (e.g. `0.5`, `2.0`) | `1.0` |
 | `--image <name>` | Override Docker image | — |

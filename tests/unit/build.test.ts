@@ -1465,6 +1465,15 @@ except:
     expect(stdout).toMatch(/\d+\.\d+/);
   }, 120_000);
 
+  test("--install path wraps package manager with timeout", async () => {
+    const { stdout, stderr } = await runCLI(
+      'run -e "import requests; print(requests.__version__)" -r python --install requests --net host --debug --no-stream',
+      { timeout: 120_000 }
+    );
+    const combined = `${stdout}${stderr}`;
+    expect(combined).toContain('Installing packages: ["timeout"');
+  }, 120_000);
+
   test("--install without explicit --net auto-enables filtered mode and registry allowlist", async () => {
     try {
       await runCLI(

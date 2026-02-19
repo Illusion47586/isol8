@@ -180,6 +180,10 @@ This FAQ is grounded in current code behavior (`src/`, `src/types.ts`, and `sche
   <Accordion title="If I pass `--net` explicitly with `--install`, is it overridden?">
     No. Explicit `--net` is preserved. Only the allowlist is merged when effective mode is `filtered`.
   </Accordion>
+
+  <Accordion title="Does `--timeout` include package install time when using `--install`?">
+    Yes. The timeout now applies to both package installation and code execution, so blocked or stalled installs fail instead of hanging indefinitely.
+  </Accordion>
 </AccordionGroup>
 
 ## Runtimes, files, and package installs
