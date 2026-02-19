@@ -203,8 +203,6 @@ program
   .option("--debug", "Enable debug logging")
   .option("--persist", "Keep container running after execution for inspection")
   .option("--log-network", "Log all network requests (requires --net filtered)")
-  .option("--pool-strategy <mode>", "Pool strategy: fast (default) or secure", "fast")
-  .option("--pool-size <size>", "Pool size (number or 'clean,dirty' for fast mode)", "1,1")
   .action(async (file: string | undefined, opts) => {
     const {
       code,
@@ -891,15 +889,6 @@ async function resolveRunInput(file: string | undefined, opts: any) {
     ...(opts.logNetwork ? { logNetwork: true } : {}),
     dependencies: config.dependencies,
     remoteCode: config.remoteCode,
-    poolStrategy: opts.poolStrategy === "secure" ? "secure" : "fast",
-    poolSize: opts.poolSize
-      ? opts.poolSize.includes(",")
-        ? {
-            clean: Number.parseInt(opts.poolSize.split(",")[0]!, 10),
-            dirty: Number.parseInt(opts.poolSize.split(",")[1]!, 10),
-          }
-        : Number.parseInt(opts.poolSize, 10)
-      : { clean: 1, dirty: 1 },
   };
 
   logger.debug(

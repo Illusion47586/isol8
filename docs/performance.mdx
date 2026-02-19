@@ -18,8 +18,8 @@ isol8 performance is mostly driven by container lifecycle decisions and dependen
 
 | Value | CLI | Config | API (`/execute`) | Library |
 |:--|:--|:--|:--|:--|
-| `poolStrategy` | `--pool-strategy` | `poolStrategy` (serve defaults) | `options.poolStrategy` | `new DockerIsol8({ poolStrategy })` |
-| `poolSize` | `--pool-size` | `poolSize` (serve defaults) | `options.poolSize` | `new DockerIsol8({ poolSize })` |
+| `poolStrategy` | not exposed on `run` | `poolStrategy` (serve defaults) | not request-configurable | `new DockerIsol8({ poolStrategy })` |
+| `poolSize` | not exposed on `run` | `poolSize` (serve defaults) | not request-configurable | `new DockerIsol8({ poolSize })` |
 | `maxConcurrent` | no `run` flag | `maxConcurrent` | server-level (from config) | `new DockerIsol8(opts, maxConcurrent)` |
 | `timeoutMs` | `--timeout` | `defaults.timeoutMs` | `request.timeoutMs` or `options.timeoutMs` | request-level or engine default |
 | `memoryLimit` | `--memory` | `defaults.memoryLimit` | `options.memoryLimit` | `memoryLimit` |
@@ -71,8 +71,6 @@ flowchart TD
   <Tab title="CLI">
     ```bash
     isol8 run script.py \
-      --pool-strategy fast \
-      --pool-size 3,3 \
       --timeout 30000 \
       --memory 512m \
       --cpu 1
@@ -86,8 +84,6 @@ flowchart TD
         "runtime": "python"
       },
       "options": {
-        "poolStrategy": "fast",
-        "poolSize": { "clean": 3, "dirty": 3 },
         "timeoutMs": 30000,
         "memoryLimit": "512m",
         "cpuLimit": 1
@@ -126,7 +122,11 @@ flowchart TD
 </Tabs>
 
 <Note>
-  Config-level `poolStrategy` and `poolSize` are server defaults (`isol8 serve`). CLI flags and API request `options` still override them per execution.
+  Config-level `poolStrategy` and `poolSize` are server defaults (`isol8 serve`). API request options cannot override them; library engine options can.
+</Note>
+
+<Note>
+  Pool tuning examples are intentionally shown in Library and Config contexts only.
 </Note>
 
 <Tip>

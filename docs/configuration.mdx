@@ -354,7 +354,7 @@ Server-side idle session management settings.
 Server-side pool defaults for engines created by `isol8 serve`.
 
 <Note>
-  These config keys are serve defaults. Per-request `options.poolStrategy` and `options.poolSize` can still override them on API calls.
+  These config keys are serve defaults. API calls do not override them per request.
 </Note>
 
 <ResponseField name="poolStrategy" type="fast | secure" default="fast">

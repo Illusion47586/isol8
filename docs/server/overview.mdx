@@ -60,8 +60,27 @@ flowchart TD
 
 - no `sessionId`: ephemeral execution (fresh engine lifecycle)
 - with `sessionId`: server creates/reuses persistent session
-- `options` merge over server config defaults
+- request `options` merge over server config defaults
+- `poolStrategy` and `poolSize` are always taken from server config
 - audit settings are applied from server config
+
+## Pool defaults (`isol8 serve`)
+
+Server-created engines use config-level pool defaults:
+
+- `poolStrategy` (default: `fast`)
+- `poolSize` (default: `{ "clean": 1, "dirty": 1 }`)
+
+```json
+{
+  "poolStrategy": "fast",
+  "poolSize": { "clean": 2, "dirty": 2 }
+}
+```
+
+<Note>
+  API requests cannot override pooling per call. Set pooling once in `isol8.config.json` for consistent server behavior.
+</Note>
 
 ## Auto-pruning and idle session cleanup
 
@@ -101,6 +120,9 @@ Default values:
   </Card>
   <Card title="Configuration reference" icon="gear" href="/configuration">
     Defaults and cleanup settings that affect server behavior.
+  </Card>
+  <Card title="Performance tuning" icon="gauge-high" href="/performance">
+    Pool strategy, pool size, and concurrency tuning guidance.
   </Card>
   <Card title="Troubleshooting" icon="wrench" href="/troubleshooting">
     Diagnose auth, session, and remote execution issues.

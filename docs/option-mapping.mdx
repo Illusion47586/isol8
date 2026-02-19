@@ -402,21 +402,21 @@ These are engine/runtime behavior options (constructor options locally, `options
 </ResponseField>
 
 <ResponseField name="poolStrategy" type="'fast' | 'secure'" default="fast">
-  **CLI**: `--pool-strategy <mode>`.
+  **CLI**: not exposed as a `run` flag.
 
   **Config**: top-level `poolStrategy` (applies to `isol8 serve` defaults only).
 
-  **API**: `options.poolStrategy`.
+  **API**: not configurable per request (server uses config default).
 
   **Library**: `poolStrategy`.
 </ResponseField>
 
 <ResponseField name="poolSize" type="number | { clean: number; dirty: number }" default="{ clean: 1, dirty: 1 }">
-  **CLI**: `--pool-size <n>` or `--pool-size <clean,dirty>`.
+  **CLI**: not exposed as a `run` flag.
 
   **Config**: top-level `poolSize` (applies to `isol8 serve` defaults only).
 
-  **API**: `options.poolSize`.
+  **API**: not configurable per request (server uses config default).
 
   **Library**: `poolSize`.
 </ResponseField>
@@ -432,7 +432,7 @@ These are engine/runtime behavior options (constructor options locally, `options
 </ResponseField>
 
 <Info>
-  Top-level `poolStrategy` and `poolSize` in `isol8.config.json` define defaults for server-created engines (`isol8 serve`). CLI/library/API per-request values can still override them.
+  Top-level `poolStrategy` and `poolSize` in `isol8.config.json` define defaults for server-created engines (`isol8 serve`). Library engine options can override them, but API requests cannot.
 </Info>
 
 ## Startup options (`start(options?)`)
@@ -523,7 +523,7 @@ These keys are config concerns, not per-execution request fields.
 
 <AccordionGroup>
   <Accordion title="Can I set global pool defaults for `isol8 serve`?">
-    Yes. Set top-level `poolStrategy` and `poolSize` in `isol8.config.json`. They apply as server defaults and can still be overridden by request `options`.
+    Yes. Set top-level `poolStrategy` and `poolSize` in `isol8.config.json`. They apply as server defaults for API execution.
   </Accordion>
   <Accordion title="What wins if both request timeout and option timeout are set?">
     `request.timeoutMs` wins for that call. `options.timeoutMs` is the fallback default for requests that omit timeout.
