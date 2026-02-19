@@ -622,7 +622,7 @@ describe("compiled server binary", () => {
 
   test("missing --key and no ISOL8_API_KEY exits with error", async () => {
     try {
-      await execAsync(`${SERVER_BINARY} --port 0`, {
+      await execAsync(`${SERVER_BINARY} --port 3000`, {
         cwd: ROOT,
         timeout: 10_000,
         env: { ...process.env, ISOL8_API_KEY: "" },
