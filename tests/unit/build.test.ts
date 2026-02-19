@@ -1154,6 +1154,12 @@ describe("CLI run command", () => {
     return;
   }
 
+  beforeAll(async () => {
+    // Runtime images may have been pruned by serve shutdown cleanup in earlier tests.
+    // Reconcile once before CLI run command assertions.
+    await runCLI("setup", { timeout: 300_000 });
+  }, 330_000);
+
   // ── Basic execution ────────────────────────────────────────────
 
   test("inline Python execution with -e", async () => {
