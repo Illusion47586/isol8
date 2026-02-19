@@ -35,6 +35,7 @@ flowchart TD
 isol8 uses one engine abstraction with three execution paths:
 
 - **Ephemeral (`mode: "ephemeral"`)**: container acquired from warm pool, executed, then released back for cleanup/reuse.
+  For simple requests, the ephemeral path can execute runtime inline commands directly instead of writing a script file first.
 - **Persistent (`mode: "persistent"`)**: one long-lived container per session/engine, state preserved across calls.
 - **Streaming (`executeStream`)**: creates an ephemeral-style container for that stream execution and yields chunked events.
 

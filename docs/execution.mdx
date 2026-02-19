@@ -26,6 +26,10 @@ flowchart TD
   I --> J[Return Result / Stream]
 ```
 
+<Note>
+  In ephemeral mode, simple requests can skip file injection and execute inline (for example `python -c`, `node -e`, `bun -e`, `bash -c`) when no `stdin`, `files`, `outputPaths`, or package installs are requested.
+</Note>
+
 ## Execution Modes
 
 isol8 supports two execution modes, determined by your use case.

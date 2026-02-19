@@ -43,6 +43,7 @@ In `fast` mode:
 - `dirty` pool: returned containers waiting cleanup
 - acquire path prefers clean containers for lower start latency
 - each clean acquire kicks off async replenishment so warm capacity refills in the background
+- simple no-artifact requests can execute inline (no code-file write exec), reducing warm-path overhead
 
 <Note>
   For a typical one-shot `isol8 run`, the process exits after execution and calls `engine.stop()`, which drains/removes pooled containers. Background cleanup is mainly beneficial in long-lived processes (for example `isol8 serve` or an app that keeps a `DockerIsol8` instance alive).

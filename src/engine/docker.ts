@@ -979,10 +979,29 @@ export class DockerIsol8 implements Isol8Engine {
         await setupIptables(container);
       }
 
-      // Write code to the active tmpfs via exec (putArchive fails with ReadonlyRootfs)
-      const ext = req.fileExtension ?? adapter.getFileExtension();
-      const filePath = `${SANDBOX_WORKDIR}/main${ext}`;
-      await writeFileViaExec(container, filePath, req.code);
+      // Fast path: for simple executions, avoid file write and execute inline.
+      // Falls back to file-based path for runtimes that require file input (e.g. Deno)
+      // or when request options require filesystem artifacts.
+      const canUseInline =
+        !(req.stdin || req.files || req.outputPaths) &&
+        (!req.installPackages || req.installPackages.length === 0);
+
+      let rawCmd: string[];
+      if (canUseInline) {
+        try {
+          rawCmd = adapter.getCommand(req.code);
+        } catch {
+          const ext = req.fileExtension ?? adapter.getFileExtension();
+          const filePath = `${SANDBOX_WORKDIR}/main${ext}`;
+          await writeFileViaExec(container, filePath, req.code);
+          rawCmd = adapter.getCommand(req.code, filePath);
+        }
+      } else {
+        const ext = req.fileExtension ?? adapter.getFileExtension();
+        const filePath = `${SANDBOX_WORKDIR}/main${ext}`;
+        await writeFileViaExec(container, filePath, req.code);
+        rawCmd = adapter.getCommand(req.code, filePath);
+      }
 
       // Install packages if requested
       if (req.installPackages?.length) {
@@ -990,7 +1009,6 @@ export class DockerIsol8 implements Isol8Engine {
       }
 
       // Execute the actual command, wrapped with timeout to ensure kill on expiry
-      const rawCmd = adapter.getCommand(req.code, filePath);
       const timeoutSec = Math.ceil(timeoutMs / 1000);
 
       // Handle stdin: write to file and pipe into command
