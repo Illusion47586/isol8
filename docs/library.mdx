@@ -308,10 +308,13 @@ import { DockerIsol8 } from "isol8";
 
 const result = await DockerIsol8.cleanup();
 console.log(result.removed, result.failed, result.errors);
+
+const imageResult = await DockerIsol8.cleanupImages();
+console.log(imageResult.removed, imageResult.failed, imageResult.errors);
 ```
 
 ```text Expected output
-Logs counts of removed and failed isol8 containers plus any error messages.
+Logs counts of removed and failed isol8 containers/images plus any error messages.
 ```
 </CodeGroup>
 

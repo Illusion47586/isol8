@@ -145,7 +145,7 @@ isol8 run --github user/repo/main/script.py --hash <sha256> --runtime python
 
 ### `isol8 cleanup`
 
-Remove orphaned isol8 containers.
+Remove orphaned isol8 containers, and optionally isol8 images.
 
 ```bash
 # Interactive (prompts for confirmation)
@@ -153,6 +153,9 @@ isol8 cleanup
 
 # Force (skip confirmation)
 isol8 cleanup --force
+
+# Also remove isol8 images
+isol8 cleanup --images --force
 ```
 
 ### `isol8 serve`
@@ -202,6 +205,10 @@ console.log(result.exitCode); // 0
 console.log(result.durationMs); // ~120-140ms (warm pool)
 
 await isol8.stop();
+
+// Optional manual cleanup helpers
+await DockerIsol8.cleanup(); // remove isol8 containers
+await DockerIsol8.cleanupImages(); // remove isol8 images
 ```
 
 ### Pool Strategy

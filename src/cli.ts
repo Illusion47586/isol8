@@ -660,8 +660,9 @@ program
 
 program
   .command("cleanup")
-  .description("Remove orphaned isol8 containers")
+  .description("Remove orphaned isol8 containers (and optionally images)")
   .option("--force", "Skip confirmation prompt")
+  .option("--images", "Also remove isol8 Docker images")
   .action(async (opts) => {
     const docker = new Docker();
     logger.debug("[Cleanup] Connecting to Docker daemon");
@@ -687,12 +688,29 @@ program
       `[Cleanup] Found ${containers.length} total containers, ${isol8Containers.length} isol8 containers`
     );
 
-    if (isol8Containers.length === 0) {
-      spinner.info("No isol8 containers found");
+    let isol8Images: { id: string; tags: string[] }[] = [];
+    if (opts.images) {
+      spinner.start("Finding isol8 images...");
+      const images = await docker.listImages({ all: true });
+      isol8Images = images
+        .filter((img) => img.RepoTags?.some((tag) => tag.startsWith("isol8:")))
+        .map((img) => ({ id: img.Id, tags: img.RepoTags ?? [] }));
+      logger.debug(
+        `[Cleanup] Found ${images.length} total images, ${isol8Images.length} isol8 images`
+      );
+    }
+
+    if (isol8Containers.length === 0 && (!opts.images || isol8Images.length === 0)) {
+      spinner.info(
+        opts.images ? "No isol8 containers or images found" : "No isol8 containers found"
+      );
       return;
     }
 
-    spinner.succeed(`Found ${isol8Containers.length} isol8 container(s)`);
+    spinner.succeed(
+      `Found ${isol8Containers.length} isol8 container(s)` +
+        (opts.images ? ` and ${isol8Images.length} image(s)` : "")
+    );
 
     // Show container details
     console.log("");
@@ -700,6 +718,15 @@ program
       const status = c.State === "running" ? "🟢 running" : "⚪ stopped";
       const created = new Date(c.Created * 1000).toLocaleString();
       console.log(`  ${status} ${c.Id.slice(0, 12)} | ${c.Image} | created ${created}`);
+    }
+    if (opts.images && isol8Images.length > 0) {
+      if (isol8Containers.length > 0) {
+        console.log("");
+      }
+      for (const image of isol8Images) {
+        const tagText = image.tags.length > 0 ? image.tags.join(", ") : "<untagged>";
+        console.log(`  🖼️ image ${image.id.slice(0, 12)} | ${tagText}`);
+      }
     }
     console.log("");
 
@@ -712,7 +739,8 @@ program
       });
 
       const answer = await new Promise<string>((resolve) => {
-        rl.question("Remove all these containers? [y/N] ", resolve);
+        const targetLabel = opts.images ? "containers and images" : "containers";
+        rl.question(`Remove all these ${targetLabel}? [y/N] `, resolve);
       });
       rl.close();
 
@@ -723,23 +751,52 @@ program
     }
 
     // Remove containers using the static cleanup method
-    spinner.start("Removing containers...");
-    logger.debug("[Cleanup] Removing containers");
-    const result = await DockerIsol8.cleanup(docker);
-    logger.debug(`[Cleanup] Removed: ${result.removed}, failed: ${result.failed}`);
+    let containerResult = { removed: 0, failed: 0, errors: [] as string[] };
+    if (isol8Containers.length > 0) {
+      spinner.start("Removing containers...");
+      logger.debug("[Cleanup] Removing containers");
+      containerResult = await DockerIsol8.cleanup(docker);
+      logger.debug(
+        `[Cleanup] Containers removed: ${containerResult.removed}, failed: ${containerResult.failed}`
+      );
+    }
 
     // Print errors if any
-    if (result.errors.length > 0) {
+    if (containerResult.errors.length > 0) {
       console.log("");
-      for (const err of result.errors) {
+      for (const err of containerResult.errors) {
         console.error(`  Failed to remove ${err}`);
       }
     }
 
-    if (result.failed === 0) {
-      spinner.succeed(`Removed ${result.removed} container(s)`);
+    if (containerResult.failed === 0) {
+      spinner.succeed(`Removed ${containerResult.removed} container(s)`);
     } else {
-      spinner.warn(`Removed ${result.removed} container(s), ${result.failed} failed`);
+      spinner.warn(
+        `Removed ${containerResult.removed} container(s), ${containerResult.failed} failed`
+      );
+    }
+
+    if (opts.images && isol8Images.length > 0) {
+      spinner.start("Removing images...");
+      logger.debug("[Cleanup] Removing images");
+      const imageResult = await DockerIsol8.cleanupImages(docker);
+      logger.debug(
+        `[Cleanup] Images removed: ${imageResult.removed}, failed: ${imageResult.failed}`
+      );
+
+      if (imageResult.errors.length > 0) {
+        console.log("");
+        for (const err of imageResult.errors) {
+          console.error(`  Failed to remove image ${err}`);
+        }
+      }
+
+      if (imageResult.failed === 0) {
+        spinner.succeed(`Removed ${imageResult.removed} image(s)`);
+      } else {
+        spinner.warn(`Removed ${imageResult.removed} image(s), ${imageResult.failed} failed`);
+      }
     }
   });
 

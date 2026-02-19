@@ -197,7 +197,7 @@ Use `--force` to bypass this check and rebuild unconditionally.
 - **Install step is too slow**: pre-bake dependencies with `isol8 setup` and `dependencies` config.
 - **Package import still fails after install**: verify runtime/package pairing (for example Python package in Python runtime).
 - **Custom image not updating**: rerun `isol8 setup --force`.
-- **Disk usage growing from images**: run `isol8 cleanup` and prune unused Docker images.
+- **Disk usage growing from images**: run `isol8 cleanup --images` to remove isol8 images.
 
 ## Reference
 

@@ -1643,4 +1643,40 @@ export class DockerIsol8 implements Isol8Engine {
 
     return { removed, failed, errors };
   }
+
+  /**
+   * Remove all isol8 Docker images.
+   *
+   * Images are identified by repo tags starting with `isol8:`
+   * (for example `isol8:python` or `isol8:python-custom-<hash>`).
+   */
+  static async cleanupImages(
+    docker?: Docker
+  ): Promise<{ removed: number; failed: number; errors: string[] }> {
+    const dockerInstance = docker ?? new Docker();
+
+    const images = await dockerInstance.listImages({ all: true });
+    const isol8Images = images.filter((img) =>
+      img.RepoTags?.some((tag) => tag.startsWith("isol8:"))
+    );
+
+    let removed = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    for (const imageInfo of isol8Images) {
+      try {
+        const image = dockerInstance.getImage(imageInfo.Id);
+        await image.remove({ force: true });
+        removed++;
+      } catch (err) {
+        failed++;
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        const imageRef = imageInfo.RepoTags?.[0] ?? imageInfo.Id.slice(0, 12);
+        errors.push(`${imageRef}: ${errorMsg}`);
+      }
+    }
+
+    return { removed, failed, errors };
+  }
 }

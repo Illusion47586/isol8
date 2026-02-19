@@ -261,6 +261,7 @@ describe("CLI help and version", () => {
   test("cleanup --help lists cleanup flags", async () => {
     const { stdout } = await runCLI("cleanup --help");
     expect(stdout).toContain("--force");
+    expect(stdout).toContain("--images");
   });
 });
 
