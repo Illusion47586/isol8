@@ -186,7 +186,7 @@ Full configuration reference: [Configuration](https://bingo-ccc81346.mintlify.ap
 | Resources | 1 CPU, 512MB memory, 30s timeout |
 | Network | Disabled (`none`), iptables enforcement in `filtered` mode |
 | Output | Truncated at 1MB, secrets masked |
-| Seccomp | "safety" (blocks mount, swap, ptrace, etc.) |
+| Seccomp | `strict` default profile (blocks mount, swap, ptrace, etc.); standalone server binaries use embedded fallback when profile files are missing |
 
 **Container Filesystem:**
 - `/sandbox` (512MB): Working directory, packages installed here, execution allowed for `.so` files
@@ -203,3 +203,4 @@ Full security model: [Security](https://bingo-ccc81346.mintlify.app/security)
 - **"Operation not permitted" with numpy/packages**: Packages need `--sandbox-size` large enough for installation (512MB+ recommended).
 - **`.ts` files running with Bun instead of Deno**: `.ts` defaults to Bun. Use `--runtime deno` or `.mts` extension.
 - **Serve command failing**: Ensure the server binary can be downloaded from GitHub Releases. Use `isol8 serve --update` to force a fresh download. Use `isol8 serve --debug` to see detailed server logs.
+- **Seccomp profile load failure**: In `strict`/`custom` mode, execution fails if profile loading fails. Verify `security.customProfilePath` for custom mode.

@@ -299,11 +299,12 @@ isol8 run net.py \
 ### Seccomp/profile issues
 
 **Symptom**
-- warnings about seccomp profile loading
+- seccomp profile load errors before execution
 
 **Fix**
 - verify `security.customProfilePath` if using custom profile
-- understand strict fallback can run without seccomp when profile cannot be found
+- keep `security.seccomp: "strict"` for default hardening; standalone binaries can use the embedded default profile when on-disk profile files are absent
+- if strict/custom profile loading fails, execution is blocked by design
 
 ## Remote API and client errors
 

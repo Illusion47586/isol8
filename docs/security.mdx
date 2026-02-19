@@ -168,7 +168,7 @@ Available values for `security.seccomp`:
 </Warning>
 
 <Note>
-  In `strict` mode, isol8 attempts to load a built-in seccomp profile. If that profile cannot be located at runtime, isol8 logs a warning and runs without a seccomp filter.
+  In `strict` mode, isol8 applies the built-in seccomp profile. Standalone server binaries include an embedded fallback copy so strict mode remains available even when profile files are not present on disk. If strict/custom profile loading fails, execution fails rather than running without seccomp.
 </Note>
 
 ## Filesystem and process guards

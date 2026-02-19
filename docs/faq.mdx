@@ -156,13 +156,13 @@ This FAQ is grounded in current code behavior (`src/`, `src/types.ts`, and `sche
   </Accordion>
 
   <Accordion title="What does seccomp `strict`/`unconfined`/`custom` mean?">
-    - `strict`: attempt to apply default profile
+    - `strict`: apply the default built-in seccomp profile
     - `unconfined`: no seccomp filter
     - `custom`: use profile from `security.customProfilePath`
   </Accordion>
 
   <Accordion title="What happens if the default seccomp profile cannot be loaded?">
-    isol8 logs a warning and runs without seccomp filter in that case.
+    Execution fails instead of running without seccomp. In standalone server binary mode, isol8 uses an embedded default profile when on-disk profile files are unavailable.
   </Accordion>
 
   <Accordion title="Can I configure seccomp from `isol8 run` flags directly?">
