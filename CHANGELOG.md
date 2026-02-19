@@ -1,3 +1,10 @@
+## [0.11.2](https://github.com/Illusion47586/isol8/compare/v0.11.1...v0.11.2) (2026-02-19)
+
+
+### Bug Fixes
+
+* improve serve port handling and document port precedence ([#62](https://github.com/Illusion47586/isol8/issues/62)) ([190d1ec](https://github.com/Illusion47586/isol8/commit/190d1ec5f1d0a36fe9432b7ed08f7037e2e697d2))
+
 ## [0.11.1](https://github.com/Illusion47586/isol8/compare/v0.11.0...v0.11.1) (2026-02-19)
 
 

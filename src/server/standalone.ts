@@ -21,6 +21,15 @@ const VERSION = process.env.ISOL8_VERSION ?? "0.0.0";
 
 // ─── Arg parsing ─────────────────────────────────────────────────────
 
+function parsePort(raw: string, source: string): number {
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65_535) {
+    console.error(`[ERR] Invalid port from ${source}: ${raw}. Expected 1-65535.`);
+    process.exit(1);
+  }
+  return parsed;
+}
+
 function parseArgs(argv: string[]): { port: number; apiKey: string; debug: boolean } {
   const args = argv.slice(2); // skip binary path + script path
 
@@ -40,7 +49,7 @@ function parseArgs(argv: string[]): { port: number; apiKey: string; debug: boole
     console.log("  isol8-server --key <api-key> [options]");
     console.log("");
     console.log("Options:");
-    console.log("  -p, --port <port>  Port to listen on (default: 3000, or PORT env)");
+    console.log("  -p, --port <port>  Port to listen on (default: 3000, or ISOL8_PORT/PORT env)");
     console.log("  -k, --key <key>    API key for authentication (or ISOL8_API_KEY env)");
     console.log("      --debug        Enable debug logging");
     console.log("  -V, --version      Print version and exit");
@@ -58,11 +67,7 @@ function parseArgs(argv: string[]): { port: number; apiKey: string; debug: boole
     const next = args[i + 1];
 
     if ((arg === "--port" || arg === "-p") && next) {
-      port = Number.parseInt(next, 10);
-      if (Number.isNaN(port)) {
-        console.error(`[ERR] Invalid port: ${next}`);
-        process.exit(1);
-      }
+      port = parsePort(next, "--port");
       i++;
     } else if ((arg === "--key" || arg === "-k") && next) {
       apiKey = next;
@@ -84,28 +89,150 @@ function parseArgs(argv: string[]): { port: number; apiKey: string; debug: boole
 
   // Resolve port from env if not set via flag
   if (!args.some((a) => a === "--port" || a === "-p")) {
-    const envPort = process.env.PORT;
-    if (envPort) {
-      port = Number.parseInt(envPort, 10);
+    const envPort = process.env.ISOL8_PORT ?? process.env.PORT;
+    if (envPort !== undefined) {
+      port = parsePort(envPort, process.env.ISOL8_PORT ? "ISOL8_PORT" : "PORT");
     }
   }
 
   return { port, apiKey, debug };
 }
 
+async function promptText(question: string): Promise<string> {
+  const readline = await import("node:readline");
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  const answer = await new Promise<string>((resolve) => {
+    rl.question(question, resolve);
+  });
+  rl.close();
+  return answer;
+}
+
+async function isPortAvailable(port: number): Promise<boolean> {
+  const { createServer } = await import("node:net");
+  return await new Promise<boolean>((resolve) => {
+    const server = createServer();
+    server.once("error", () => resolve(false));
+    server.once("listening", () => {
+      server.close(() => resolve(true));
+    });
+    server.listen(port);
+  });
+}
+
+async function findAvailablePort(): Promise<number> {
+  const { createServer } = await import("node:net");
+  return await new Promise<number>((resolve, reject) => {
+    const server = createServer();
+    server.once("error", reject);
+    server.once("listening", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close(() => reject(new Error("Failed to determine available port")));
+        return;
+      }
+      server.close((closeErr) => {
+        if (closeErr) {
+          reject(closeErr);
+          return;
+        }
+        resolve(address.port);
+      });
+    });
+    server.listen(0);
+  });
+}
+
+async function resolveAvailablePort(requestedPort: number): Promise<number> {
+  if (await isPortAvailable(requestedPort)) {
+    return requestedPort;
+  }
+
+  if (!(process.stdin.isTTY && process.stdout.isTTY)) {
+    const autoPort = await findAvailablePort();
+    console.warn(
+      `[WARN] Port ${requestedPort} is in use. Falling back to available port ${autoPort}.`
+    );
+    return autoPort;
+  }
+
+  let candidate = requestedPort;
+  while (true) {
+    console.warn(`[WARN] Port ${candidate} is already in use.`);
+    const choice = (
+      await promptText(
+        "Choose: [1] Enter another port  [2] Find an available port  [3] Exit (default: 2): "
+      )
+    )
+      .trim()
+      .toLowerCase();
+
+    if (choice === "" || choice === "2") {
+      return await findAvailablePort();
+    }
+
+    if (choice === "1") {
+      const raw = (await promptText("Enter port (1-65535): ")).trim();
+      if (!raw) {
+        continue;
+      }
+
+      const parsed = Number(raw);
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65_535) {
+        console.error(`[ERR] Invalid port: ${raw}. Expected 1-65535.`);
+        continue;
+      }
+      candidate = parsed;
+      if (await isPortAvailable(candidate)) {
+        return candidate;
+      }
+      continue;
+    }
+
+    if (choice === "3") {
+      console.error("[ERR] Server startup cancelled.");
+      process.exit(1);
+    }
+
+    console.error("[ERR] Invalid selection. Enter 1, 2, or 3.");
+  }
+}
+
+function isAddrInUseError(err: unknown): boolean {
+  if (!err || typeof err !== "object") {
+    return false;
+  }
+  return (err as { code?: string }).code === "EADDRINUSE";
+}
+
 // ─── Main ────────────────────────────────────────────────────────────
 
-const { port, apiKey, debug } = parseArgs(process.argv);
+const { port: requestedPort, apiKey, debug } = parseArgs(process.argv);
+let port = await resolveAvailablePort(requestedPort);
 
 // Lazy-import server code AFTER arg parsing to avoid eagerly loading
 // dockerode's transitive dependency chain which crashes on Linux.
 const { createServer } = await import("./index");
 const server = await createServer({ port, apiKey, debug });
 
-console.log(`[INFO] isol8 server v${VERSION} listening on http://localhost:${port}`);
-console.log("       Auth: Bearer token required");
+while (true) {
+  try {
+    Bun.serve({
+      fetch: server.app.fetch,
+      port,
+    });
+    console.log(`[INFO] isol8 server v${VERSION} listening on http://localhost:${port}`);
+    console.log("       Auth: Bearer token required");
+    break;
+  } catch (err) {
+    if (!isAddrInUseError(err)) {
+      throw err;
+    }
 
-Bun.serve({
-  fetch: server.app.fetch,
-  port,
-});
+    port = await resolveAvailablePort(port);
+    console.warn(`[WARN] Retrying server startup on port ${port}...`);
+  }
+}

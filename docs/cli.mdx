@@ -202,7 +202,8 @@ isol8 serve --key <api-key> [options]
 ```
 
 <ResponseField name="-p, --port <port>" type="number" default="3000">
-  Port for server listener.
+  Port for server listener. Resolution order is `--port` > `ISOL8_PORT` > `PORT` > `3000`.
+  If the selected port is occupied, the CLI prompts to choose a different port or automatically finds an available one.
 </ResponseField>
 
 <ResponseField name="-k, --key <key>" type="string">

@@ -80,6 +80,22 @@ isol8 serve --port 3000 --key my-secret-key
 ```
 - avoid unsupported flags in standalone mode
 
+### `isol8 serve` fails because port is in use
+
+**Symptom**
+- `EADDRINUSE`
+- startup fails on `localhost:3000`
+
+**Fix**
+- current behavior prompts you to:
+  - enter another port, or
+  - let isol8 find an available port automatically
+- to set a port non-interactively, use precedence:
+  1. `--port`
+  2. `ISOL8_PORT`
+  3. `PORT`
+  4. fallback `3000`
+
 ## Input and runtime resolution failures
 
 ### File not found

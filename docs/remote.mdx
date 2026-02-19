@@ -39,6 +39,10 @@ flowchart TD
   If `--key` and `ISOL8_API_KEY` are both missing, startup fails. `--key` takes precedence when provided.
 </Info>
 
+<Info>
+  Port resolution order is `--port` > `ISOL8_PORT` > `PORT` > `3000`. If the chosen port is unavailable, `isol8 serve` prompts for another port or can auto-select an open port.
+</Info>
+
 ## Serve runtime behavior
 
 `isol8 serve` has two startup paths:
