@@ -1026,17 +1026,38 @@ describe("compiled server binary", () => {
       await new Promise((r) => setTimeout(r, 200));
     }
 
-    // Send SIGTERM and verify process terminates within a reasonable time
-    child.kill("SIGTERM");
+    // Send SIGTERM and verify process terminates within a reasonable time.
+    // Register exit listener before signaling to avoid missing fast exits.
     const exited = await new Promise<boolean>((resolve) => {
-      const timeout = setTimeout(() => {
-        child.kill("SIGKILL");
-        resolve(false);
+      let settled = false;
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+
+      const finish = (value: boolean) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        if (timeout) {
+          clearTimeout(timeout);
+        }
+        resolve(value);
+      };
+
+      child.once("exit", () => finish(true));
+
+      if (child.exitCode !== null || child.signalCode !== null) {
+        finish(true);
+        return;
+      }
+
+      timeout = setTimeout(() => {
+        if (child.exitCode === null && child.signalCode === null) {
+          child.kill("SIGKILL");
+        }
+        finish(false);
       }, 5000);
-      child.on("exit", () => {
-        clearTimeout(timeout);
-        resolve(true);
-      });
+
+      child.kill("SIGTERM");
     });
 
     // Verify the port is no longer bound (server stopped)
