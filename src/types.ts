@@ -337,6 +337,27 @@ export interface Isol8Options {
    * @default 1 (for fast mode: { clean: 1, dirty: 1 })
    */
   poolSize?: number | { clean: number; dirty: number };
+
+  /**
+   * Runtime-specific dependencies used to resolve hashed custom image tags.
+   * When provided, isol8 will prefer `isol8:<runtime>-custom-<hash>` images
+   * derived from these dependency sets.
+   */
+  dependencies?: Isol8Dependencies;
+}
+
+/**
+ * Startup options for {@link Isol8Engine.start}.
+ */
+export interface StartOptions {
+  /**
+   * Pre-warm ephemeral container pools on startup.
+   *
+   * - `false` or omitted: no pre-warm (lazy behavior)
+   * - `true`: pre-warm all built-in runtimes
+   * - `{ runtimes: [...] }`: pre-warm only selected runtimes
+   */
+  prewarm?: boolean | { runtimes?: Runtime[] };
 }
 
 /**
@@ -345,7 +366,7 @@ export interface Isol8Options {
  */
 export interface Isol8Engine {
   /** Initialize the engine. Must be called before `execute()`. */
-  start(): Promise<void>;
+  start(options?: StartOptions): Promise<void>;
 
   /** Tear down the engine, stopping and removing any containers. */
   stop(): Promise<void>;

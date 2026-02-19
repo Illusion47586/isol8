@@ -45,6 +45,8 @@
     "lint:check": "ultracite check",
     "lint:fix": "ultracite fix",
     "bench": "bunx tsx benchmarks/spawn.ts",
+    "bench:tti": "bunx tsx benchmarks/tti.ts",
+    "bench:tti:pool": "bunx tsx benchmarks/tti.ts --warm-pool --iterations 5",
     "bench:pool": "bunx tsx benchmarks/spawn-pool.ts",
     "bench:detailed": "bunx tsx benchmarks/spawn-detailed.ts",
     "bench:cli": "bun run tests/production/bench-cli.ts",

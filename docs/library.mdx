@@ -178,8 +178,10 @@ const isol8 = new RemoteIsol8(
 
 ## Isol8Engine methods
 
-<ResponseField name="start()" type="Promise<void>">
-  Initializes engine (or checks remote health).
+<ResponseField name="start(options?)" type="Promise<void>">
+  Initializes engine (or checks remote health). `DockerIsol8` accepts optional startup prewarm settings, for example:
+  - `start({ prewarm: true })` to prewarm all runtimes
+  - `start({ prewarm: { runtimes: ["python", "node"] } })` to prewarm selected runtimes
 </ResponseField>
 
 <ResponseField name="stop()" type="Promise<void>">

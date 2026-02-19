@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { buildCustomImages, imageExists } from "../../src/engine/image-builder";
+import {
+  buildCustomImages,
+  getCustomImageTag,
+  imageExists,
+  normalizePackages,
+} from "../../src/engine/image-builder";
 import type { Isol8Config } from "../../src/types";
 
 // Mock Dockerode
@@ -160,6 +165,21 @@ describe("image-builder", () => {
 });
 
 describe("hash functions", () => {
+  test("normalizePackages trims, dedupes, and sorts", () => {
+    expect(normalizePackages([" numpy ", "pandas", "numpy", "", "scipy"])).toEqual([
+      "numpy",
+      "pandas",
+      "scipy",
+    ]);
+  });
+
+  test("getCustomImageTag is stable for equivalent dependency sets", () => {
+    const a = getCustomImageTag("python", ["numpy", "pandas"]);
+    const b = getCustomImageTag("python", [" pandas ", "numpy", "numpy"]);
+    expect(a).toBe(b);
+    expect(a).toMatch(/^isol8:python-custom-[a-f0-9]{12}$/);
+  });
+
   test("computeDockerDirHash is consistent", () => {
     // We test the hash function behavior through its properties
     const hash1 = createHash("sha256").update("test").digest("hex");

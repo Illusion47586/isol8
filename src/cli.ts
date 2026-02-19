@@ -822,6 +822,7 @@ async function resolveRunInput(file: string | undefined, opts: any) {
     debug: opts.debug ?? config.debug,
     persist: opts.persist ?? false,
     ...(opts.logNetwork ? { logNetwork: true } : {}),
+    dependencies: config.dependencies,
     remoteCode: config.remoteCode,
     poolStrategy: opts.poolStrategy === "secure" ? "secure" : "fast",
     poolSize: opts.poolSize

@@ -41,3 +41,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # audit logs
 .isol8_audit
 .isol8_audit_test
+
+# benchmark artifacts
+benchmarks/results/

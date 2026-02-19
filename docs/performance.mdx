@@ -133,6 +133,21 @@ flowchart TD
 
 If latency spikes happen under burst traffic, first check queueing pressure before raising CPU/memory limits.
 
+### How `poolSize` and `maxConcurrent` work together
+
+They control different bottlenecks:
+- `maxConcurrent`: how many executions can run at once.
+- `poolSize`: how many warm containers are available per runtime image.
+
+Example:
+- If `maxConcurrent` is `10` but Python `poolSize.clean` is `1`, a burst of Python requests can still hit cold container creation once warm capacity is exhausted.
+- Increasing `poolSize.clean` for your hottest runtime reduces cold misses and improves p95/p99 latency.
+
+Practical tuning:
+1. Set `maxConcurrent` to host capacity (CPU/memory).
+2. Set `poolSize.clean` to expected per-runtime burst.
+3. Set `poolSize.dirty` to absorb release spikes while background cleanup catches up.
+
 ## Dependency installation cost
 
 Per-request installs (`installPackages` / `--install`) are usually the biggest latency contributor.
