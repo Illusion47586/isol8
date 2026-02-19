@@ -30,6 +30,7 @@ import { logger } from "../utils/logger";
 import { AuditLogger } from "./audit";
 import { fetchRemoteCode } from "./code-fetcher";
 import { Semaphore } from "./concurrency";
+import { EMBEDDED_DEFAULT_SECCOMP_PROFILE } from "./default-seccomp-profile";
 import { getCustomImageTag, normalizePackages } from "./image-builder";
 import { ContainerPool } from "./pool";
 import { type ContainerResourceUsage, calculateResourceDelta, getContainerStats } from "./stats";
@@ -1343,7 +1344,9 @@ export class DockerIsol8 implements Isol8Engine {
         const profile = readFileSync(this.security.customProfilePath, "utf-8");
         opts.push(`seccomp=${profile}`);
       } catch (e) {
-        logger.error(`Failed to load custom seccomp profile: ${e}`);
+        throw new Error(
+          `Failed to load custom seccomp profile at ${this.security.customProfilePath}: ${e}`
+        );
       }
       return opts;
     }
@@ -1351,17 +1354,15 @@ export class DockerIsol8 implements Isol8Engine {
     // Default strict mode
     try {
       const profile = this.loadDefaultSeccompProfile();
-      if (profile) {
-        opts.push(`seccomp=${profile}`);
-      }
+      opts.push(`seccomp=${profile}`);
     } catch (e) {
-      logger.error(`Failed to load default seccomp profile: ${e}`);
+      throw new Error(`Failed to load default seccomp profile: ${e}`);
     }
 
     return opts;
   }
 
-  private loadDefaultSeccompProfile(): string | null {
+  private loadDefaultSeccompProfile(): string {
     // Try resolving relative to this file (dev mode)
     // Note: in bundled code, import.meta.url might point to dist/index.js
 
@@ -1379,11 +1380,15 @@ export class DockerIsol8 implements Isol8Engine {
       return readFileSync(prodPath, "utf-8");
     }
 
-    // 3. Fallback: Try reading absolute path if we assume standard install location?
-    // Not reliable.
+    // 3. Embedded fallback for standalone compiled binaries.
+    if (EMBEDDED_DEFAULT_SECCOMP_PROFILE.length > 0) {
+      logger.debug(
+        `Default seccomp profile file not found. Using embedded profile. Tried: ${devPath.pathname}, ${prodPath.pathname}`
+      );
+      return EMBEDDED_DEFAULT_SECCOMP_PROFILE;
+    }
 
-    logger.warn("Could not locate default seccomp profile. Running without seccomp filter.");
-    return null;
+    throw new Error("Embedded default seccomp profile is unavailable");
   }
 
   private buildEnv(extra?: Record<string, string>): string[] {
