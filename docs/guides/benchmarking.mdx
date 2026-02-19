@@ -1,0 +1,56 @@
+---
+title: "Benchmarking isol8"
+description: "Run and interpret isol8 benchmarks locally and on GitHub Actions runners."
+icon: "gauge-high"
+---
+
+Use this guide to run performance benchmarks consistently, compare cold vs warm behavior, and collect reproducible numbers.
+
+## What to run
+
+isol8 includes multiple benchmark suites with different goals:
+
+- `bun run bench` for cold container spawn latency
+- `bun run bench:pool` for warm-pool steady-state latency
+- `bun run bench:detailed` for phase-level timings
+- `bun run bench:tti` for ComputeSDK-style cold TTI
+- `bun run bench:tti:pool` for ComputeSDK-style warm TTI
+
+## Local benchmark workflow
+
+1. Use a quiet machine and close heavy background processes.
+2. Run each suite sequentially (avoid parallel benchmark runs).
+3. Repeat runs and compare medians, not single outliers.
+
+```bash
+bun run bench
+bun run bench:pool
+bun run bench:detailed
+bun run bench:tti
+bun run bench:tti:pool
+```
+
+## GitHub Actions benchmark workflow
+
+You can run benchmarks on a GitHub-hosted Linux runner by manually triggering [Production Tests (Manual)](https://github.com/Illusion47586/isol8/blob/main/.github/workflows/production-test.yml).
+
+- workflow input: `runBenchmarks=true`
+- runner: `ubuntu-latest`
+- benchmark step runs only if production tests pass
+- benchmark command in workflow: `bun run bench:cli`
+
+## Reading results correctly
+
+- Compare `warm` and `cold` separately.
+- Use `bench:detailed` to locate where time is being spent (`create`, `start`, `run`, `cleanup`).
+- For cross-project comparisons, align environment first (host class, architecture, runner type, and iteration count).
+
+## Practical regression gate
+
+Use warm TTI and warm-pool averages as primary gates for interactive use-cases, and track cold numbers as secondary guardrails.
+
+## Related pages
+
+- [Benchmarks](/tti-benchmarks)
+- [Performance tuning](/performance)
+- [Server overview](/server/overview)

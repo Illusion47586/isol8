@@ -116,7 +116,11 @@
           },
           {
             "group": "Engineering Workflows",
-            "pages": ["guides/ci-testing", "guides/debugging"]
+            "pages": [
+              "guides/ci-testing",
+              "guides/debugging",
+              "guides/benchmarking"
+            ]
           },
           {
             "group": "Runtime Orchestration",
