@@ -193,13 +193,6 @@ describe("CLI Run - Filesystem", () => {
     const { stdout } = await runIsol8('run -e "print(5)" -r python --tmp-size 128m --no-stream');
     expect(stdout).toContain("5");
   }, 30_000);
-
-  test("--writable allows writing to sandbox", async () => {
-    const { stdout } = await runIsol8(
-      "run -e \"import os; os.makedirs('/sandbox/test_dir', exist_ok=True); print('writable-ok')\" -r python --writable --no-stream"
-    );
-    expect(stdout).toContain("writable-ok");
-  }, 30_000);
 });
 
 describe("CLI Run - Execution Modes", () => {

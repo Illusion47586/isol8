@@ -215,7 +215,6 @@ describe("CLI help and version", () => {
       "--cpu",
       "--image",
       "--pids-limit",
-      "--writable",
       "--max-output",
       "--secret",
       "--sandbox-size",
@@ -1328,15 +1327,6 @@ except:
 `;
     const { stdout } = await runCLI(`run -e '${code}' -r python --net none --no-stream`);
     expect(stdout).toContain("blocked");
-  }, 30_000);
-
-  // ── --writable ─────────────────────────────────────────────────
-
-  test("--writable allows writing to root filesystem", async () => {
-    const { stdout } = await runCLI(
-      "run -e \"import os; os.makedirs('/sandbox/test_dir', exist_ok=True); print('writable-ok')\" -r python --writable --no-stream"
-    );
-    expect(stdout).toContain("writable-ok");
   }, 30_000);
 
   // ── --pids-limit ───────────────────────────────────────────────

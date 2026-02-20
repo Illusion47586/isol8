@@ -52,6 +52,7 @@
               "execution",
               "runtimes",
               "security",
+              "file-systems",
               "persistence",
               "packages"
             ]
@@ -109,6 +110,7 @@
           {
             "group": "Application Patterns",
             "pages": [
+              "guides/persistent-execution",
               "guides/ai-agents",
               "guides/data-processing",
               "guides/web-scraping",
@@ -125,7 +127,7 @@
           },
           {
             "group": "Runtime Orchestration",
-            "pages": ["guides/multi-runtime"]
+            "pages": ["guides/multi-runtime", "guides/lambda-alternative"]
           }
         ]
       }

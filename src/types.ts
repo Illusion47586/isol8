@@ -458,6 +458,8 @@ export interface Isol8Defaults {
   sandboxSize: string;
   /** Default size of the `/tmp` tmpfs mount. @default "256m" */
   tmpSize: string;
+  /** Whether the root filesystem should be read-only. @default true */
+  readonlyRootFs: boolean;
 }
 
 /** Configuration for container cleanup and lifecycle. */

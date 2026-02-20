@@ -26,7 +26,7 @@ Out of the box, executions run with:
 | Filter deny rules | `--deny` | `network.blacklist` | `options.networkFilter.blacklist` | `networkFilter.blacklist` |
 | Seccomp mode/profile | not via `run` flag | `security.seccomp`, `security.customProfilePath` | `options.security.*` | `security.*` |
 | PID limit | `--pids-limit` | no default key | `options.pidsLimit` | `pidsLimit` |
-| Root FS writability | `--writable` flips readonly off | no default key | `options.readonlyRootFs` | `readonlyRootFs` |
+| Root FS writability | No `run` override | no default key | `options.readonlyRootFs` | `readonlyRootFs` |
 | Secrets masking source | `--secret KEY=VALUE` | no default key | `options.secrets` | `secrets` |
 
 <Info>

@@ -1,0 +1,143 @@
+---
+title: "File Systems"
+description: "Understand how isol8 manages file systems, including read-only root environments and memory-backed tmpfs mounts."
+icon: "folder-tree"
+---
+
+
+When executing untrusted code, restricting what the code can read from and write to the file system is a critical defense layer. `isol8` provisions a highly isolated file system environment for every execution. 
+
+By default, the container's root file system is immutable (read-only), while specific temporary directories are mounted as ephemeral, memory-backed filesystems (`tmpfs`).
+
+<CardGroup cols={2}>
+  <Card title="Read-Only Root" icon="lock">
+    The entire `/` file system is immutable by default to prevent tampering and persistent changes.
+  </Card>
+  <Card title="Tmpfs Mounts" icon="memory">
+    Directories like `/tmp` and `/sandbox` are mounted in memory for fast, ephemeral scratch space.
+  </Card>
+</CardGroup>
+
+## Read-Only Root
+
+By default, the execution environment operates with a read-only root file system (`readonlyRootFs: true`). This security best practice ensures that malicious or buggy code cannot modify system binaries, configuration files, or the underlying runtime environment.
+
+Any attempt to write outside of the designated `tmpfs` mounts will result in an immediate `"Read-only file system"` error from the OS.
+
+### Making the File System Writable
+
+In certain use cases (e.g., legacy workloads or specific compilation tasks), you might need a globally writable file system. You can disable the read-only restriction, but this is **highly discouraged** for untrusted code execution.
+
+<Tabs>
+  <Tab title="Library">
+    Set `readonlyRootFs: false` in your configuration.
+    <CodeGroup>
+    ```typescript Input
+    import { Isol8 } from 'isol8';
+
+    const engine = new Isol8();
+    await engine.execute({
+      runtime: 'python',
+      code: "open('/writable.txt', 'w').write('test')",
+      readonlyRootFs: false
+    });
+    ```
+    ```text Expected behavior
+    The script successfully creates /writable.txt in the container root without throwing a read-only error.
+    ```
+    </CodeGroup>
+  </Tab>
+  <Tab title="Config">
+    Set `readonlyRootFs: false` under the `defaults` section in `isol8.config.json` to apply it to all executions.
+    ```json isol8.config.json
+    {
+      "defaults": {
+        "readonlyRootFs": false
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+  Disabling `readonlyRootFs` decreases the security posture of your sandbox. Combined with poor configuration, it could potentially aid in container escape methodologies. Always evaluate if writing to `/sandbox` or `/tmp` is sufficient for your workload.
+</Warning>
+
+## Tmpfs Mounts
+
+Even with a read-only root, agents and scripts often need temporary space to write intermediate files, download assets, or compile extensions. `isol8` solves this by mounting specific directories as `tmpfs` volumes.
+
+A `tmpfs` mount resides entirely in host RAM (or swap space) rather than on disk. This provides two major benefits:
+1. **Speed**: File I/O operations in these directories are significantly faster than disk-backed storage.
+2. **Ephemeral Guarantees**: When the container is destroyed, the contents of the `tmpfs` mounts vanish instantly. There is zero risk of data persistence across executions.
+
+### Ephemeral vs Persistent Mode Behavior
+
+The lifecycle of files within `tmpfs` mounts depends entirely on your execution mode:
+- **Ephemeral mode**: Files written to `/sandbox` or `/tmp` are destroyed immediately when the execution request completes and the container is recycled.
+- **Persistent mode**: Files remain intact inside the `tmpfs` mounts across multiple execution requests as long as the same container session remains active. The contents are only destroyed when the session is explicitly stopped or pruned due to inactivity.
+
+`isol8` provisions two default `tmpfs` mounts:
+
+### `/sandbox`
+
+The `/sandbox` directory is the default working directory (`cwd`) for all code executed in `isol8`. This is where you should write any generated artifacts, logs, or intermediate state.
+- **Default Size**: `512m` (512 Megabytes)
+- **Usage**: General scratchpad, `cwd` for execution, and the destination for packages installed via the `--install` flag.
+
+### `/tmp`
+
+The standard `/tmp` directory is also mounted as an independent `tmpfs` volume. This ensures compatibility with runtimes and tools that hardcode `/tmp` for their operations.
+- **Default Size**: `256m` (256 Megabytes)
+- **Usage**: System temp files, runtime cache.
+
+### Configuring Tmpfs Sizes
+
+You can adjust the maximum size of these mounts depending on your workload's memory requirements.
+
+<Tabs>
+  <Tab title="Library">
+    Use the `sandboxFsSize` and `tmpFsSize` properties in your execution configuration to allocate more or less space.
+    ```typescript
+    await engine.execute({
+      runtime: 'python',
+      code: "...",
+      sandboxFsSize: '1g', // Allow up to 1GB in /sandbox
+      tmpFsSize: '512m'    // Allow up to 512MB in /tmp
+    });
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  Because `tmpfs` mounts consume the host's memory, setting exceedingly large limits without enforcing corresponding container RAM constraints could lead to host memory exhaustion. Ensure your overall `memory` limit accounts for the expected `tmpfs` usage.
+</Note>
+
+## FAQ
+
+<Accordion title="Can I persist data written to the read-only root?">
+  No. Even with `--writable`, any changes written directly to the root file system are lost when the container is destroyed. Use the `/sandbox` tmpfs mount and output files if you need to retrieve generated files.
+</Accordion>
+
+<Accordion title="Does tmpFsSize limit the physical disk space used?">
+  No, `tmpfs` mounts reside entirely in memory. The size limits dictate the maximum RAM that the filesystem can consume. Ensure your overall execution `memory` limit accounts for this.
+</Accordion>
+
+## Troubleshooting quick checks
+
+- **`OSError: [Errno 30] Read-only file system`**: You attempted to write to a path outside of `/sandbox` or `/tmp`. Adjust your code to write to `/sandbox`, or use `--writable` (not recommended).
+- **Out of memory or process killed during heavy file I/O**: You might be writing too much data to a `tmpfs` mount, exhausting the container's RAM. Increase `/sandbox` or `/tmp` size limits and increase the overall container `memory`.
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Security" icon="shield" href="/security">
+    Deep dive into the sandboxing boundaries, including file system isolation.
+  </Card>
+  <Card title="Data and persistence" icon="database" href="/persistence">
+    Learn how to retrieve generated files from the `/sandbox` directory after execution.
+  </Card>
+  <Card title="Library reference" icon="book-open" href="/library">
+    Explore the SDK configuration options for file systems such as `sandboxFsSize`.
+  </Card>
+</CardGroup>

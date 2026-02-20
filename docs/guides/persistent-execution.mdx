@@ -1,0 +1,134 @@
+---
+title: "Persistent execution guide"
+description: "How to run persistent containers and interact with them repeatedly via Library, CLI, and API."
+icon: "database"
+---
+
+`isol8` operates in an ephemeral mode by default, tearing down the container after a single execution to ensure absolute isolation. However, many use cases require state to be maintained across multiple execution calls. 
+
+This guide details how to keep a persistent container alive and continue to execute commands within the same environment across the Library, CLI, and API.
+
+## Library
+
+When using the `DockerIsol8` engine directly, persistent mode is straightforward. The lifecycle of the container is intrinsically tied to the lifecycle of the engine instance. 
+
+To reuse the same container runtime environment:
+1. Initialize the engine with `mode: "persistent"`.
+2. Start the engine explicitly (so it provisions the container).
+3. Execute as many commands as needed.
+4. Stop the engine to tear down the persistent container.
+
+<CodeGroup>
+```typescript Input
+import { DockerIsol8 } from "isol8";
+
+// 1. Initialize persistent engine
+const isol8 = new DockerIsol8({ mode: "persistent" });
+
+try {
+  // 2. Start the engine (creates the persistent container)
+  await isol8.start();
+
+  // 3. First execution sets up state
+  await isol8.execute({ 
+    code: "x = 40", 
+    runtime: "python" 
+  });
+
+  // 3. Second execution reuses state
+  const result = await isol8.execute({ 
+    code: "print(x + 2)", 
+    runtime: "python" 
+  });
+
+  console.log(result.stdout);
+} finally {
+  // 4. Tear down the persistent container
+  await isol8.stop();
+}
+```
+
+```text Expected output
+42
+```
+</CodeGroup>
+
+<Note>
+Persistent containers are runtime-bound because `isol8` provisions a specific image (e.g., Python, Node) when starting the engine. You cannot execute bash, then python, within the same persistent session.
+</Note>
+
+## Command Line Interface (CLI)
+
+The CLI is generally designed for single, synchronous executions. However, you can use the `--persistent` flag to tell `isol8 run` to operate over a persistent container.
+
+By default, the CLI will still stop and clean up the container once the single command completes, as the `isol8` process itself terminates. 
+
+### Leaving a container running (`--persist` vs `--persistent`)
+
+If you want to spin up a container and manually inspect it later or connect to it with `docker exec`, you can use the `--persist` flag.
+
+- **`--persistent`**: Sets the execution engine mode to "persistent" (reusing the same filesystem/packages during runs, but the container still stops when the CLI exits).
+- **`--persist`**: Tells `isol8` *not* to stop the container when the execution finishes.
+
+```bash
+isol8 run --persistent --persist -e "x = 42" --runtime python
+```
+
+The CLI will print the container ID upon start and heavily rely on `isol8 cleanup` to remove it later, or you can attach to it via bash. But keeping a container alive continuously to receive *subsequent* CLI commands is not supported unless passing through the **Server API**.
+
+## Server API
+
+If you are running the `isol8 serve` server, persistent execution is driven entirely by the `sessionId` concept. When a `sessionId` is provided in an API request, the server automatically infers persistent mode and ties the container lifecycle to that ID.
+
+### 1. Initiate a Persistent Session
+
+Simply send your first payload with an arbitrary unique `sessionId`. The server will create the container, execute the code, and leave the container running.
+
+```bash
+curl -X POST http://localhost:3000/execute \
+  -H "Authorization: Bearer $ISOL8_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sessionId": "agent-session-123",
+    "request": {
+      "code": "history = []",
+      "runtime": "python"
+    }
+  }'
+```
+
+### 2. Follow-up Executions
+
+Use the exact same `sessionId` to execute code within the same container environment.
+
+```bash
+curl -X POST http://localhost:3000/execute \
+  -H "Authorization: Bearer $ISOL8_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sessionId": "agent-session-123",
+    "request": {
+      "code": "history.append(\"first action\"); print(history)",
+      "runtime": "python"
+    }
+  }'
+```
+
+### 3. Cleanup the Session
+
+Persistent sessions consume system resources (RAM, tmpfs mounts, Docker daemon capabilities). You must explicitly clean up the session using the `DELETE` endpoint once you are done.
+
+```bash
+curl -X DELETE http://localhost:3000/session/agent-session-123 \
+  -H "Authorization: Bearer $ISOL8_API_KEY"
+```
+
+<Note>
+The server also provides an automatic pruning mechanism. If a persistent session sits idle (no execution or file requests) for longer than `cleanup.maxContainerAgeMs` (default 1 hour), it is aggressively cleaned up by the server's background worker.
+</Note>
+
+## When to use Persistent Mode
+
+- ✅ **Iterative Workloads**: Tasks like data scraping, where a browser/puppeteer environment takes seconds to initialize, but subsequent scraper commands are very fast.
+- ✅ **Stateful Code Generation**: When an LLM agent writes a script incrementally, runs it, parses the error, and adjusts variables in the subsequent run.
+- ❌ **One-Off Transformations**: Parsing a JSON blob or compiling a single stylesheet. Ephemeral containers are faster for independent runs since they operate out of a pre-warmed pool.
