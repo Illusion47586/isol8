@@ -140,6 +140,11 @@
               "default": "none",
               "description": "Default network mode."
             },
+            "readonlyRootFs": {
+              "default": true,
+              "description": "Whether the root filesystem should be read-only.",
+              "type": "boolean"
+            },
             "sandboxSize": {
               "default": "512m",
               "description": "Default size of the `/sandbox` tmpfs mount.",

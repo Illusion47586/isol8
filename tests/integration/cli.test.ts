@@ -28,7 +28,7 @@ describe("Integration: CLI", () => {
   test("installs packages via --install", async () => {
     // This might be slow
     const { stdout } = await runCLI(
-      'run -e "import numpy; print(numpy.__version__)" --runtime python --install numpy --net host --writable'
+      'run -e "import numpy; print(numpy.__version__)" --runtime python --install numpy --net host'
     );
     expect(stdout).toMatch(/\d+\.\d+\.\d+/);
   }, 120_000);

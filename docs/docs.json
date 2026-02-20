@@ -110,6 +110,7 @@
           {
             "group": "Application Patterns",
             "pages": [
+              "guides/persistent-execution",
               "guides/ai-agents",
               "guides/data-processing",
               "guides/web-scraping",

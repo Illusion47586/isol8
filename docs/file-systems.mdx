@@ -29,17 +29,6 @@ Any attempt to write outside of the designated `tmpfs` mounts will result in an 
 In certain use cases (e.g., legacy workloads or specific compilation tasks), you might need a globally writable file system. You can disable the read-only restriction, but this is **highly discouraged** for untrusted code execution.
 
 <Tabs>
-  <Tab title="CLI">
-    Use the `--writable` flag to make the root file system writable.
-    <CodeGroup>
-    ```bash Command
-    isol8 execute python --code "open('/writable.txt', 'w').write('test')" --writable
-    ```
-    ```text Expected behavior
-    The script successfully creates /writable.txt in the container root without throwing a read-only error.
-    ```
-    </CodeGroup>
-  </Tab>
   <Tab title="Library">
     Set `readonlyRootFs: false` in your configuration.
     <CodeGroup>
@@ -58,6 +47,16 @@ In certain use cases (e.g., legacy workloads or specific compilation tasks), you
     ```
     </CodeGroup>
   </Tab>
+  <Tab title="Config">
+    Set `readonlyRootFs: false` under the `defaults` section in `isol8.config.json` to apply it to all executions.
+    ```json isol8.config.json
+    {
+      "defaults": {
+        "readonlyRootFs": false
+      }
+    }
+    ```
+  </Tab>
 </Tabs>
 
 <Warning>
@@ -71,6 +70,12 @@ Even with a read-only root, agents and scripts often need temporary space to wri
 A `tmpfs` mount resides entirely in host RAM (or swap space) rather than on disk. This provides two major benefits:
 1. **Speed**: File I/O operations in these directories are significantly faster than disk-backed storage.
 2. **Ephemeral Guarantees**: When the container is destroyed, the contents of the `tmpfs` mounts vanish instantly. There is zero risk of data persistence across executions.
+
+### Ephemeral vs Persistent Mode Behavior
+
+The lifecycle of files within `tmpfs` mounts depends entirely on your execution mode:
+- **Ephemeral mode**: Files written to `/sandbox` or `/tmp` are destroyed immediately when the execution request completes and the container is recycled.
+- **Persistent mode**: Files remain intact inside the `tmpfs` mounts across multiple execution requests as long as the same container session remains active. The contents are only destroyed when the session is explicitly stopped or pruned due to inactivity.
 
 `isol8` provisions two default `tmpfs` mounts:
 

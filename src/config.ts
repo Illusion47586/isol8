@@ -24,6 +24,7 @@ const DEFAULT_CONFIG: Isol8Config = {
     network: "none",
     sandboxSize: "512m",
     tmpSize: "256m",
+    readonlyRootFs: true,
   },
   network: {
     whitelist: [],
@@ -122,6 +123,7 @@ function mergeConfig(defaults: Isol8Config, overrides: Partial<Isol8Config>): Is
     defaults: {
       ...defaults.defaults,
       ...overrides.defaults,
+      readonlyRootFs: overrides.defaults?.readonlyRootFs ?? defaults.defaults.readonlyRootFs,
     },
     network: {
       whitelist: overrides.network?.whitelist ?? defaults.network.whitelist,

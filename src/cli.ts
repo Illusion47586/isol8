@@ -185,7 +185,6 @@ program
   .option("--cpu <limit>", "CPU limit as fraction (e.g. 0.5, 2.0)")
   .option("--image <name>", "Override Docker image")
   .option("--pids-limit <n>", "Maximum number of processes")
-  .option("--writable", "Disable read-only root filesystem")
   .option("--max-output <bytes>", "Maximum output size in bytes")
   .option("--secret <KEY=VALUE>", "Secret env var (repeatable, values masked)", collect, [])
   .option("--sandbox-size <size>", "Sandbox tmpfs size (e.g. 128m, 512m)")
@@ -1043,7 +1042,6 @@ async function resolveRunInput(file: string | undefined, opts: any) {
     timeoutMs: opts.timeout ? Number.parseInt(opts.timeout, 10) : config.defaults.timeoutMs,
     ...(opts.image ? { image: opts.image } : {}),
     ...(opts.pidsLimit ? { pidsLimit: Number.parseInt(opts.pidsLimit, 10) } : {}),
-    ...(opts.writable ? { readonlyRootFs: false } : {}),
     ...(opts.maxOutput ? { maxOutputSize: Number.parseInt(opts.maxOutput, 10) } : {}),
     ...(opts.tmpSize ? { tmpSize: opts.tmpSize } : {}),
     debug: opts.debug ?? config.debug,
