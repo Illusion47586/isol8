@@ -1,3 +1,10 @@
+# [0.12.0](https://github.com/Illusion47586/isol8/compare/v0.11.3...v0.12.0) (2026-02-20)
+
+
+### Features
+
+* default root filesystem to read-only, remove the --writable CLI flag, and add new documentation guides ([#78](https://github.com/Illusion47586/isol8/issues/78)) ([43e9866](https://github.com/Illusion47586/isol8/commit/43e986648ad5d01e7cf8f2bb19a9883bcb27f16b))
+
 ## [0.11.3](https://github.com/Illusion47586/isol8/compare/v0.11.2...v0.11.3) (2026-02-19)
 
 
