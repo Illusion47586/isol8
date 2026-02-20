@@ -52,6 +52,7 @@
               "execution",
               "runtimes",
               "security",
+              "file-systems",
               "persistence",
               "packages"
             ]
@@ -125,7 +126,7 @@
           },
           {
             "group": "Runtime Orchestration",
-            "pages": ["guides/multi-runtime"]
+            "pages": ["guides/multi-runtime", "guides/lambda-alternative"]
           }
         ]
       }
