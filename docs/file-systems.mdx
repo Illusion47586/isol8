@@ -31,13 +31,19 @@ In certain use cases (e.g., legacy workloads or specific compilation tasks), you
 <Tabs>
   <Tab title="CLI">
     Use the `--writable` flag to make the root file system writable.
-    ```bash
+    <CodeGroup>
+    ```bash Command
     isol8 execute python --code "open('/writable.txt', 'w').write('test')" --writable
     ```
+    ```text Expected behavior
+    The script successfully creates /writable.txt in the container root without throwing a read-only error.
+    ```
+    </CodeGroup>
   </Tab>
   <Tab title="Library">
     Set `readonlyRootFs: false` in your configuration.
-    ```typescript
+    <CodeGroup>
+    ```typescript Input
     import { Isol8 } from 'isol8';
 
     const engine = new Isol8();
@@ -47,6 +53,10 @@ In certain use cases (e.g., legacy workloads or specific compilation tasks), you
       readonlyRootFs: false
     });
     ```
+    ```text Expected behavior
+    The script successfully creates /writable.txt in the container root without throwing a read-only error.
+    ```
+    </CodeGroup>
   </Tab>
 </Tabs>
 
@@ -97,3 +107,32 @@ You can adjust the maximum size of these mounts depending on your workload's mem
 <Note>
   Because `tmpfs` mounts consume the host's memory, setting exceedingly large limits without enforcing corresponding container RAM constraints could lead to host memory exhaustion. Ensure your overall `memory` limit accounts for the expected `tmpfs` usage.
 </Note>
+
+## FAQ
+
+<Accordion title="Can I persist data written to the read-only root?">
+  No. Even with `--writable`, any changes written directly to the root file system are lost when the container is destroyed. Use the `/sandbox` tmpfs mount and output files if you need to retrieve generated files.
+</Accordion>
+
+<Accordion title="Does tmpFsSize limit the physical disk space used?">
+  No, `tmpfs` mounts reside entirely in memory. The size limits dictate the maximum RAM that the filesystem can consume. Ensure your overall execution `memory` limit accounts for this.
+</Accordion>
+
+## Troubleshooting quick checks
+
+- **`OSError: [Errno 30] Read-only file system`**: You attempted to write to a path outside of `/sandbox` or `/tmp`. Adjust your code to write to `/sandbox`, or use `--writable` (not recommended).
+- **Out of memory or process killed during heavy file I/O**: You might be writing too much data to a `tmpfs` mount, exhausting the container's RAM. Increase `/sandbox` or `/tmp` size limits and increase the overall container `memory`.
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Security" icon="shield" href="/security">
+    Deep dive into the sandboxing boundaries, including file system isolation.
+  </Card>
+  <Card title="Data and persistence" icon="database" href="/persistence">
+    Learn how to retrieve generated files from the `/sandbox` directory after execution.
+  </Card>
+  <Card title="Library reference" icon="book-open" href="/library">
+    Explore the SDK configuration options for file systems such as `sandboxFsSize`.
+  </Card>
+</CardGroup>
