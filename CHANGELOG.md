@@ -1,3 +1,10 @@
+## [0.12.1](https://github.com/Illusion47586/isol8/compare/v0.12.0...v0.12.1) (2026-02-21)
+
+
+### Bug Fixes
+
+* **cli:** add fallback to latest release for server binary download ([#80](https://github.com/Illusion47586/isol8/issues/80)) ([5c90a06](https://github.com/Illusion47586/isol8/commit/5c90a063f9018c01ada1209d34415ef80e58ac25))
+
 # [0.12.0](https://github.com/Illusion47586/isol8/compare/v0.11.3...v0.12.0) (2026-02-20)
 
 
