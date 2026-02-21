@@ -1,6 +1,10 @@
 name: Production Tests (Manual)
 
 on:
+  workflow_run:
+    workflows: ["Release"]
+    types:
+      - completed
   workflow_dispatch:
     inputs:
       version:
@@ -16,6 +20,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     
     steps:
       - uses: actions/checkout@v4
