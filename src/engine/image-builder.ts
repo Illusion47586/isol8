@@ -7,8 +7,8 @@
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type Docker from "dockerode";
 import { RuntimeRegistry } from "../runtime";
 import type { Isol8Config } from "../types";
@@ -23,12 +23,38 @@ import { logger } from "../utils/logger";
  * whichever exists.
  */
 function resolveDockerDir(): string {
-  // Try production/bundled path first: dist/cli.js -> ./docker
-  const fromBundled = new URL("./docker", import.meta.url).pathname;
-  if (existsSync(fromBundled)) {
-    return fromBundled;
+  // 1. Try relative to the current executable (for isol8-server standalone)
+  // In a Bun compiled binary, process.execPath is the binary itself (e.g. dist/isol8-server).
+  const fromExec = join(dirname(process.execPath), "docker");
+  if (existsSync(fromExec) && statSync(fromExec).isDirectory()) {
+    return fromExec;
   }
-  // Fallback to dev path: src/engine/image-builder.ts -> ../../docker
+
+  // 2. Try production/bundled path: dist/cli.js -> ./docker
+  // Guard against $bunfs paths which are virtual and won't resolve correctly on real FS
+  if (!import.meta.url.includes("$bunfs")) {
+    const fromBundled = new URL("./docker", import.meta.url).pathname;
+    if (existsSync(fromBundled)) {
+      return fromBundled;
+    }
+  }
+
+  // 3. Fallback to dev path: src/engine/image-builder.ts -> ../../docker
+  // When running via `bun run src/cli.ts` or tests
+  if (!import.meta.url.includes("$bunfs")) {
+    const fromDev = new URL("../../docker", import.meta.url).pathname;
+    if (existsSync(fromDev)) {
+      return fromDev;
+    }
+  }
+
+  // 4. Last resort: current working directory (e.g. tests running from repo root)
+  const fromCwd = join(process.cwd(), "docker");
+  if (existsSync(fromCwd)) {
+    return fromCwd;
+  }
+
+  // Default fallback (will likely throw but provides a predictable path)
   return new URL("../../docker", import.meta.url).pathname;
 }
 
