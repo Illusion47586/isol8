@@ -486,7 +486,15 @@ async function downloadServerBinary(binaryPath: string): Promise<void> {
 
   const spinner = ora(`Downloading isol8 server v${VERSION}...`).start();
   try {
-    const response = await fetch(url, { redirect: "follow" });
+    let response = await fetch(url, { redirect: "follow" });
+
+    // Fallback to latest release if exact version is not found
+    if (response.status === 404) {
+      const fallbackUrl = `https://github.com/Illusion47586/isol8/releases/latest/download/${binaryName}`;
+      logger.debug(`[Serve] Binary not found for v${VERSION}, trying latest from ${fallbackUrl}`);
+      spinner.text = `v${VERSION} not found, downloading latest available version...`;
+      response = await fetch(fallbackUrl, { redirect: "follow" });
+    }
 
     if (!response.ok) {
       spinner.fail(`Failed to download server binary (HTTP ${response.status})`);
