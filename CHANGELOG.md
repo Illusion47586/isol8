@@ -1,3 +1,10 @@
+## [0.12.2](https://github.com/Illusion47586/isol8/compare/v0.12.1...v0.12.2) (2026-02-21)
+
+
+### Bug Fixes
+
+* **engine:** complete custom image build implementation ([#79](https://github.com/Illusion47586/isol8/issues/79)) ([a46178a](https://github.com/Illusion47586/isol8/commit/a46178a47f65a0c9f9ef9e0c45149090d95a7b46))
+
 ## [0.12.1](https://github.com/Illusion47586/isol8/compare/v0.12.0...v0.12.1) (2026-02-21)
 
 
