@@ -160,9 +160,13 @@ type ProgressCallback = (progress: BuildProgress) => void;
 export async function buildBaseImages(
   docker: Docker,
   onProgress?: ProgressCallback,
-  force = false
+  force = false,
+  onlyRuntimes?: string[]
 ): Promise<void> {
-  const runtimes = RuntimeRegistry.list();
+  const allRuntimes = RuntimeRegistry.list();
+  const runtimes = onlyRuntimes
+    ? allRuntimes.filter((r) => onlyRuntimes.includes(r.name))
+    : allRuntimes;
   const dockerHash = computeDockerDirHash();
   logger.debug(`[ImageBuilder] Docker directory hash: ${dockerHash.slice(0, 16)}...`);
 
@@ -275,9 +279,9 @@ export async function buildCustomImages(
   }
 }
 
-async function buildCustomImage(
+export async function buildCustomImage(
   docker: Docker,
-  runtime: string,
+  runtime: import("../types").Runtime | string,
   packages: string[],
   onProgress?: ProgressCallback,
   force = false
@@ -400,6 +404,6 @@ export async function ensureImages(docker: Docker, onProgress?: ProgressCallback
   }
 
   if (missing.length > 0) {
-    await buildBaseImages(docker, onProgress);
+    await buildBaseImages(docker, onProgress, false, missing);
   }
 }

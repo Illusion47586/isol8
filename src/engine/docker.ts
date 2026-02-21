@@ -950,6 +950,30 @@ export class DockerIsol8 implements Isol8Engine {
       }
     }
 
+    // Ensure the resolved image exists. If not, build it.
+    try {
+      await this.docker.getImage(resolvedImage).inspect();
+    } catch {
+      logger.debug(`[ImageBuilder] Image ${resolvedImage} not found. Building...`);
+      const { buildBaseImages, buildCustomImage } = await import("./image-builder");
+
+      if (resolvedImage !== adapter.image && normalizedDeps.length > 0) {
+        // Building custom image: ensure base image exists first
+        try {
+          await this.docker.getImage(adapter.image).inspect();
+        } catch {
+          logger.debug(`[ImageBuilder] Base image ${adapter.image} missing. Building...`);
+          await buildBaseImages(this.docker, undefined, false, [adapter.name]);
+        }
+        logger.debug(`[ImageBuilder] Building custom image for ${adapter.name}...`);
+        await buildCustomImage(this.docker, adapter.name, normalizedDeps);
+      } else {
+        // Building base image
+        logger.debug(`[ImageBuilder] Building base image for ${adapter.name}...`);
+        await buildBaseImages(this.docker, undefined, false, [adapter.name]);
+      }
+    }
+
     this.imageCache.set(cacheKey, resolvedImage);
     return resolvedImage;
   }
