@@ -348,7 +348,7 @@ Add the `$schema` property to get autocompletion, validation, and inline documen
 
 ```json
 {
-  "$schema": "node_modules/isol8/schema/isol8.config.schema.json"
+  "$schema": "node_modules/@isol8/core/schema/isol8.config.schema.json"
 }
 ```
 
@@ -356,7 +356,7 @@ Add the `$schema` property to get autocompletion, validation, and inline documen
 
 ```json
 {
-  "$schema": "node_modules/isol8/schema/isol8.config.schema.json",
+  "$schema": "node_modules/@isol8/core/schema/isol8.config.schema.json",
   "maxConcurrent": 10,
   "defaults": {
     "timeoutMs": 30000,
@@ -374,8 +374,6 @@ Add the `$schema` property to get autocompletion, validation, and inline documen
   },
   "dependencies": {
     "python": ["numpy", "pandas"],
-  "dependencies": {
-    "python": ["numpy", "pandas"],
     "node": ["lodash"]
   },
   "security": {
@@ -384,7 +382,7 @@ Add the `$schema` property to get autocompletion, validation, and inline documen
 }
 ```
 
-Full schema: [`schema/isol8.config.schema.json`](./schema/isol8.config.schema.json)
+Full schema: [`packages/core/schema/isol8.config.schema.json`](./packages/core/schema/isol8.config.schema.json)
 
 ## Benchmarks
 
@@ -428,9 +426,10 @@ Where time is spent in the container lifecycle (raw Docker API, no pool):
 Run benchmarks yourself:
 
 ```bash
-bun run bench            # Cold start benchmark
-bun run bench:pool       # Warm pool benchmark
-bun run bench:detailed   # Phase breakdown
+cd packages/core
+bun run benchmarks/tti.ts           # Cold start benchmark
+bun run benchmarks/spawn-pool.ts    # Warm pool benchmark
+bun run benchmarks/spawn-detailed.ts # Phase breakdown
 ```
 
 ## Security Model
@@ -478,27 +477,41 @@ All endpoints (except `/health`) require `Authorization: Bearer <key>`.
 
 ## Development
 
+This is a Turborepo monorepo. The main packages are:
+- `@isol8/core` — Engine, runtime adapters, client, config, types
+- `@isol8/cli` — Command-line interface
+- `@isol8/server` — HTTP server
+- `@isol8/docs` — Documentation (Mintlify)
+
 ```bash
+# Install dependencies
+bun install
+
 # Run CLI in dev mode
 bun run dev <command>
 
 # Run tests
-bun test
+bun test                              # All tests (via turbo)
+cd packages/core && bun test          # Core unit tests
+cd apps/cli && bun test tests/integration  # CLI integration tests
+cd apps/server && bun test            # Server tests
 
 # Type check
 bunx tsc --noEmit
 
 # Lint
-bun run lint
+bun run lint:check
+bun run lint:fix
 
 # Build
-bun run build              # Bundle CLI for Node.js distribution
-bun run build:server       # Compile standalone server binary
+bun run build                    # Build all packages
+cd apps/server && bun run build:all  # Cross-compile server for all platforms
 
-# Benchmarks
-bun run bench            # Cold start
-bun run bench:pool       # Warm pool
-bun run bench:detailed   # Phase breakdown
+# Schema
+cd packages/core && bun run schema   # Regenerate JSON schema
+
+# Docs
+cd apps/docs && bun run dev          # Start docs dev server
 ```
 
 ## License

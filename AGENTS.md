@@ -57,9 +57,15 @@ isol8/
 │   │   │   ├── index.ts        # Hono REST server
 │   │   │   ├── standalone.ts   # Entry point for compiled binary
 │   │   │   └── auth.ts         # Bearer token auth middleware
+│   │   ├── tests/              # Server integration tests
 │   │   └── scripts/build.ts    # Server binary build script
 │   └── docs/                   # @isol8/docs - Mintlify documentation
 │       └── *.mdx               # Documentation pages
+├── scripts/                    # CI helper scripts
+│   ├── parse-coverage.ts       # LCOV coverage parser
+│   └── parse-bench-summary.py  # Benchmark output parser
+├── tests/                      # Root test preload
+│   └── preload.ts              # Global test cleanup
 ├── turbo.json                  # Turborepo task configuration
 ├── biome.json                  # Linter/formatter config
 └── package.json                # Workspace root
@@ -138,6 +144,7 @@ bun run --filter @isol8/cli dev  # Run specific package
 bun test                     # Run all tests (via turbo)
 cd packages/core && bun test tests/unit/  # Run core unit tests
 cd apps/cli && bun test tests/integration/  # Run CLI integration tests
+cd apps/server && bun test tests/  # Run server tests
 
 # Building
 bun run build                # Build all packages (via turbo)
@@ -163,6 +170,7 @@ cd apps/docs && bun run dev   # Start docs dev server
 3. **Tests location**:
    - Unit tests: `packages/core/tests/unit/`
    - Integration tests: `apps/cli/tests/integration/`
+   - Server integration tests: `apps/server/tests/`
    - Production tests: `apps/cli/tests/production/`
 4. **Runtime adapters** — to add a new runtime, create `packages/core/src/runtime/adapters/<name>.ts`, implement `RuntimeAdapter`, register in `packages/core/src/runtime/index.ts`, and add a Dockerfile stage in `packages/core/docker/Dockerfile`
 5. **No external requests in unit tests** — Docker-dependent tests go in `apps/cli/tests/integration/`
