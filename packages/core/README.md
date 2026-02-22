@@ -2,6 +2,8 @@
 
 Core engine for isol8 secure code execution.
 
+> **Note**: The `isol8` package is deprecated. Use `@isol8/core` instead.
+
 For full documentation, usage examples, and contribution guidelines, see the main [isol8 README](../README.md).
 
 ## Installation

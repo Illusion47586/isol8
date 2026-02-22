@@ -1,5 +1,11 @@
 # isol8
 
+> **⚠️ Deprecation Notice**: The `isol8` package is deprecated. Please use:
+> - **CLI**: `@isol8/cli` (npm: `@isol8/cli`)
+> - **Library**: `@isol8/core` (npm: `@isol8/core`)
+>
+> The old `isol8` package will no longer receive updates.
+
 [![CI](https://github.com/Illusion47586/isol8/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Illusion47586/isol8/actions/workflows/ci.yml)
 [![Coverage](./coverage/coverage-badge.svg)](https://github.com/Illusion47586/isol8/actions)
 [![npm](https://img.shields.io/npm/v/isol8)](https://www.npmjs.com/package/isol8)
@@ -68,9 +74,9 @@ npx skills add Illusion47586/isol8/skill/isol8
 Checks Docker connectivity and builds base isol8 images.
 
 ```bash
-isol8 setup
-isol8 setup --python numpy,pandas,scipy
-isol8 setup --node lodash,axios
+@isol8/cli setup
+@isol8/cli setup --python numpy,pandas,scipy
+@isol8/cli setup --node lodash,axios
 ```
 
 | Flag | Description |
@@ -88,19 +94,19 @@ Execute code in isol8. Accepts a file, `--eval`, or stdin.
 
 ```bash
 # File
-isol8 run script.py
+@isol8/cli run script.py
 
 # Inline
-isol8 run -e "print(1+1)" --runtime python
+@isol8/cli run -e "print(1+1)" --runtime python
 
 # Stdin
-echo "Bun.version" | isol8 run --runtime bun
+echo "Bun.version" | @isol8/cli run --runtime bun
 
 # With packages
-isol8 run -e "import numpy; print(numpy.__version__)" --install numpy --runtime python
+@isol8/cli run -e "import numpy; print(numpy.__version__)" --install numpy --runtime python
 
 # Remote execution
-isol8 run script.py --host http://server:3000 --key my-api-key
+@isol8/cli run script.py --host http://server:3000 --key my-api-key
 ```
 
 | Flag | Description | Default |
@@ -139,34 +145,34 @@ isol8 run script.py --host http://server:3000 --key my-api-key
 
 ```bash
 # URL source
-isol8 run --url https://raw.githubusercontent.com/user/repo/main/script.py --runtime python
+@isol8/cli run --url https://raw.githubusercontent.com/user/repo/main/script.py --runtime python
 
 # GitHub shorthand with hash verification
-isol8 run --github user/repo/main/script.py --hash <sha256> --runtime python
+@isol8/cli run --github user/repo/main/script.py --hash <sha256> --runtime python
 ```
 
-### `isol8 cleanup`
+### `@isol8/cli cleanup`
 
 Remove orphaned isol8 containers, and optionally isol8 images.
 
 ```bash
 # Interactive (prompts for confirmation)
-isol8 cleanup
+@isol8/cli cleanup
 
 # Force (skip confirmation)
-isol8 cleanup --force
+@isol8/cli cleanup --force
 
 # Also remove isol8 images
-isol8 cleanup --images --force
+@isol8/cli cleanup --images --force
 ```
 
-### `isol8 serve`
+### `@isol8/cli serve`
 
 Start the isol8 remote HTTP server. Downloads a pre-compiled standalone binary the first time you run this command (no Bun runtime required).
 
 ```bash
-isol8 serve --port 3000 --key my-secret-key
-isol8 serve --update  # Force re-download the server binary
+@isol8/cli serve --port 3000 --key my-secret-key
+@isol8/cli serve --update  # Force re-download the server binary
 ```
 
 | Flag | Description | Default |
@@ -180,16 +186,16 @@ If the selected port is already in use, `isol8 serve` now prompts to enter anoth
 
 On graceful shutdown (`SIGINT`/`SIGTERM`), the server now cleans up tracked sessions, isol8 containers, and isol8 images before exiting.
 
-### `isol8 config`
+### `@isol8/cli config`
 
 Display the resolved configuration (merged defaults + config file). Shows the source file, defaults, network rules, cleanup policy, and dependencies.
 
 ```bash
 # Formatted output
-isol8 config
+@isol8/cli config
 
 # Raw JSON (useful for piping)
-isol8 config --json
+@isol8/cli config --json
 ```
 
 ## Library Usage
@@ -284,7 +290,7 @@ const output = await isol8.getFile("/sandbox/output.txt");
 ### Remote Client
 
 ```typescript
-import { RemoteIsol8 } from "isol8";
+import { RemoteIsol8 } from "@isol8/core";
 
 const isol8 = new RemoteIsol8(
   { host: "http://localhost:3000", apiKey: "my-key" },
@@ -299,7 +305,7 @@ await isol8.stop();
 ### Streaming Output
 
 ```typescript
-import { DockerIsol8 } from "isol8";
+import { DockerIsol8 } from "@isol8/core";
 
 const isol8 = new DockerIsol8({ network: "none" });
 await isol8.start();
