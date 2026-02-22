@@ -214,7 +214,7 @@ describe("Integration: CLI", () => {
   test("streams output by default", async () => {
     const proc = spawn("bun", [
       "run",
-      "src/cli.ts",
+      CLI_PATH,
       "run",
       "-e",
       'import time; print("start"); time.sleep(0.5); print("end")',
