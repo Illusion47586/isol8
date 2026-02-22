@@ -20,8 +20,10 @@ import type {
 } from "@isol8/core";
 import {
   buildBaseImages,
+  buildCustomImage,
   buildCustomImages,
   DockerIsol8,
+  getCustomImageTag,
   loadConfig,
   logger,
   RemoteIsol8,
@@ -173,6 +175,66 @@ program
     }
 
     console.log("\n[DONE] Setup complete!");
+  });
+
+// ─── build ────────────────────────────────────────────────────────────
+
+program
+  .command("build")
+  .description("Build a custom runtime image with pre-baked dependencies")
+  .requiredOption("--base <runtime>", "Base runtime: python, node, bun, deno, bash")
+  .option(
+    "--install <package>",
+    "Package to install in image (repeatable or comma-separated)",
+    collect,
+    []
+  )
+  .option("--tag <name>", "Optional alias tag (e.g. my-registry/ml-image:latest)")
+  .option("--force", "Force rebuild even if image is up to date")
+  .action(async (opts) => {
+    const runtime = parseRuntimeName(opts.base);
+    const packages = parsePackageOptions(opts.install);
+
+    if (packages.length === 0) {
+      console.error("[ERR] No packages specified. Use --install <package>.");
+      process.exit(1);
+    }
+
+    const docker = new Docker();
+    const spinner = ora("Checking Docker...").start();
+    try {
+      await docker.ping();
+      spinner.stopAndPersist({ symbol: "[OK]", text: "Docker is running" });
+    } catch {
+      spinner.stopAndPersist({ symbol: "[ERR]", text: "Docker is not running or not installed." });
+      process.exit(1);
+    }
+
+    spinner.start(`Ensuring base image for ${runtime}...`);
+    await buildBaseImages(docker, undefined, opts.force ?? false, [runtime]);
+    spinner.stopAndPersist({ symbol: "[OK]", text: `Base image ready: ${runtime}` });
+
+    spinner.start(`Building custom ${runtime} image...`);
+    await buildCustomImage(docker, runtime, packages, undefined, opts.force ?? false);
+    const hashedTag = getCustomImageTag(runtime, packages);
+    spinner.stopAndPersist({ symbol: "[OK]", text: `Built image: ${hashedTag}` });
+
+    if (opts.tag) {
+      const target = parseImageTag(opts.tag);
+      await docker.getImage(hashedTag).tag(target);
+      spinner.stopAndPersist({
+        symbol: "[OK]",
+        text: `Tagged image: ${target.repo}:${target.tag}`,
+      });
+    }
+
+    console.log("\n[DONE] Custom image build complete!");
+    console.log(`       Runtime: ${runtime}`);
+    console.log(`       Packages: ${packages.join(", ")}`);
+    console.log(`       Image: ${hashedTag}`);
+    if (opts.tag) {
+      console.log(`       Alias: ${opts.tag}`);
+    }
   });
 
 // ─── run ──────────────────────────────────────────────────────────────
@@ -1181,6 +1243,45 @@ function detectRuntimeFromPath(pathValue: string): Runtime | undefined {
   } catch {
     return undefined;
   }
+}
+
+function parseRuntimeName(value: string): Runtime {
+  try {
+    return RuntimeRegistry.get(value).name;
+  } catch {
+    console.error(
+      `[ERR] Invalid runtime: ${value}. Expected one of: python, node, bun, deno, bash`
+    );
+    process.exit(1);
+  }
+}
+
+function parsePackageOptions(values: string[]): string[] {
+  return [...new Set(values.flatMap((value) => value.split(",")).map((pkg) => pkg.trim()))]
+    .filter(Boolean)
+    .sort();
+}
+
+function parseImageTag(image: string): { repo: string; tag: string } {
+  const value = image.trim();
+  if (!value) {
+    console.error("[ERR] --tag must not be empty");
+    process.exit(1);
+  }
+
+  const lastColon = value.lastIndexOf(":");
+  const lastSlash = value.lastIndexOf("/");
+  if (lastColon > lastSlash) {
+    const repo = value.slice(0, lastColon);
+    const tag = value.slice(lastColon + 1);
+    if (!(repo && tag)) {
+      console.error(`[ERR] Invalid --tag value: ${image}`);
+      process.exit(1);
+    }
+    return { repo, tag };
+  }
+
+  return { repo: value, tag: "latest" };
 }
 
 function getDefaultRegistryAllowPatterns(runtime: Runtime): string[] {

@@ -1,7 +1,7 @@
 ---
 title: "How to CLI"
 sidebarTitle: "How to CLI"
-description: "Detailed command-line guide for isol8 with flag-by-flag behavior for run, setup, serve, config, and cleanup commands."
+description: "Detailed command-line guide for isol8 with flag-by-flag behavior for run, setup, build, serve, config, and cleanup commands."
 icon: "terminal"
 ---
 
@@ -232,6 +232,28 @@ isol8 serve --key <api-key> [options]
 <Info>
   For full server behavior and endpoints, see the Server docs tab: <a href="/server/overview">Server overview</a> and <a href="/server/routes">Server routes</a>.
 </Info>
+
+## `isol8 build`
+
+```bash
+isol8 build --base <runtime> --install <package> [options]
+```
+
+<ResponseField name="--base <runtime>" type="python | node | bun | deno | bash">
+  Runtime base image to extend.
+</ResponseField>
+
+<ResponseField name="--install <package>" type="repeatable">
+  Package to bake into the image. Supports repeated flags and comma-separated values.
+</ResponseField>
+
+<ResponseField name="--tag <name>" type="string">
+  Optional alias tag (for example `my-registry/ml-image:latest`) applied to the built hashed image.
+</ResponseField>
+
+<ResponseField name="--force" type="flag">
+  Force rebuild even if current inputs resolve to an existing up-to-date image.
+</ResponseField>
 
 ## `isol8 config`
 
