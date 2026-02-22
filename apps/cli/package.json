@@ -4,6 +4,14 @@
   "description": "CLI for isol8 secure code execution",
   "author": "Illusion47586",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Illusion47586/isol8.git"
+  },
+  "homepage": "https://github.com/Illusion47586/isol8",
+  "bugs": {
+    "url": "https://github.com/Illusion47586/isol8/issues"
+  },
   "type": "module",
   "main": "./dist/cli.js",
   "bin": {
