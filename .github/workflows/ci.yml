@@ -3,8 +3,12 @@ name: CI
 on:
   push:
     branches: ["main"]
+    paths-ignore:
+      - "coverage/coverage-badge.svg"
   pull_request:
     branches: ["main"]
+    paths-ignore:
+      - "coverage/coverage-badge.svg"
   workflow_dispatch:
 
 permissions:
@@ -124,7 +128,7 @@ jobs:
 
           # Parse current coverage from lcov output
           bun scripts/parse-coverage.ts coverage/lcov.info coverage/summary.json
-          
+
           # Parse main branch coverage (if available)
           if [ -f coverage-main/lcov.info ]; then
             bun scripts/parse-coverage.ts coverage-main/lcov.info coverage-main/summary.json
@@ -137,7 +141,7 @@ jobs:
           CUR_LINES=$(jq '.lines.pct' coverage/summary.json)
           CUR_FUNCS=$(jq '.functions.pct' coverage/summary.json)
           CUR_BRANS=$(jq '.branches.pct' coverage/summary.json)
-          
+
           MAIN_LINES=$(jq '.lines.pct' coverage-main/summary.json)
           MAIN_FUNCS=$(jq '.functions.pct' coverage-main/summary.json)
           MAIN_BRANS=$(jq '.branches.pct' coverage-main/summary.json)
@@ -146,7 +150,7 @@ jobs:
           CUR_LINES=$(printf "%.2f" $CUR_LINES)
           CUR_FUNCS=$(printf "%.2f" $CUR_FUNCS)
           CUR_BRANS=$(printf "%.2f" $CUR_BRANS)
-          
+
           MAIN_LINES=$(printf "%.2f" $MAIN_LINES)
           MAIN_FUNCS=$(printf "%.2f" $MAIN_FUNCS)
           MAIN_BRANS=$(printf "%.2f" $MAIN_BRANS)
@@ -159,11 +163,11 @@ jobs:
           echo "lines=$CUR_LINES" >> $GITHUB_OUTPUT
           echo "funcs=$CUR_FUNCS" >> $GITHUB_OUTPUT
           echo "brans=$CUR_BRANS" >> $GITHUB_OUTPUT
-          
+
           echo "main_lines=$MAIN_LINES" >> $GITHUB_OUTPUT
           echo "main_funcs=$MAIN_FUNCS" >> $GITHUB_OUTPUT
           echo "main_brans=$MAIN_BRANS" >> $GITHUB_OUTPUT
-          
+
           echo "diff_lines=$DIFF_LINES" >> $GITHUB_OUTPUT
           echo "diff_funcs=$DIFF_FUNCS" >> $GITHUB_OUTPUT
           echo "diff_brans=$DIFF_BRANS" >> $GITHUB_OUTPUT
@@ -182,16 +186,29 @@ jobs:
           retention-days: 7
           overwrite: true
 
-      - name: Commit Coverage Badge (main branch only)
-        if: github.ref == 'refs/heads/main'
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "chore: update coverage badge [skip ci]"
-          file_pattern: coverage/coverage-badge.svg
-          commit_user_name: Isol8 Github Bot
-          commit_user_email: isol8-github-bot[bot]@users.noreply.github.com
+      - name: Commit Coverage Badge
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref != 'main' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'isol8-ci[bot]' && github.actor != 'isol8-ci'
         env:
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
+        run: |
+          TARGET_BRANCH="${{ github.event.pull_request.head.ref }}"
+          git config user.name "isol8-ci"
+          git config user.email "isol8-ci[bot]@users.noreply.github.com"
+          git add coverage/coverage-badge.svg
+          if git diff --cached --quiet; then
+            echo "No coverage badge changes to commit."
+            exit 0
+          fi
+          git commit -m "chore: update coverage badge [skip ci]"
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
+          git fetch origin "${TARGET_BRANCH}"
+          git rebase "origin/${TARGET_BRANCH}"
+          git push origin "HEAD:${TARGET_BRANCH}" || {
+            echo "Push failed, retrying after refreshing branch..."
+            git fetch origin "${TARGET_BRANCH}"
+            git rebase "origin/${TARGET_BRANCH}"
+            git push origin "HEAD:${TARGET_BRANCH}"
+          }
         continue-on-error: true
 
       - name: Generate Coverage Comparison Report
@@ -204,7 +221,7 @@ jobs:
             elif [ $(echo "$val >= 50" | bc -l) -eq 1 ]; then echo "🟡";
             else echo "🔴"; fi
           }
-          
+
           # Function to get trend icon
           get_trend() {
             local val=$1
@@ -216,7 +233,7 @@ jobs:
           ICON_LINES=$(get_icon ${{ steps.coverage.outputs.lines }})
           ICON_FUNCS=$(get_icon ${{ steps.coverage.outputs.funcs }})
           ICON_BRANS=$(get_icon ${{ steps.coverage.outputs.brans }})
-          
+
           TREND_LINES=$(get_trend ${{ steps.coverage.outputs.diff_lines }})
           TREND_FUNCS=$(get_trend ${{ steps.coverage.outputs.diff_funcs }})
           TREND_BRANS=$(get_trend ${{ steps.coverage.outputs.diff_brans }})

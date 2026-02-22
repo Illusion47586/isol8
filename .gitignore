@@ -12,7 +12,6 @@ coverage/tmp/
 # ignore generated coverage reports and temporary lcov files produced by CI/tests
 coverage/*.lcov*
 coverage/lcov.info
-coverage/summary.json
 coverage/*.tmp
 
 # logs
