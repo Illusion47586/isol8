@@ -15,6 +15,7 @@ rmSync(outDir, { recursive: true, force: true });
 mkdirSync(outDir, { recursive: true });
 
 // Bundle CLI for Node.js target
+// External packages with native modules to avoid bundling .node files
 const cliBuild = await Bun.build({
   entrypoints: [join(root, "src/cli.ts")],
   outdir: outDir,
@@ -22,7 +23,7 @@ const cliBuild = await Bun.build({
   format: "esm",
   minify: false,
   sourcemap: "external",
-  external: ["@isol8/server"],
+  external: ["@isol8/server", "dockerode"],
 });
 
 if (!cliBuild.success) {
@@ -33,6 +34,13 @@ if (!cliBuild.success) {
   process.exit(1);
 }
 
+// Remove .node files (native modules) from dist - they should be loaded from node_modules
+const glob = new Bun.Glob("*.node");
+for (const file of glob.scanSync({ cwd: outDir })) {
+  rmSync(join(outDir, file), { force: true });
+}
+console.log("   Cleaned .node files from dist");
+
 // Copy docker directory from @isol8/core to dist
 const coreDockerDir = join(root, "..", "..", "packages", "core", "docker");
 const distDockerDir = join(outDir, "docker");
@@ -41,4 +49,4 @@ if (existsSync(coreDockerDir)) {
   console.log("   Docker:  dist/docker/");
 }
 
-console.log(`✅ Build complete → dist/cli.js (v${version})`);
+console.log(`✅ Build complete -> dist/cli.js (v${version})`);

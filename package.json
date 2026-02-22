@@ -1,5 +1,5 @@
 {
-  "name": "isol8-monorepo",
+  "name": "isol8",
   "version": "0.13.0",
   "private": true,
   "description": "Secure code execution engine for AI agents",
@@ -30,6 +30,7 @@
   "scripts": {
     "build": "turbo run build",
     "build:server:all": "cd apps/server && bun run build:all",
+    "publish": "bun run scripts/publish.ts",
     "test": "turbo run test",
     "test:prod": "turbo run test:prod",
     "lint:check": "turbo run lint:check",

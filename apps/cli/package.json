@@ -1,6 +1,6 @@
 {
   "name": "@isol8/cli",
-  "version": "0.12.2",
+  "version": "0.13.0-alpha.3",
   "description": "CLI for isol8 secure code execution",
   "author": "Illusion47586",
   "license": "MIT",
@@ -18,7 +18,7 @@
     "lint:fix": "ultracite fix"
   },
   "dependencies": {
-    "@isol8/core": "workspace:*",
+    "@isol8/core": "^0.13.0-alpha.1",
     "commander": "^14.0.3",
     "ora": "^9.3.0"
   },

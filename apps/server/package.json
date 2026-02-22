@@ -1,6 +1,6 @@
 {
   "name": "@isol8/server",
-  "version": "0.12.2",
+  "version": "0.13.0-alpha.3",
   "private": true,
   "description": "HTTP server for isol8 remote code execution",
   "author": "Illusion47586",

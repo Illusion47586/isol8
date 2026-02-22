@@ -1,6 +1,6 @@
 {
   "name": "@isol8/docs",
-  "version": "0.12.2",
+  "version": "0.13.0-alpha.3",
   "private": true,
   "scripts": {
     "dev": "mint dev",
