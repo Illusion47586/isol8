@@ -182,6 +182,23 @@ jobs:
           retention-days: 7
           overwrite: true
 
+      - name: Commit Coverage Badge (main branch only)
+        if: github.ref == 'refs/heads/main'
+        env:
+          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
+        run: |
+          git config user.name "isol8-bot"
+          git config user.email "isol8-github-bot[bot]@users.noreply.github.com"
+          git add coverage/coverage-badge.svg
+          if git diff --cached --quiet; then
+            echo "No coverage badge changes to commit."
+            exit 0
+          fi
+          git commit -m "chore: update coverage badge [skip ci]"
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
+          git push origin HEAD:main
+        continue-on-error: true
+
       - name: Generate Coverage Comparison Report
         if: github.event_name == 'pull_request'
         run: |
