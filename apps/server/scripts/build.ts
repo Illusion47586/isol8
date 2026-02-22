@@ -11,7 +11,7 @@ import { dirname, join } from "node:path";
 
 const root = dirname(import.meta.dir);
 const outDir = join(root, "dist");
-const entrypoint = join(root, "src/server/standalone.ts");
+const entrypoint = join(root, "src/standalone.ts");
 
 // Read version from package.json
 const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf-8"));

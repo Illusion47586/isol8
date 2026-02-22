@@ -18,6 +18,7 @@ const cliBuild = await Bun.build({
   format: "esm",
   minify: false,
   sourcemap: "external",
+  external: ["@isol8/server"],
 });
 
 if (!cliBuild.success) {

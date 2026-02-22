@@ -1,0 +1,7 @@
+
+[0m[2m[35m$[0m [2m[1mbun run scripts/build.ts[0m
+🔨 Compiling @isol8/server v0.12.2 for current platform...
+  [0m[2m[[1m86ms[0m[2m][0m  [32mminify[0m  -1.60 MB [2m(estimate)[0m
+  [0m[2m[[1m41ms[0m[2m][0m  [32mbundle[0m  263 modules
+ [0m[2m[[1m161ms[0m[2m][0m [32mcompile[0m  [1m[34m/Users/dhruv/Developer/Projects/isol8/apps/server/dist/isol8-server[0m
+✅ dist/isol8-server (v0.12.2)
