@@ -32,7 +32,7 @@ jobs:
       
       - name: Install isol8 globally
         run: |
-          bun i -g isol8@${{ github.event.inputs.version }}
+          bun i -g isol8@${{ github.event.inputs.version || 'latest' }}
           # Add bun global bin to PATH for subsequent steps
           echo "$(bun global bin)" >> $GITHUB_PATH
       
@@ -42,7 +42,7 @@ jobs:
       - name: Setup isol8 images
         run: isol8 setup
         env:
-          ISOL8_TEST_VERSION: ${{ github.event.inputs.version }}
+          ISOL8_TEST_VERSION: ${{ github.event.inputs.version || 'latest' }}
       
       - name: Run production tests
         id: tests
@@ -53,15 +53,15 @@ jobs:
           echo "=========================================="
           echo "Running Production Tests"
           echo "=========================================="
-          bun run test:prod 2>&1 | tee test-output.log
+          cd apps/cli && bun test tests/production/ 2>&1 | tee ../../test-output.log
           TEST_EXIT_CODE=${PIPESTATUS[0]}
           
           if [ $TEST_EXIT_CODE -ne 0 ]; then
             echo "Tests failed with exit code: $TEST_EXIT_CODE"
           fi
           
-          PASS=$(grep -E "^\s+[0-9]+ pass" test-output.log | grep -oE "[0-9]+" | head -1)
-          FAIL=$(grep -E "^\s+[0-9]+ fail" test-output.log | grep -oE "[0-9]+" | head -1)
+          PASS=$(grep -E "^\s+[0-9]+ pass" ../../test-output.log | grep -oE "[0-9]+" | head -1)
+          FAIL=$(grep -E "^\s+[0-9]+ fail" ../../test-output.log | grep -oE "[0-9]+" | head -1)
           
           echo ""
           echo "=========================================="
@@ -81,7 +81,7 @@ jobs:
           echo "| Passed | ${PASS:-0} |" >> $GITHUB_STEP_SUMMARY
           echo "| Failed | ${FAIL:-0} |" >> $GITHUB_STEP_SUMMARY
         env:
-          ISOL8_TEST_VERSION: ${{ github.event.inputs.version }}
+          ISOL8_TEST_VERSION: ${{ github.event.inputs.version || 'latest' }}
 
       - name: Run performance benchmarks
         if: github.event.inputs.runBenchmarks == 'true' && steps.tests.outputs.failed == '0'
@@ -90,17 +90,22 @@ jobs:
           echo "=========================================="
           echo "Running CLI Performance Benchmarks"
           echo "=========================================="
-          bun run bench:cli 2>&1 | tee bench-output.log
+          cd packages/core && bun run benchmarks/tti.ts 2>&1 | tee ../../bench-output.log
           
           echo ""
           echo "=========================================="
           echo "Benchmark Results Summary"
           echo "=========================================="
-          python3 scripts/parse-bench-summary.py
           
-          cat bench-summary.md >> $GITHUB_STEP_SUMMARY
+          # Write summary
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Benchmark Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          tail -20 ../../bench-output.log >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
         env:
-          ISOL8_TEST_VERSION: ${{ github.event.inputs.version }}
+          ISOL8_TEST_VERSION: ${{ github.event.inputs.version || 'latest' }}
 
       - name: Summary
         run: |
@@ -108,7 +113,7 @@ jobs:
           echo "=========================================="
           echo "Workflow Summary"
           echo "=========================================="
-          echo "Version tested: ${{ github.event.inputs.version }}"
+          echo "Version tested: ${{ github.event.inputs.version || 'latest' }}"
           echo "Tests: ${{ steps.tests.outputs.passed }} passed, ${{ steps.tests.outputs.failed }} failed"
           BENCH=${{ github.event.inputs.runBenchmarks }}
           if [ "$BENCH" = "true" ]; then
@@ -127,6 +132,6 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Version | ${{ github.event.inputs.version }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Version | ${{ github.event.inputs.version || 'latest' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Tests Passed | ${{ steps.tests.outputs.passed }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Tests Failed | ${{ steps.tests.outputs.failed }} |" >> $GITHUB_STEP_SUMMARY

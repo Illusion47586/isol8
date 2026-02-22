@@ -1,7 +1,6 @@
 # isol8
 
 [![CI](https://github.com/Illusion47586/isol8/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Illusion47586/isol8/actions/workflows/ci.yml)
-[![Coverage](https://raw.githubusercontent.com/Illusion47586/isol8/main/coverage/coverage-badge.svg)](https://github.com/Illusion47586/isol8/actions)
 [![npm](https://img.shields.io/npm/v/isol8)](https://www.npmjs.com/package/isol8)
 [![license](https://img.shields.io/npm/l/isol8)](./LICENSE)
 
