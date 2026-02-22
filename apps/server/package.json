@@ -1,0 +1,34 @@
+{
+  "name": "@isol8/server",
+  "version": "0.12.2",
+  "description": "HTTP server for isol8 remote code execution",
+  "author": "Illusion47586",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "isol8-server": "./dist/server.js"
+  },
+  "scripts": {
+    "build": "bun run scripts/build.ts",
+    "build:all": "bun run scripts/build.ts --all",
+    "test": "bun test tests/",
+    "test:prod": "echo 'No production tests in server package'",
+    "lint:check": "ultracite check",
+    "lint:fix": "ultracite fix"
+  },
+  "dependencies": {
+    "@isol8/core": "workspace:*",
+    "hono": "^4.11.9"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^25.2.3",
+    "typescript": "^5.9.3",
+    "ultracite": "^7.2.0"
+  },
+  "files": [
+    "dist"
+  ]
+}

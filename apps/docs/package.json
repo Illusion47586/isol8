@@ -1,0 +1,13 @@
+{
+  "name": "@isol8/docs",
+  "version": "0.12.2",
+  "private": true,
+  "scripts": {
+    "dev": "mint dev",
+    "validate": "mint validate",
+    "broken-links": "mint broken-links"
+  },
+  "devDependencies": {
+    "mint": "^4.2.348"
+  }
+}

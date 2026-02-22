@@ -1,0 +1,315 @@
+{
+  "$ref": "#/definitions/Isol8UserConfig",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "Isol8Dependencies": {
+      "additionalProperties": false,
+      "description": "Runtime-specific packages to bake into custom Docker images. Populated via `isol8.config.json` or CLI flags on `isol8 setup`.",
+      "properties": {
+        "bash": {
+          "description": "Bash packages to install via apk (Alpine).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "bun": {
+          "description": "Bun packages to install globally.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "deno": {
+          "description": "Deno module URLs to pre-cache.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "node": {
+          "description": "Node.js packages to install globally via npm.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "python": {
+          "description": "Python packages to install via pip.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "Isol8UserConfig": {
+      "additionalProperties": false,
+      "description": "User configuration file schema (partial/optional version of Isol8Config). Used for generating the JSON Schema.",
+      "properties": {
+        "$schema": {
+          "description": "JSON Schema URI for editor validation/completion.",
+          "type": "string"
+        },
+        "audit": {
+          "additionalProperties": false,
+          "description": "Audit logging configuration.",
+          "properties": {
+            "destination": {
+              "default": "filesystem",
+              "description": "Destination for audit logs (filesystem, stdout)",
+              "type": "string"
+            },
+            "enabled": {
+              "default": false,
+              "description": "Enable audit logging.",
+              "type": "boolean"
+            },
+            "includeCode": {
+              "default": false,
+              "description": "Whether to include the source code in audit logs",
+              "type": "boolean"
+            },
+            "includeOutput": {
+              "default": false,
+              "description": "Whether to include output (stdout/stderr) in audit logs",
+              "type": "boolean"
+            },
+            "logDir": {
+              "default": "undefined (uses ./.isol8_audit)",
+              "description": "Custom directory for audit log files",
+              "type": "string"
+            },
+            "postLogScript": {
+              "default": "undefined",
+              "description": "Script to run after each log entry (receives file path as argument)",
+              "type": "string"
+            },
+            "retentionDays": {
+              "default": 90,
+              "description": "Retention period for audit logs in days",
+              "type": "number"
+            },
+            "trackResources": {
+              "default": true,
+              "description": "Track resource usage (CPU, memory, network)",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
+        "cleanup": {
+          "additionalProperties": false,
+          "description": "Container cleanup and lifecycle settings. (Partial override allowed).",
+          "properties": {
+            "autoPrune": {
+              "default": true,
+              "description": "Automatically prune idle persistent containers.",
+              "type": "boolean"
+            },
+            "maxContainerAgeMs": {
+              "default": 3600000,
+              "description": "Maximum idle time (ms) before pruning. One hour = 3600000.",
+              "type": "number"
+            }
+          },
+          "type": "object"
+        },
+        "debug": {
+          "default": false,
+          "description": "Enable debug logging.",
+          "type": "boolean"
+        },
+        "defaults": {
+          "additionalProperties": false,
+          "description": "Default execution settings applied to all runs. (Partial override allowed).",
+          "properties": {
+            "cpuLimit": {
+              "default": 1,
+              "description": "Default CPU limit (1.0 = one full core).",
+              "type": "number"
+            },
+            "memoryLimit": {
+              "default": "512m",
+              "description": "Default memory limit.",
+              "type": "string"
+            },
+            "network": {
+              "$ref": "#/definitions/NetworkMode",
+              "default": "none",
+              "description": "Default network mode."
+            },
+            "readonlyRootFs": {
+              "default": true,
+              "description": "Whether the root filesystem should be read-only.",
+              "type": "boolean"
+            },
+            "sandboxSize": {
+              "default": "512m",
+              "description": "Default size of the `/sandbox` tmpfs mount.",
+              "type": "string"
+            },
+            "timeoutMs": {
+              "default": 30000,
+              "description": "Default timeout in milliseconds.",
+              "type": "number"
+            },
+            "tmpSize": {
+              "default": "256m",
+              "description": "Default size of the `/tmp` tmpfs mount.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "dependencies": {
+          "$ref": "#/definitions/Isol8Dependencies",
+          "description": "Runtime-specific packages to bake into custom Docker images."
+        },
+        "maxConcurrent": {
+          "default": 10,
+          "description": "Maximum number of containers that can run concurrently.",
+          "type": "number"
+        },
+        "network": {
+          "additionalProperties": false,
+          "description": "Global network filtering rules for `\"filtered\"` mode.",
+          "properties": {
+            "blacklist": {
+              "description": "Regex patterns for blocked hostnames. Matching hosts are always denied, even if whitelisted.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "whitelist": {
+              "description": "Regex patterns for allowed hostnames. If non-empty, only matching hosts are allowed.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "poolSize": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "clean": {
+                  "type": "number"
+                },
+                "dirty": {
+                  "type": "number"
+                }
+              },
+              "required": ["clean", "dirty"],
+              "type": "object"
+            }
+          ],
+          "default": {
+            "clean": 1,
+            "dirty": 1
+          },
+          "description": "Default ephemeral pool size used by `isol8 serve`."
+        },
+        "poolStrategy": {
+          "default": "fast",
+          "description": "Default ephemeral pool strategy used by `isol8 serve`.",
+          "enum": ["secure", "fast"],
+          "type": "string"
+        },
+        "remoteCode": {
+          "additionalProperties": false,
+          "description": "Remote code fetching policy. (Partial override allowed).",
+          "properties": {
+            "allowedHosts": {
+              "description": "Allowed hostname regex patterns. Empty means allow all (subject to blocklist).",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "allowedSchemes": {
+              "default": ["https"],
+              "description": "Allowed URL schemes.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "blockedHosts": {
+              "description": "Blocked hostname regex patterns.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "cacheTtl": {
+              "default": 3600,
+              "description": "Cache TTL in seconds for future use.",
+              "type": "number"
+            },
+            "enableCache": {
+              "default": true,
+              "description": "Cache support toggle for future use.",
+              "type": "boolean"
+            },
+            "enabled": {
+              "default": false,
+              "description": "Enable URL-based source fetching.",
+              "type": "boolean"
+            },
+            "fetchTimeoutMs": {
+              "default": 30000,
+              "description": "Fetch timeout in milliseconds.",
+              "type": "number"
+            },
+            "maxCodeSize": {
+              "default": "10485760 (10MB)",
+              "description": "Max fetched source size in bytes.",
+              "type": "number"
+            },
+            "requireHash": {
+              "default": false,
+              "description": "Require `ExecutionRequest.codeHash` for URL-based execution.",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
+        "security": {
+          "$ref": "#/definitions/SecurityConfig",
+          "description": "Security settings."
+        }
+      },
+      "type": "object"
+    },
+    "NetworkMode": {
+      "description": "Network access mode for isol8 containers.\n\n- `\"none\"` — All network access blocked (default, most secure).\n- `\"host\"` — Full host network access (use with caution).\n- `\"filtered\"` — HTTP/HTTPS traffic routed through a proxy that enforces   whitelist/blacklist regex rules on hostnames.",
+      "enum": ["none", "host", "filtered"],
+      "type": "string"
+    },
+    "SecurityConfig": {
+      "additionalProperties": false,
+      "description": "Security configuration for the execution environment.",
+      "properties": {
+        "customProfilePath": {
+          "description": "Path to a custom seccomp profile JSON file. Required if seccomp is \"custom\".",
+          "type": "string"
+        },
+        "seccomp": {
+          "description": "Seccomp profile mode.\n- \"strict\": Use the default strict profile (default).\n- \"unconfined\": Do not apply any seccomp profile.\n- \"custom\": Use the profile at `customProfilePath`.",
+          "enum": ["strict", "unconfined", "custom"],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  }
+}
