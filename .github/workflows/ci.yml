@@ -182,21 +182,32 @@ jobs:
           retention-days: 7
           overwrite: true
 
-      - name: Commit Coverage Badge (main branch only)
-        if: github.ref == 'refs/heads/main'
+      - name: Commit Coverage Artifacts (non-main branches)
+        if: github.ref != 'refs/heads/main'
         env:
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
         run: |
+          TARGET_BRANCH=""
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            if [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
+              echo "Skipping coverage commit for forked pull request."
+              exit 0
+            fi
+            TARGET_BRANCH="${{ github.event.pull_request.head.ref }}"
+          else
+            TARGET_BRANCH="${{ github.ref_name }}"
+          fi
+
           git config user.name "isol8-bot"
           git config user.email "isol8-github-bot[bot]@users.noreply.github.com"
-          git add coverage/coverage-badge.svg
+          git add -f coverage/coverage-badge.svg coverage/summary.json
           if git diff --cached --quiet; then
-            echo "No coverage badge changes to commit."
+            echo "No coverage artifact changes to commit."
             exit 0
           fi
-          git commit -m "chore: update coverage badge [skip ci]"
+          git commit -m "chore: update coverage artifacts [skip ci]"
           git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
-          git push origin HEAD:main
+          git push origin "HEAD:${TARGET_BRANCH}"
         continue-on-error: true
 
       - name: Generate Coverage Comparison Report
