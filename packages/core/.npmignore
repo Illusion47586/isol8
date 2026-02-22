@@ -1,0 +1,23 @@
+# Source
+src/
+tests/
+benchmarks/
+
+# Build artifacts
+*.tsbuildinfo
+tsconfig*.json
+
+# Development
+scripts/
+*.test.ts
+*.spec.ts
+
+# Docker (large files)
+docker/
+
+# Coverage
+coverage/
+
+# Misc
+.DS_Store
+*.log
