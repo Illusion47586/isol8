@@ -1,0 +1,134 @@
+---
+title: "Overview"
+sidebarTitle: "Overview"
+description: "What isol8 includes: secure execution, pooling, network controls, persistence, remote server/client, and observability."
+icon: "house"
+---
+
+<Callout type="info">
+  **Migration**: CLI is now `@isol8/cli` (installed as `isol8` command), library is `@isol8/core`.
+</Callout>
+
+isol8 is a secure code execution engine for untrusted code.
+
+<Info>
+  If you are new to isol8, follow `Quickstart` first, then read `Execution guide` before tuning configuration or performance.
+</Info>
+
+## Why this matters
+
+isol8 is built around three priorities that matter in real usage:
+
+<CardGroup cols={3}>
+  <Card title="Speed" icon="gauge">
+    Warm container pools reduce startup overhead; current warm-pool median TTI is about `0.12s-0.15s` across runtimes.
+  </Card>
+  <Card title="Safety" icon="shield-check">
+    Code runs in isolated containers with strict limits, network controls, and output sanitization by default.
+  </Card>
+  <Card title="Simplicity" icon="sparkles">
+    Start with a single command, then layer on advanced controls only when you need them.
+  </Card>
+</CardGroup>
+
+<Tip>
+  isol8 can be as simple as you want and as complex as you need.
+</Tip>
+
+## Core features
+
+<CardGroup cols={2}>
+  <Card title="Multi-runtime isolation" icon="box" href="/runtimes">
+    Execute Python, Node.js, Bun, Deno, and Bash code inside isolated Docker sandboxes.
+  </Card>
+  <Card title="Execution modes" icon="repeat" href="/persistence">
+    Use ephemeral runs for clean isolation or persistent sessions when you need stateful workflows.
+  </Card>
+  <Card title="Warm container pools" icon="zap" href="/performance">
+    Choose pool strategies (`fast`, `secure`) to reduce startup overhead while preserving controls.
+  </Card>
+  <Card title="Network controls" icon="shield-check" href="/security">
+    Enforce filtered networking with proxy rules plus iptables restrictions to prevent bypass.
+  </Card>
+  <Card title="Remote server + client" icon="server" href="/remote">
+    Run isol8 as an HTTP service with streaming execution and session/file APIs.
+  </Card>
+  <Card title="Audit + observability" icon="chart-line" href="/observability">
+    Capture resource and audit logs for visibility, compliance, and incident analysis.
+  </Card>
+  <Card title="Resource guardrails" icon="timer" href="/execution">
+    Enforce timeouts, memory limits, CPU limits, and process caps for predictable execution.
+  </Card>
+  <Card title="Secrets + output safety" icon="shield" href="/security">
+    Mask sensitive values in output and cap output volume to reduce leak and overload risk.
+  </Card>
+  <Card title="Package installation" icon="box" href="/packages">
+    Install runtime-specific dependencies per execution without managing long-lived environments.
+  </Card>
+  <Card title="CLI + library + API" icon="terminal" href="/option-mapping">
+    Use the same engine through commands, TypeScript APIs, or remote HTTP endpoints.
+  </Card>
+  <Card title="Verified remote code" icon="file-check" href="/remote-code">
+    Fetch code from URLs/GitHub/Gists with policy controls and optional hash verification.
+  </Card>
+</CardGroup>
+
+## Speed and performance
+
+isol8 is designed for low-friction execution loops:
+
+- Warm pools reduce container startup overhead for repeated executions.
+- Pool strategies let you choose between maximum throughput (`fast`) and stronger cleanup guarantees (`secure`).
+- Setup is idempotent, so image preparation can be safely reused across local runs and CI jobs.
+
+<CardGroup cols={2}>
+  <Card title="Performance guide" icon="gauge" href="/performance">
+    Understand tuning knobs, pool behavior, and runtime tradeoffs.
+  </Card>
+  <Card title="TTI benchmarks" icon="timer" href="/tti-benchmarks">
+    Review startup and execution timing data across modes and runtimes.
+  </Card>
+</CardGroup>
+
+## Start here
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="bolt" href="/quickstart">
+    Install and run your first execution.
+  </Card>
+  <Card title="Execution guide" icon="terminal" href="/execution">
+    Learn request fields, modes, and streaming behavior.
+  </Card>
+  <Card title="Option mapping" icon="sliders" href="/option-mapping">
+    See exactly where each option is configured.
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/troubleshooting">
+    Fix common runtime and server issues.
+  </Card>
+</CardGroup>
+
+## Architecture
+
+<Card title="Architecture" icon="sitemap" href="/architecture">
+  Internal execution pipeline, pool lifecycle, and security boundaries.
+</Card>
+
+## FAQ
+
+<Accordion title="Where should I start if I only need local execution?">
+  Start with <a href="/quickstart">Quickstart</a>, then move to <a href="/cli">How to CLI</a> for flag-level details.
+</Accordion>
+
+<Accordion title="When should I read Execution vs Option mapping?">
+  Read <a href="/execution">Execution guide</a> for behavior and lifecycle. Read <a href="/option-mapping">Option mapping</a> to map each option to CLI, config, API, and library inputs.
+</Accordion>
+
+<Accordion title="Where are remote server endpoint examples?">
+  Use <a href="/remote">Remote server and client</a> for endpoint usage patterns and request examples.
+</Accordion>
+
+## Troubleshooting quick checks
+
+- **Unsure which page to use**: start from `Quickstart`, then follow the “Next steps” cards on each page.
+- **Command works differently than expected**: verify where the value is set in <a href="/option-mapping">Option mapping</a>.
+- **Execution failures**: use <a href="/troubleshooting">Troubleshooting</a> for symptom-based fixes.

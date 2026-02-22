@@ -30,6 +30,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # caches
 .eslintcache
 .cache
+.turbo
 *.tsbuildinfo
 
 # IntelliJ based IDEs
@@ -43,4 +44,4 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .isol8_audit_test
 
 # benchmark artifacts
-benchmarks/results/
+packages/core/benchmarks/results/

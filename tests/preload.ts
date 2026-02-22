@@ -6,7 +6,7 @@ afterAll(async () => {
     const docker = new Docker();
     await docker.ping();
 
-    const { DockerIsol8 } = await import("../src/engine/docker");
+    const { DockerIsol8 } = await import("@isol8/core");
     const result = await DockerIsol8.cleanup(docker);
 
     if (result.removed > 0) {

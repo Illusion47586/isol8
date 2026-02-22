@@ -5,6 +5,7 @@ on:
     branches: ["main"]
   pull_request:
     branches: ["main"]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -44,7 +45,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build
-          path: dist/
+          path: |
+            packages/core/dist/
+            apps/cli/dist/
+            apps/server/dist/
           retention-days: 1
 
   test:
@@ -81,13 +85,16 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: build
-          path: dist/
+          path: .
 
       - name: Setup Docker Images
-        run: node dist/cli.js setup
+        run: node apps/cli/dist/cli.js setup
 
-      - name: Test Coverage
-        run: bun test tests/unit tests/integration
+      - name: Test (Unit + Integration)
+        run: |
+          bun test packages/core/tests/unit
+          bun test apps/cli/tests/integration
+          bun test apps/server/tests
 
       - name: Download Main Branch Coverage
         if: github.event_name == 'pull_request'
@@ -106,7 +113,7 @@ jobs:
           mkdir -p coverage
           mkdir -p coverage-main
 
-          # Parse current coverage
+          # Parse current coverage from lcov output
           bun scripts/parse-coverage.ts coverage/lcov.info coverage/summary.json
           
           # Parse main branch coverage (if available)
@@ -154,6 +161,7 @@ jobs:
 
       - name: Generate Coverage Badge
         run: |
+          mkdir -p coverage
           COLOR=$(if [ $(echo "${{ steps.coverage.outputs.lines }} >= 80" | bc -l) -eq 1 ]; then echo "brightgreen"; elif [ $(echo "${{ steps.coverage.outputs.lines }} >= 50" | bc -l) -eq 1 ]; then echo "yellow"; else echo "red"; fi)
           curl -s "https://img.shields.io/badge/coverage-${{ steps.coverage.outputs.lines }}%25-${COLOR}" -o coverage/coverage-badge.svg
 

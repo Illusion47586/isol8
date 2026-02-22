@@ -1,0 +1,19 @@
+# Source
+src/
+
+# Build artifacts
+*.tsbuildinfo
+tsconfig.json
+
+# Tests
+tests/
+
+# Development
+scripts/
+
+# Coverage
+coverage/
+
+# Misc
+.DS_Store
+*.log

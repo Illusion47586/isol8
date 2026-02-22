@@ -1,0 +1,34 @@
+{
+  "name": "@isol8/cli",
+  "version": "0.13.0-alpha.3",
+  "description": "CLI for isol8 secure code execution",
+  "author": "Illusion47586",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/cli.js",
+  "bin": {
+    "isol8": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "bun run scripts/build.ts",
+    "dev": "bun run src/cli.ts",
+    "test": "bun test tests/integration/",
+    "test:prod": "bun test tests/production/",
+    "lint:check": "ultracite check",
+    "lint:fix": "ultracite fix"
+  },
+  "dependencies": {
+    "@isol8/core": "^0.13.0-alpha.1",
+    "commander": "^14.0.3",
+    "ora": "^9.3.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^25.2.3",
+    "typescript": "^5.9.3",
+    "ultracite": "^7.2.0"
+  },
+  "files": [
+    "dist"
+  ]
+}

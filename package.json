@@ -1,6 +1,7 @@
 {
   "name": "isol8",
   "version": "0.13.0",
+  "private": true,
   "description": "Secure code execution engine for AI agents",
   "author": "Illusion47586",
   "license": "MIT",
@@ -22,46 +23,24 @@
     "container",
     "runtime"
   ],
-  "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    },
-    "./schema": "./schema/isol8.config.schema.json"
-  },
-  "bin": {
-    "isol8": "./dist/cli.js"
-  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
-    "dev": "bun run src/cli.ts",
-    "build": "bun run scripts/build.ts",
-    "build:server": "bun run scripts/build-server.ts",
-    "build:server:all": "bun run scripts/build-server.ts --all",
-    "test": "bun test",
-    "test:prod": "bun test tests/production/",
-    "lint:check": "ultracite check",
-    "lint:fix": "ultracite fix",
-    "bench": "bunx tsx benchmarks/spawn.ts",
-    "bench:tti": "bunx tsx benchmarks/tti.ts",
-    "bench:tti:pool": "bunx tsx benchmarks/tti.ts --warm-pool --iterations 5",
-    "bench:pool": "bunx tsx benchmarks/spawn-pool.ts",
-    "bench:detailed": "bunx tsx benchmarks/spawn-detailed.ts",
-    "bench:cli": "bun run tests/production/bench-cli.ts",
-    "docs:dev": "cd docs && mint dev",
-    "docs:validate": "cd docs && mint validate",
-    "docs:broken-links": "cd docs && mint broken-links",
-    "schema": "ts-json-schema-generator --path src/types.ts --type Isol8UserConfig --tsconfig tsconfig.json -o schema/isol8.config.schema.json && ultracite fix schema/isol8.config.schema.json",
-    "publish:alpha": "bun run build && bun publish --tag alpha --access public --ignore-scripts",
+    "build": "turbo run build",
+    "build:server:all": "cd apps/server && bun run build:all",
+    "publish": "bun run scripts/publish.ts",
+    "test": "turbo run test",
+    "test:prod": "turbo run test:prod",
+    "lint:check": "turbo run lint:check",
+    "lint:fix": "turbo run lint:fix",
+    "dev": "bun run --filter @isol8/cli dev",
+    "schema": "turbo run schema",
+    "docs:dev": "bun run --filter @isol8/docs dev",
+    "docs:validate": "bun run --filter @isol8/docs validate",
+    "docs:broken-links": "bun run --filter @isol8/docs broken-links",
     "prepare": "simple-git-hooks"
-  },
-  "dependencies": {
-    "commander": "^14.0.3",
-    "dockerode": "^4.0.9",
-    "hono": "^4.11.9",
-    "ora": "^9.3.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.15",
@@ -72,32 +51,14 @@
     "@semantic-release/git": "^10.0.1",
     "@semantic-release/github": "^12.0.6",
     "@semantic-release/npm": "^13.1.4",
-    "@types/bun": "latest",
-    "@types/dockerode": "^4.0.1",
-    "@types/node": "^25.2.3",
     "lint-staged": "^16.2.7",
-    "mint": "^4.2.348",
     "semantic-release": "^25.0.3",
     "simple-git-hooks": "^2.13.1",
-    "ts-json-schema-generator": "^2.5.0",
+    "turbo": "^2.4.4",
     "typescript": "^5.9.3",
     "ultracite": "^7.2.0"
   },
-  "files": [
-    "dist/cli.js",
-    "dist/index.js",
-    "dist/src",
-    "dist/docker",
-    "schema",
-    "README.md",
-    "LICENSE"
-  ],
-  "jsonValidation": [
-    {
-      "fileMatch": "isol8.config.json",
-      "url": "./schema/isol8.config.schema.json"
-    }
-  ],
+  "packageManager": "bun@1.2.4",
   "simple-git-hooks": {
     "pre-commit": "bun run lint-staged",
     "commit-msg": "bunx commitlint --edit $1"
@@ -105,11 +66,11 @@
   "lint-staged": {
     "*.{ts,tsx}": [
       "ultracite fix",
-      "bash -c 'bunx tsc --noEmit -p tsconfig.json'"
+      "bash -c 'bunx tsc --noEmit'"
     ],
-    "src/types.ts": [
+    "packages/core/src/types.ts": [
       "bash -c 'bun run schema'",
-      "git add schema/isol8.config.schema.json"
+      "git add packages/core/schema/isol8.config.schema.json"
     ],
     "*.{yaml,yml,json}": [
       "ultracite fix"

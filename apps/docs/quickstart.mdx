@@ -1,0 +1,110 @@
+---
+title: "Quickstart"
+description: "Install isol8, build runtime images, run your first secure execution, and understand what to check at each step."
+icon: "bolt"
+---
+
+<Callout type="info">
+  **Migration**: The CLI is now `@isol8/cli` (installed as `isol8` command). The library is `@isol8/core`.
+</Callout>
+
+This quickstart is intentionally practical. You will:
+
+1. install and verify the CLI
+2. build runtime images
+3. run real sandboxed code
+4. check effective defaults
+
+## Prerequisites
+
+- Docker installed and running
+- Bun or Node.js runtime available
+
+<Info>
+  **Default behavior**: `network: "none"`, `timeoutMs: 30000`, `memoryLimit: "512m"`.
+</Info>
+
+<Steps>
+  <Step title="Install and verify">
+    Install the global CLI.
+
+    <CodeGroup>
+    ```bash npm
+    npm install -g @isol8/cli
+    ```
+    ```bash bun
+    bun install -g @isol8/cli
+    ```
+    </CodeGroup>
+
+    Verify installation and Docker connectivity:
+
+    <CodeGroup>
+    ```bash Command
+    isol8 --version && docker info >/dev/null
+    ```
+    
+    ```text Expected output
+    2.0.0
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Build runtime images">
+    Run `setup` to build the base Docker images (`isol8:python`, `isol8:node`, etc.). This creates the local `isol8` image hierarchy.
+
+    ```bash
+    isol8 setup
+    ```
+
+    <Check>
+    This step is **idempotent**. Is uses Docker labels to detect if images are already up-to-date, so you can run it safely as part of your deployment script.
+    </Check>
+  </Step>
+
+  <Step title="Run code">
+    Execute a simple Python script.
+
+    <CodeGroup>
+    ```bash Command
+    isol8 run -e "print('hello from sandbox')" --runtime python
+    ```
+
+    ```text Output
+    hello from sandbox
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Try core capabilities">
+    Install a package (ephemeral) and inspect config.
+
+    ```bash
+    # Install numpy on the fly
+    isol8 run \
+      -e "import numpy; print(numpy.array([1,2,3]))" \
+      --runtime python \
+      --install numpy
+    
+    # Check resolved configuration
+    isol8 config
+    ```
+  </Step>
+</Steps>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Execution guide" icon="terminal" href="/execution">
+    Learn request fields, modes, and streaming behavior.
+  </Card>
+  <Card title="CLI reference" icon="square-terminal" href="/cli">
+    Complete command and flag behavior.
+  </Card>
+  <Card title="Option mapping" icon="sliders" href="/option-mapping">
+    Map every feature to CLI/config/API/library inputs.
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/troubleshooting">
+    Diagnose setup, runtime, and server issues.
+  </Card>
+</CardGroup>

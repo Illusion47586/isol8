@@ -1,0 +1,48 @@
+{
+  "name": "@isol8/core",
+  "version": "0.13.0-alpha.3",
+  "description": "Core engine for isol8 secure code execution",
+  "author": "Illusion47586",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./schema": "./schema/isol8.config.schema.json"
+  },
+  "scripts": {
+    "build": "bun run scripts/build.ts",
+    "test": "bun test tests/unit/",
+    "test:prod": "echo 'No production tests in core package'",
+    "lint:check": "ultracite check",
+    "lint:fix": "ultracite fix",
+    "schema": "ts-json-schema-generator --path src/types.ts --type Isol8UserConfig --tsconfig tsconfig.json -o schema/isol8.config.schema.json && ultracite fix schema/isol8.config.schema.json"
+  },
+  "dependencies": {
+    "dockerode": "^4.0.9",
+    "hono": "^4.11.9"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/dockerode": "^4.0.1",
+    "@types/node": "^25.2.3",
+    "ts-json-schema-generator": "^2.5.0",
+    "typescript": "^5.9.3",
+    "ultracite": "^7.2.0"
+  },
+  "files": [
+    "dist",
+    "schema",
+    "docker"
+  ],
+  "jsonValidation": [
+    {
+      "fileMatch": "isol8.config.json",
+      "url": "./schema/isol8.config.schema.json"
+    }
+  ]
+}

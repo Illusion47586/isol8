@@ -1,7 +1,13 @@
 # isol8
 
+> **⚠️ Migration Notice**: The `isol8` package has been renamed to:
+> - **CLI**: `@isol8/cli` → installed as `isol8` command
+> - **Library**: `@isol8/core`
+>
+> The old `isol8` package is deprecated.
+
 [![CI](https://github.com/Illusion47586/isol8/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Illusion47586/isol8/actions/workflows/ci.yml)
-[![Coverage](https://raw.githubusercontent.com/Illusion47586/isol8/main/coverage/coverage-badge.svg)](https://github.com/Illusion47586/isol8/actions)
+[![Coverage](./coverage/coverage-badge.svg)](https://github.com/Illusion47586/isol8/actions)
 [![npm](https://img.shields.io/npm/v/isol8)](https://www.npmjs.com/package/isol8)
 [![license](https://img.shields.io/npm/l/isol8)](./LICENSE)
 
@@ -28,7 +34,7 @@ Secure code execution engine for AI agents. Run untrusted Python, Node.js, Bun, 
 
 ```bash
 # Install
-bun add isol8
+bun add @isol8/core
 
 # Build sandbox images (requires Docker)
 bunx isol8 setup
@@ -42,9 +48,11 @@ echo "console.log(42)" | bunx isol8 run --runtime node
 ## Installation
 
 ```bash
-bun add isol8
-# or
-npm install isol8
+# Core library
+bun add @isol8/core
+
+# CLI (optional, for command-line usage)
+npm install -g isol8
 ```
 
 **Prerequisites:**
@@ -193,7 +201,7 @@ isol8 config --json
 ## Library Usage
 
 ```typescript
-import { DockerIsol8, loadConfig } from "isol8";
+import { DockerIsol8, loadConfig } from "@isol8/core";
 
 const isol8 = new DockerIsol8({ network: "none" });
 await isol8.start();
@@ -282,7 +290,7 @@ const output = await isol8.getFile("/sandbox/output.txt");
 ### Remote Client
 
 ```typescript
-import { RemoteIsol8 } from "isol8";
+import { RemoteIsol8 } from "@isol8/core";
 
 const isol8 = new RemoteIsol8(
   { host: "http://localhost:3000", apiKey: "my-key" },
@@ -297,7 +305,7 @@ await isol8.stop();
 ### Streaming Output
 
 ```typescript
-import { DockerIsol8 } from "isol8";
+import { DockerIsol8 } from "@isol8/core";
 
 const isol8 = new DockerIsol8({ network: "none" });
 await isol8.start();
@@ -348,7 +356,7 @@ Add the `$schema` property to get autocompletion, validation, and inline documen
 
 ```json
 {
-  "$schema": "node_modules/isol8/schema/isol8.config.schema.json"
+  "$schema": "node_modules/@isol8/core/schema/isol8.config.schema.json"
 }
 ```
 
@@ -356,7 +364,7 @@ Add the `$schema` property to get autocompletion, validation, and inline documen
 
 ```json
 {
-  "$schema": "node_modules/isol8/schema/isol8.config.schema.json",
+  "$schema": "node_modules/@isol8/core/schema/isol8.config.schema.json",
   "maxConcurrent": 10,
   "defaults": {
     "timeoutMs": 30000,
@@ -374,8 +382,6 @@ Add the `$schema` property to get autocompletion, validation, and inline documen
   },
   "dependencies": {
     "python": ["numpy", "pandas"],
-  "dependencies": {
-    "python": ["numpy", "pandas"],
     "node": ["lodash"]
   },
   "security": {
@@ -384,7 +390,7 @@ Add the `$schema` property to get autocompletion, validation, and inline documen
 }
 ```
 
-Full schema: [`schema/isol8.config.schema.json`](./schema/isol8.config.schema.json)
+Full schema: [`packages/core/schema/isol8.config.schema.json`](./packages/core/schema/isol8.config.schema.json)
 
 ## Benchmarks
 
@@ -428,9 +434,10 @@ Where time is spent in the container lifecycle (raw Docker API, no pool):
 Run benchmarks yourself:
 
 ```bash
-bun run bench            # Cold start benchmark
-bun run bench:pool       # Warm pool benchmark
-bun run bench:detailed   # Phase breakdown
+cd packages/core
+bun run benchmarks/tti.ts           # Cold start benchmark
+bun run benchmarks/spawn-pool.ts    # Warm pool benchmark
+bun run benchmarks/spawn-detailed.ts # Phase breakdown
 ```
 
 ## Security Model
@@ -478,27 +485,41 @@ All endpoints (except `/health`) require `Authorization: Bearer <key>`.
 
 ## Development
 
+This is a Turborepo monorepo. The main packages are:
+- `@isol8/core` — Engine, runtime adapters, client, config, types
+- `@isol8/cli` — Command-line interface
+- `@isol8/server` — HTTP server
+- `@isol8/docs` — Documentation (Mintlify)
+
 ```bash
+# Install dependencies
+bun install
+
 # Run CLI in dev mode
 bun run dev <command>
 
 # Run tests
-bun test
+bun test                              # All tests (via turbo)
+cd packages/core && bun test          # Core unit tests
+cd apps/cli && bun test tests/integration  # CLI integration tests
+cd apps/server && bun test            # Server tests
 
 # Type check
 bunx tsc --noEmit
 
 # Lint
-bun run lint
+bun run lint:check
+bun run lint:fix
 
 # Build
-bun run build              # Bundle CLI for Node.js distribution
-bun run build:server       # Compile standalone server binary
+bun run build                    # Build all packages
+cd apps/server && bun run build:all  # Cross-compile server for all platforms
 
-# Benchmarks
-bun run bench            # Cold start
-bun run bench:pool       # Warm pool
-bun run bench:detailed   # Phase breakdown
+# Schema
+cd packages/core && bun run schema   # Regenerate JSON schema
+
+# Docs
+cd apps/docs && bun run dev          # Start docs dev server
 ```
 
 ## License

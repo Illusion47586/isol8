@@ -13,6 +13,7 @@
 | Language | TypeScript (strict mode) |
 | Runtime | Bun (primary), Node.js (build target) |
 | Package manager | bun |
+| Monorepo | Turborepo |
 | Container engine | Docker via `dockerode` |
 | HTTP framework | Hono |
 | CLI framework | Commander |
@@ -23,52 +24,56 @@
 
 ```
 isol8/
-├── src/
-│   ├── types.ts              # All type definitions (Sandbox, ExecutionRequest/Result, Config)
-│   ├── config.ts             # Config file discovery + loading + defaults
-│   ├── index.ts              # Public library API (re-exports)
-│   ├── cli.ts                # CLI entry point (setup, run, serve, config, cleanup commands; serve downloads + launches compiled binary)
-│   ├── runtime/
-│   │   ├── adapter.ts        # RuntimeAdapter interface + RuntimeRegistry
-│   │   ├── index.ts          # Barrel file, registers all built-in adapters
-│   │   └── adapters/
-│   │       ├── python.ts     # Python runtime adapter
-│   │       ├── node.ts       # Node.js runtime adapter
-│   │       ├── bun.ts        # Bun runtime adapter
-│   │       ├── deno.ts       # Deno runtime adapter
-│   │       └── bash.ts       # Bash shell adapter
-│   ├── engine/
-│   │   ├── docker.ts         # DockerIsol8 — main sandbox engine
-│   │   ├── pool.ts           # Warm container pool for fast ephemeral execution
-│   │   ├── utils.ts          # Helpers: memory parsing, tar, truncation, masking
-│   │   ├── concurrency.ts    # Async Semaphore for limiting concurrent containers
-│   │   └── image-builder.ts  # Docker image build logic (base + custom)
-│   ├── server/
-│   │   ├── index.ts          # Hono REST server (execute, file I/O, sessions); exports async createServer()
-│   │   ├── standalone.ts     # Entry point for compiled server binary (bun build --compile)
-│   │   └── auth.ts           # Bearer token auth middleware
-│   └── client/
-│       └── remote.ts         # RemoteIsol8 HTTP client
-├── docker/
-│   ├── Dockerfile            # Multi-stage: base → python/node/bun/deno targets
-│   ├── proxy.sh              # HTTP/HTTPS filtering proxy launcher for 'filtered' network mode
-│   └── proxy-handler.sh      # Per-connection proxy handler (HTTP forwarding + HTTPS CONNECT)
-├── schema/
-│   └── isol8.config.schema.json  # JSON Schema for isol8.config.json
-├── tests/
-│   ├── unit/                 # Unit tests (bun:test)
-│   └── integration/          # Integration tests (require Docker)
-├── scripts/
-│   ├── build.ts              # Build script (bundles CLI for Node.js)
-│   └── build-server.ts       # Build script for standalone server binary (bun build --compile)
-├── biome.json                # Linter/formatter config
-├── tsconfig.json             # TypeScript config
-└── package.json
+├── packages/
+│   └── core/                    # @isol8/core - Engine, runtime, client, config, types
+│       ├── src/
+│       │   ├── types.ts          # All type definitions
+│       │   ├── config.ts         # Config file discovery + loading + defaults
+│       │   ├── index.ts          # Public API exports
+│       │   ├── runtime/
+│       │   │   ├── adapter.ts    # RuntimeAdapter interface + RuntimeRegistry
+│       │   │   ├── index.ts      # Barrel file, registers all built-in adapters
+│       │   │   └── adapters/     # Python, Node, Bun, Deno, Bash adapters
+│       │   ├── engine/
+│       │   │   ├── docker.ts     # DockerIsol8 — main sandbox engine
+│       │   │   ├── pool.ts       # Warm container pool
+│       │   │   ├── utils.ts      # Helpers: memory parsing, tar, truncation, masking
+│       │   │   ├── concurrency.ts # Async Semaphore
+│       │   │   └── image-builder.ts # Docker image build logic
+│       │   ├── client/
+│       │   │   └── remote.ts     # RemoteIsol8 HTTP client
+│       │   └── utils/
+│       │       └── logger.ts     # Centralized logging
+│       ├── docker/              # Docker assets (Dockerfile, proxy scripts)
+│       ├── schema/              # JSON Schema for config
+│       ├── tests/unit/           # Unit tests
+│       └── benchmarks/           # Performance benchmarks
+├── apps/
+│   ├── cli/                    # @isol8/cli - Command-line interface
+│   │   ├── src/cli.ts          # CLI entry point
+│   │   └── tests/              # Integration and production tests
+│   ├── server/                 # @isol8/server - HTTP server
+│   │   ├── src/
+│   │   │   ├── index.ts        # Hono REST server
+│   │   │   ├── standalone.ts   # Entry point for compiled binary
+│   │   │   └── auth.ts         # Bearer token auth middleware
+│   │   ├── tests/              # Server integration tests
+│   │   └── scripts/build.ts    # Server binary build script
+│   └── docs/                   # @isol8/docs - Mintlify documentation
+│       └── *.mdx               # Documentation pages
+├── scripts/                    # CI helper scripts
+│   ├── parse-coverage.ts       # LCOV coverage parser
+│   └── parse-bench-summary.py  # Benchmark output parser
+├── tests/                      # Root test preload
+│   └── preload.ts              # Global test cleanup
+├── turbo.json                  # Turborepo task configuration
+├── biome.json                  # Linter/formatter config
+└── package.json                # Workspace root
 ```
 
 ## Key Interfaces
 
-### `Isol8Engine` (src/types.ts)
+### `Isol8Engine` (packages/core/src/types.ts)
 The core abstraction. Both `DockerIsol8` and `RemoteIsol8` implement it.
 ```typescript
 interface Isol8Engine {
@@ -108,7 +113,7 @@ interface ExecutionResult {
 }
 ```
 
-### `RuntimeAdapter` (src/runtime/adapter.ts)
+### `RuntimeAdapter` (packages/core/src/runtime/adapter.ts)
 Each runtime (Python, Node, Bun, Deno, Bash) implements this. Registered in `RuntimeRegistry`.
 ```typescript
 interface RuntimeAdapter {
@@ -119,160 +124,78 @@ interface RuntimeAdapter {
 }
 ```
 
-## Execution Flow
+## Package Dependencies
 
-1. CLI parses args → builds `Isol8Options` + `ExecutionRequest`
-2. Creates `DockerIsol8` (local) or `RemoteIsol8` (remote)
-3. Calls `engine.start()` → no-op (pool created lazily on first execute)
-4. Calls `engine.execute(request)`:
-   - **Ephemeral**: acquires warm container from pool → injects code via exec → runs → collects output → returns container to pool (unless `persist: true`)
-   - **Persistent**: reuses container → `docker exec` → collects output
-5. Output pipeline: collect → truncate → mask secrets → trim
-6. Calls `engine.stop()` → kills container (persistent) or drains pool (ephemeral). If `persist: true`, ephemeral containers are **not** cleaned up after execution — they remain running for inspection/debugging.
-
-## Important Patterns
-
-### Concurrency
-`Semaphore` in `engine/concurrency.ts` limits concurrent container executions. The limit is set by `maxConcurrent` in config (default: 10).
-
-### Container Pool
-`ContainerPool` in `engine/pool.ts` keeps pre-started containers warm for fast ephemeral execution. After use, containers have all user processes killed (`pkill -9 -u sandbox`) and their `/sandbox` wiped before being returned to the pool. The pool auto-replenishes in the background. This reduces execution latency from ~300ms to ~80ms.
-
-### Non-root Execution
-All user code runs as the `sandbox` user (uid 100, gid 101), not root. This is enforced via `User: "sandbox"` on all user-facing `container.exec()` calls in `docker.ts`. The container's init process (`tini` + `sleep infinity`) runs as root, so `pkill -9 -u sandbox` kills only user-spawned processes without killing the container itself. The only exception is bash runtime package installation (`apk add`), which requires root.
-
-### Streaming
-`executeStream()` returns an `AsyncIterable<StreamEvent>` that yields stdout/stderr chunks as they arrive. The server exposes this via `POST /execute/stream` as SSE (Server-Sent Events). Each event is `data: {"type":"stdout"|"stderr"|"exit"|"error", "data":"..."}\n\n`.
-
-### Standalone Server Binary
-
-The `isol8 serve` command has two modes:
-
-1. **Dev mode** (running under Bun): starts the server directly in-process via `Bun.serve()`. Detected by checking `globalThis.Bun`.
-2. **Built CLI mode** (running under Node.js): downloads a pre-compiled standalone binary from GitHub Releases to `~/.isol8/bin/isol8-server` and spawns it as a child process. The binary embeds the Bun runtime, so no Bun installation is required.
-
-The binary is compiled with `bun build --compile` (without `--bytecode` — see below) from `src/server/standalone.ts`.
-
-Binaries are named `isol8-server-{os}-{arch}` (e.g. `isol8-server-darwin-arm64`, `isol8-server-linux-x64`). The CLI checks for version updates on every invocation and prompts the user before updating. Use `isol8 serve --update` to force re-download.
-
-### Lazy Imports (Server)
-
-`createServer()` in `src/server/index.ts` is **async** and lazy-imports `DockerIsol8` and runtime adapters via dynamic `await import()`:
-
-```typescript
-export async function createServer(options: ServerOptions) {
-  const { DockerIsol8 } = await import("../engine/docker");
-  await import("../runtime");
-  // ...
-}
-```
-
-Similarly, `src/server/standalone.ts` lazy-imports `createServer` after arg parsing:
-
-```typescript
-const { createServer } = await import("./index");
-const server = await createServer({ port, apiKey });
-```
-
-This avoids eagerly loading `dockerode` and its transitive dependency chain (`ssh2` → `protobufjs` → `long`) at module initialization time. The `long` polyfill crashes on Linux x64 when compiled with `bun build --compile --bytecode`. By deferring imports, `--version` and `--help` always work even if Docker is unavailable.
-
-**Important:** Do NOT add `--bytecode` back to the `bun build --compile` flags in `scripts/build.ts` or `scripts/build-server.ts`. It causes the `Long.fromNumber` crash on Linux.
-
-### Network Filtering
-When `network: "filtered"`, containers get bridge networking with `HTTP_PROXY`/`HTTPS_PROXY` env vars pointing to a bash-based proxy (`docker/proxy.sh` + `docker/proxy-handler.sh`). The proxy checks hostnames against whitelist/blacklist regex patterns. The proxy is implemented in bash (not Node.js) so it works in all runtime images without requiring any specific language runtime.
-
-**iptables enforcement:** In addition to the proxy, iptables rules are applied inside the container to ensure the `sandbox` user (uid 100) can **only** reach `127.0.0.1:8118` (the proxy). All other outbound traffic from uid 100 is dropped at the kernel level, preventing bypass via raw sockets or non-HTTP protocols. The container is given `CAP_NET_ADMIN` to set these rules. The rules are:
-1. Allow all traffic on loopback interface
-2. Allow established/related connections
-3. Allow sandbox user (uid 100) to reach `127.0.0.1:8118` (proxy)
-4. Drop all other outbound traffic from uid 100
-
-The iptables rules are flushed during pool cleanup (`/usr/sbin/iptables -F OUTPUT`) so containers can be reused across network modes. Note: the full path `/usr/sbin/iptables` must be used because `/usr/sbin` may not be in PATH during Docker exec (especially in CI environments like GitHub Actions).
-
-### Package Installation
-When `installPackages` is provided in the execution request, packages are installed to `/sandbox/.local` (Python), `/sandbox/.npm-global` (Node.js), or `/sandbox/.bun-global` (Bun). These directories allow execution of shared libraries (`.so` files) which is required for packages like numpy.
-
-**Important:** Packages install to `/sandbox` (not `/tmp`) because:
-- `/tmp` has `noexec` flag preventing `.so` files from loading
-- `/sandbox` has `exec` flag allowing native extensions to work
-- Default `sandboxSize` is 512MB to accommodate packages like numpy
-
-Environment variables set during execution:
-- `PYTHONUSERBASE=/sandbox/.local`
-- `NPM_CONFIG_PREFIX=/sandbox/.npm-global`
-- `PATH` includes `/sandbox/.local/bin`, `/sandbox/.npm-global/bin`, etc.
-
-### File I/O
-Files are transferred as tar archives using the Docker API (`putArchive`/`getArchive`). The tar create/extract logic is in `engine/utils.ts`.
-
-### Container Filesystem
-Containers use two tmpfs mounts for security and performance:
-
-1. **`/sandbox`** (default: 512MB, configurable via `sandboxSize`)
-   - Working directory for code execution
-   - Package installations stored here (`.local`, `.npm-global`, etc.)
-   - Allows execution (`exec` flag) for shared libraries
-   - User files and outputs
-
-2. **`/tmp`** (default: 256MB, configurable via `tmpSize`)
-   - Temporary files and caches
-   - No execution allowed (`noexec` flag) for security
-   - Used for pip/npm caches during installation
-
-Both sizes can be configured via CLI flags (`--sandbox-size`, `--tmp-size`) or in `isol8.config.json`.
-
-### Logging
-
-All internal/debug logging uses the centralized `Logger` singleton in `src/utils/logger.ts`. The logger has four levels:
-
-- `logger.debug(...)` — Only prints when debug mode is enabled (gated by `logger.setDebug(true)`)
-- `logger.info(...)` — Always prints (informational messages)
-- `logger.warn(...)` — Always prints with `[WARN]` prefix
-- `logger.error(...)` — Always prints with `[ERROR]` prefix
-
-Debug mode is activated by passing `debug: true` in `Isol8Options` (or `--debug` on the CLI). The `DockerIsol8` constructor calls `logger.setDebug(true)` when this option is set. All internal engine logs (pool operations, container lifecycle, persist decisions) use `logger.debug()` so they are silent by default and only visible when debugging.
-
-The server (`isol8 serve`) also supports `--debug`. When enabled, the server logs request details (runtime, code length, session IDs), engine lifecycle events (creation, cleanup), semaphore acquisition, and auto-pruning activity. The `--debug` flag is forwarded to the standalone server binary when running under Node.js. The `ServerOptions` interface includes an optional `debug` field for programmatic use.
-
-### Persist vs Cleanup
-
-There are two distinct auto-cleanup mechanisms — do not confuse them:
-
-1. **`Isol8Options.persist`** (engine-level, default `false`): Controls whether containers are cleaned up after each execution. When `false` (default), ephemeral containers are returned to the pool and persistent containers are stopped normally. When `true`, containers are left running after execution for inspection/debugging.
-
-2. **`Isol8Config.cleanup.autoPrune`** (config-level, default `true`): Controls whether the **server** (`isol8 serve`) periodically prunes idle sessions. This is a server-side concern and has no effect on local CLI usage.
-
-### Config Resolution
-Config is loaded from (first found wins):
-1. `./isol8.config.json` (CWD)
-2. `~/.isol8/config.json`
-3. Built-in defaults
-
-Partial configs are deep-merged with defaults.
+| Package | Dependencies |
+|---------|--------------|
+| `@isol8/core` | dockerode, hono |
+| `@isol8/cli` | @isol8/core, commander, ora |
+| `@isol8/server` | @isol8/core, hono |
+| `@isol8/docs` | mint (dev only) |
 
 ## Common Commands
 
 ```bash
 # Development
-bun run dev <command>       # Run CLI in dev mode
-bun test                    # Run all tests
-bun test tests/unit/        # Run unit tests only
-bunx tsc --noEmit           # Type check
-bun run lint                # Lint check
+bun run dev                  # Run CLI in dev mode
+bun run --filter @isol8/cli dev  # Run specific package
+
+# Testing
+bun test                     # Run all tests (via turbo)
+cd packages/core && bun test tests/unit/  # Run core unit tests
+cd apps/cli && bun test tests/integration/  # Run CLI integration tests
+cd apps/server && bun test tests/  # Run server tests
 
 # Building
-bun run build               # Bundle CLI for distribution
-bun run build:server        # Compile standalone server binary (bun build --compile)
-bun run schema              # Regenerate JSON schema from types
+bun run build                # Build all packages (via turbo)
+cd packages/core && bun run build  # Build core package
+cd apps/cli && bun run build      # Build CLI package
+cd apps/server && bun run build   # Build server package
+
+# Linting
+bun run lint:check           # Lint check all packages
+bun run lint:fix             # Fix lint issues
+
+# Schema
+cd packages/core && bun run schema  # Regenerate JSON schema
+
+# Docs
+cd apps/docs && bun run dev   # Start docs dev server
 ```
 
 ## Guidelines for Changes
 
-1. **Types first** — if adding a feature, update `src/types.ts` first
-2. **Config schema in sync** — if touching `Isol8Config`, run `bun run schema` to update `schema/isol8.config.schema.json`
-3. **Tests are in `tests/unit/`** — use `bun:test` (`describe`, `test`, `expect`)
-4. **Runtime adapters** — to add a new runtime, create `src/runtime/adapters/<name>.ts`, implement `RuntimeAdapter`, register in `src/runtime/index.ts`, and add a Dockerfile stage in `docker/Dockerfile`
-5. **No external requests in unit tests** — Docker-dependent tests go in `tests/integration/`
-6. **Secrets never in output** — use `maskSecrets()` from `engine/utils.ts`
+1. **Types first** — if adding a feature, update `packages/core/src/types.ts` first
+2. **Config schema in sync** — if touching `Isol8Config`, run `bun run schema` in packages/core
+3. **Tests location**:
+   - Unit tests: `packages/core/tests/unit/`
+   - Integration tests: `apps/cli/tests/integration/`
+   - Server integration tests: `apps/server/tests/`
+   - Production tests: `apps/cli/tests/production/`
+4. **Runtime adapters** — to add a new runtime, create `packages/core/src/runtime/adapters/<name>.ts`, implement `RuntimeAdapter`, register in `packages/core/src/runtime/index.ts`, and add a Dockerfile stage in `packages/core/docker/Dockerfile`
+5. **No external requests in unit tests** — Docker-dependent tests go in `apps/cli/tests/integration/`
+6. **Secrets never in output** — use `maskSecrets()` from `packages/core/src/engine/utils.ts`
 7. **Error handling** — throw descriptive `Error` objects; the CLI catches and prints with emoji prefixes
-8. **Documentation always up-to-date** — before committing, verify and update `README.md`, `skill/isol8/SKILL.md`, and `docs/` to reflect code changes.
+8. **Documentation always up-to-date** — before committing, verify and update `README.md`, `.agents/skills/isol8/SKILL.md`, and `apps/docs/` to reflect code changes.
+9. **Package imports** — Use `@isol8/core` for core functionality, `@isol8/server` for server-specific code
+
+## Imports Example
+
+```typescript
+// In apps/cli or apps/server
+import { DockerIsol8, loadConfig, logger, VERSION } from "@isol8/core";
+import type { ExecutionRequest, Isol8Options } from "@isol8/core";
+
+// In apps/cli (serve command)
+import { createServer } from "@isol8/server";
+```
+
+## Turborepo Tasks
+
+Defined in `turbo.json`:
+- `build` — bundles all packages, respects dependency order
+- `test` — runs tests after build
+- `test:prod` — runs production tests after build
+- `lint:check` / `lint:fix` — linting
+- `schema` — regenerates JSON schema
+- `dev` — development mode (persistent, uncached)
