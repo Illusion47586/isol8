@@ -28,23 +28,25 @@ Secure code execution engine for AI agents. Run untrusted Python, Node.js, Bun, 
 
 ```bash
 # Install
-bun add isol8
+bun add @isol8/core
 
 # Build sandbox images (requires Docker)
-bunx isol8 setup
+bunx @isol8/cli setup
 
 # Run code
-bunx isol8 run -e "print('hello isol8')" --runtime python
-bunx isol8 run script.py
-echo "console.log(42)" | bunx isol8 run --runtime node
+bunx @isol8/cli run -e "print('hello isol8')" --runtime python
+bunx @isol8/cli run script.py
+echo "console.log(42)" | bunx @isol8/cli run --runtime node
 ```
 
 ## Installation
 
 ```bash
-bun add isol8
-# or
-npm install isol8
+# Core library
+bun add @isol8/core
+
+# CLI (optional, for command-line usage)
+bun add @isol8/cli
 ```
 
 **Prerequisites:**
@@ -193,7 +195,7 @@ isol8 config --json
 ## Library Usage
 
 ```typescript
-import { DockerIsol8, loadConfig } from "isol8";
+import { DockerIsol8, loadConfig } from "@isol8/core";
 
 const isol8 = new DockerIsol8({ network: "none" });
 await isol8.start();

@@ -12,9 +12,6 @@ scripts/
 *.test.ts
 *.spec.ts
 
-# Docker (large files)
-docker/
-
 # Coverage
 coverage/
 
