@@ -7,6 +7,8 @@ on:
       - "coverage/coverage-badge.svg"
   pull_request:
     branches: ["main"]
+    paths-ignore:
+      - "coverage/coverage-badge.svg"
   workflow_dispatch:
 
 permissions:
@@ -185,20 +187,11 @@ jobs:
           overwrite: true
 
       - name: Commit Coverage Badge
-        if: github.ref == 'refs/heads/main' && github.actor != 'isol8-ci[bot]' && github.actor != 'isol8-ci'
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref != 'main' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'isol8-ci[bot]' && github.actor != 'isol8-ci'
         env:
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
         run: |
-          TARGET_BRANCH=""
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            if [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
-              echo "Skipping coverage commit for forked pull request."
-              exit 0
-            fi
-            TARGET_BRANCH="${{ github.event.pull_request.head.ref }}"
-          else
-            TARGET_BRANCH="${{ github.ref_name }}"
-          fi
+          TARGET_BRANCH="${{ github.event.pull_request.head.ref }}"
           git config user.name "isol8-ci"
           git config user.email "isol8-ci[bot]@users.noreply.github.com"
           git add coverage/coverage-badge.svg
