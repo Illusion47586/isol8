@@ -2,12 +2,16 @@ import { describe, expect, test } from "bun:test";
 import { exec, spawn } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { hasDocker } from "./setup";
 
 const execAsync = promisify(exec);
-const CLI_PATH = join(process.cwd(), "src/cli.ts");
+
+// Resolve CLI path relative to this test file
+const TEST_DIR = dirname(import.meta.dir);
+const CLI_DIR = dirname(TEST_DIR);
+const CLI_PATH = join(CLI_DIR, "src/cli.ts");
 
 describe("Integration: CLI", () => {
   if (!hasDocker) {
@@ -55,7 +59,7 @@ describe("Integration: CLI", () => {
 
   test("reads from stdin", async () => {
     const { stdout } = await execAsync(
-      `echo 'print("hello stdin")' | bun run src/cli.ts run --runtime python`
+      `echo 'print("hello stdin")' | bun run ${CLI_PATH} run --runtime python`
     );
     expect(stdout).toContain("hello stdin");
   });
