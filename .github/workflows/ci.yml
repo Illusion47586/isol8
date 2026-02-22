@@ -124,7 +124,7 @@ jobs:
 
           # Parse current coverage from lcov output
           bun scripts/parse-coverage.ts coverage/lcov.info coverage/summary.json
-          
+
           # Parse main branch coverage (if available)
           if [ -f coverage-main/lcov.info ]; then
             bun scripts/parse-coverage.ts coverage-main/lcov.info coverage-main/summary.json
@@ -137,7 +137,7 @@ jobs:
           CUR_LINES=$(jq '.lines.pct' coverage/summary.json)
           CUR_FUNCS=$(jq '.functions.pct' coverage/summary.json)
           CUR_BRANS=$(jq '.branches.pct' coverage/summary.json)
-          
+
           MAIN_LINES=$(jq '.lines.pct' coverage-main/summary.json)
           MAIN_FUNCS=$(jq '.functions.pct' coverage-main/summary.json)
           MAIN_BRANS=$(jq '.branches.pct' coverage-main/summary.json)
@@ -146,7 +146,7 @@ jobs:
           CUR_LINES=$(printf "%.2f" $CUR_LINES)
           CUR_FUNCS=$(printf "%.2f" $CUR_FUNCS)
           CUR_BRANS=$(printf "%.2f" $CUR_BRANS)
-          
+
           MAIN_LINES=$(printf "%.2f" $MAIN_LINES)
           MAIN_FUNCS=$(printf "%.2f" $MAIN_FUNCS)
           MAIN_BRANS=$(printf "%.2f" $MAIN_BRANS)
@@ -159,11 +159,11 @@ jobs:
           echo "lines=$CUR_LINES" >> $GITHUB_OUTPUT
           echo "funcs=$CUR_FUNCS" >> $GITHUB_OUTPUT
           echo "brans=$CUR_BRANS" >> $GITHUB_OUTPUT
-          
+
           echo "main_lines=$MAIN_LINES" >> $GITHUB_OUTPUT
           echo "main_funcs=$MAIN_FUNCS" >> $GITHUB_OUTPUT
           echo "main_brans=$MAIN_BRANS" >> $GITHUB_OUTPUT
-          
+
           echo "diff_lines=$DIFF_LINES" >> $GITHUB_OUTPUT
           echo "diff_funcs=$DIFF_FUNCS" >> $GITHUB_OUTPUT
           echo "diff_brans=$DIFF_BRANS" >> $GITHUB_OUTPUT
@@ -183,12 +183,13 @@ jobs:
           overwrite: true
 
       - name: Commit Coverage Badge (main branch only)
-        if: github.ref == 'refs/heads/main'
+        if: github.ref != 'refs/heads/main'
         env:
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
         run: |
           git config user.name "isol8-bot"
           git config user.email "isol8-github-bot[bot]@users.noreply.github.com"
+          git pull
           git add coverage/coverage-badge.svg
           if git diff --cached --quiet; then
             echo "No coverage badge changes to commit."
@@ -209,7 +210,7 @@ jobs:
             elif [ $(echo "$val >= 50" | bc -l) -eq 1 ]; then echo "🟡";
             else echo "🔴"; fi
           }
-          
+
           # Function to get trend icon
           get_trend() {
             local val=$1
@@ -221,7 +222,7 @@ jobs:
           ICON_LINES=$(get_icon ${{ steps.coverage.outputs.lines }})
           ICON_FUNCS=$(get_icon ${{ steps.coverage.outputs.funcs }})
           ICON_BRANS=$(get_icon ${{ steps.coverage.outputs.brans }})
-          
+
           TREND_LINES=$(get_trend ${{ steps.coverage.outputs.diff_lines }})
           TREND_FUNCS=$(get_trend ${{ steps.coverage.outputs.diff_funcs }})
           TREND_BRANS=$(get_trend ${{ steps.coverage.outputs.diff_brans }})
