@@ -7,7 +7,7 @@
     [
       "@semantic-release/exec",
       {
-        "prepareCmd": "bun run scripts/sync-versions.ts ${nextRelease.version} && bun run build && cd apps/server && bun run build:all",
+        "prepareCmd": "bun run scripts/sync-versions.ts ${nextRelease.version} && bun run build && cd apps/server && bun run build:all && cd ../.. && node -e 'const fs=require(\"fs\");const path=\"apps/cli/package.json\";const pkg=JSON.parse(fs.readFileSync(path,\"utf8\"));pkg.dependencies=pkg.dependencies||{};pkg.dependencies[\"@isol8/core\"]=\"workspace:*\";fs.writeFileSync(path,JSON.stringify(pkg,null,2)+\"\\n\");'",
         "publishCmd": "(cd packages/core && npm publish --provenance --access public) && (cd apps/cli && npm publish --provenance --access public)"
       }
     ],
