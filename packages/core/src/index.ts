@@ -16,7 +16,12 @@ export { Semaphore } from "./engine/concurrency";
 export type { DockerIsol8Options } from "./engine/docker";
 // ─── Engine ───
 export { DockerIsol8 } from "./engine/docker";
-export { buildBaseImages, buildCustomImages } from "./engine/image-builder";
+export {
+  buildBaseImages,
+  buildCustomImage,
+  buildCustomImages,
+  getCustomImageTag,
+} from "./engine/image-builder";
 // ─── Runtime ───
 export {
   BunAdapter,

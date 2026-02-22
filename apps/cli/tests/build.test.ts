@@ -169,6 +169,7 @@ describe("CLI help and version", () => {
     expect(stdout).toContain("isol8");
     expect(stdout).toContain("setup");
     expect(stdout).toContain("run");
+    expect(stdout).toContain("build");
     expect(stdout).toContain("serve");
     expect(stdout).toContain("config");
     expect(stdout).toContain("cleanup");
@@ -227,6 +228,13 @@ describe("CLI help and version", () => {
   test("setup --help lists setup flags", async () => {
     const { stdout } = await runCLI("setup --help");
     for (const flag of ["--python", "--node", "--bun", "--deno", "--bash"]) {
+      expect(stdout).toContain(flag);
+    }
+  });
+
+  test("build --help lists build flags", async () => {
+    const { stdout } = await runCLI("build --help");
+    for (const flag of ["--base", "--install", "--tag", "--force"]) {
       expect(stdout).toContain(flag);
     }
   });

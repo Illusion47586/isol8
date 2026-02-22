@@ -141,6 +141,25 @@ isol8 run script.py --host http://server:3000 --key my-api-key
 | `--host <url>` | Remote server URL | — |
 | `--key <key>` | API key for remote server | `$ISOL8_API_KEY` |
 
+### `isol8 build`
+
+Build a custom runtime image with pre-baked dependencies.
+
+```bash
+# Build a hashed custom Python image
+isol8 build --base python --install numpy --install pandas
+
+# Build and tag an alias for easier reuse
+isol8 build --base python --install numpy,pandas,torch --tag my-registry/ml-image:latest
+```
+
+| Flag | Description |
+|------|-------------|
+| `--base <runtime>` | Runtime base image: `python`, `node`, `bun`, `deno`, `bash` |
+| `--install <pkg>` | Package to install (repeatable or comma-separated) |
+| `--tag <name>` | Optional alias tag for the built image |
+| `--force` | Force rebuild even when image is up to date |
+
 ### Remote Code URLs
 
 ```bash
