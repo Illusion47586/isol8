@@ -23,7 +23,8 @@ const cliBuild = await Bun.build({
   format: "esm",
   minify: false,
   sourcemap: "external",
-  external: ["@isol8/server", "dockerode"],
+  // Keep workspace packages external so CLI build does not require their dist output first.
+  external: ["@isol8/core", "@isol8/server", "dockerode"],
 });
 
 if (!cliBuild.success) {
