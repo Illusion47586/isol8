@@ -44,7 +44,7 @@ async function runOnce(runtime: string, tmpDir: string): Promise<number> {
 
   const t0 = performance.now();
 
-  await execAsync(`@isol8/cli run ${filePath} -r ${runtime} --no-stream`, {
+  await execAsync(`isol8 run ${filePath} -r ${runtime} --no-stream`, {
     timeout: 30_000,
   });
 

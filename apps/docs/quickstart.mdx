@@ -4,10 +4,8 @@ description: "Install isol8, build runtime images, run your first secure executi
 icon: "bolt"
 ---
 
-<Callout type="warning">
-  **Deprecation Notice**: The `isol8` package is deprecated. Please use:
-  - **CLI**: `@isol8/cli` 
-  - **Library**: `@isol8/core`
+<Callout type="info">
+  **Migration**: The CLI is now `@isol8/cli` (installed as `isol8` command). The library is `@isol8/core`.
 </Callout>
 
 This quickstart is intentionally practical. You will:
@@ -43,7 +41,7 @@ This quickstart is intentionally practical. You will:
 
     <CodeGroup>
     ```bash Command
-    @isol8/cli --version && docker info >/dev/null
+    isol8 --version && docker info >/dev/null
     ```
     
     ```text Expected output
@@ -56,7 +54,7 @@ This quickstart is intentionally practical. You will:
     Run `setup` to build the base Docker images (`isol8:python`, `isol8:node`, etc.). This creates the local `isol8` image hierarchy.
 
     ```bash
-    @isol8/cli setup
+    isol8 setup
     ```
 
     <Check>
@@ -69,7 +67,7 @@ This quickstart is intentionally practical. You will:
 
     <CodeGroup>
     ```bash Command
-    @isol8/cli run -e "print('hello from sandbox')" --runtime python
+    isol8 run -e "print('hello from sandbox')" --runtime python
     ```
 
     ```text Output
@@ -83,13 +81,13 @@ This quickstart is intentionally practical. You will:
 
     ```bash
     # Install numpy on the fly
-    @isol8/cli run \
+    isol8 run \
       -e "import numpy; print(numpy.array([1,2,3]))" \
       --runtime python \
       --install numpy
     
     # Check resolved configuration
-    @isol8/cli config
+    isol8 config
     ```
   </Step>
 </Steps>

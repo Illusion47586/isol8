@@ -5,11 +5,11 @@ description: "Detailed command-line guide for isol8 with flag-by-flag behavior f
 icon: "terminal"
 ---
 
-<Callout type="warning">
-  **Deprecation Notice**: The `isol8` CLI is deprecated. Please use `@isol8/cli`.
+<Callout type="info">
+  **Migration**: CLI is now `@isol8/cli` (installed as `isol8` command).
 </Callout>
 
-This page is a flag-by-flag reference for the `@isol8/cli`.
+This page is a flag-by-flag reference for the `isol8` CLI.
 
 ## Global option
 
@@ -17,10 +17,10 @@ This page is a flag-by-flag reference for the `@isol8/cli`.
   Enables debug logs for CLI internals and engine operations.
 </ResponseField>
 
-## `@isol8/cli run`
+## `isol8 run`
 
 ```bash
-@isol8/cli run [file] [options]
+isol8 run [file] [options]
 ```
 
 <Info>
@@ -170,6 +170,12 @@ isol8 run \
   --key my-key
 ```
 
+## `isol8 setup`
+
+```bash
+isol8 setup [options]
+```
+
 ## `@isol8/cli setup`
 
 ```bash
@@ -200,10 +206,10 @@ isol8 run \
   Force rebuild even when hashes indicate cache hit.
 </ResponseField>
 
-## `@isol8/cli serve`
+## `isol8 serve`
 
 ```bash
-@isol8/cli serve --key <api-key> [options]
+isol8 serve --key <api-key> [options]
 ```
 
 <ResponseField name="-p, --port <port>" type="number" default="3000">
@@ -227,16 +233,16 @@ isol8 run \
   For full server behavior and endpoints, see the Server docs tab: <a href="/server/overview">Server overview</a> and <a href="/server/routes">Server routes</a>.
 </Info>
 
-## `@isol8/cli config`
+## `isol8 config`
 
 ```bash
-@isol8/cli config [options]
+isol8 config [options]
 ```
 
-## `@isol8/cli cleanup`
+## `isol8 cleanup`
 
 ```bash
-@isol8/cli cleanup [options]
+isol8 cleanup [options]
 ```
 
 <ResponseField name="--json" type="flag">

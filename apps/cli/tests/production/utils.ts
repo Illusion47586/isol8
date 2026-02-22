@@ -11,7 +11,7 @@ import { promisify } from "node:util";
 const execAsync = promisify(exec);
 
 /**
- * Run @isol8/cli command via globally installed @isol8/cli
+ * Run isol8 command via globally installed @isol8/cli
  */
 export async function runIsol8(
   args: string,
@@ -21,7 +21,7 @@ export async function runIsol8(
     timeout?: number;
   } = {}
 ) {
-  const command = `@isol8/cli ${args}`;
+  const command = `isol8 ${args}`;
 
   return execAsync(command, {
     cwd: options.cwd || process.cwd(),
@@ -31,7 +31,7 @@ export async function runIsol8(
 }
 
 /**
- * Spawn @isol8/cli command for streaming tests
+ * Spawn isol8 command for streaming tests
  */
 export function spawnIsol8(
   args: string[],
@@ -40,7 +40,7 @@ export function spawnIsol8(
     env?: Record<string, string>;
   } = {}
 ) {
-  return spawn("@isol8/cli", args, {
+  return spawn("isol8", args, {
     cwd: options.cwd || process.cwd(),
     env: { ...process.env, ...options.env },
   });

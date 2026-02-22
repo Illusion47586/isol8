@@ -40,7 +40,7 @@ jobs:
         run: docker info
        
       - name: Setup isol8 images
-        run: npx @isol8/cli setup
+        run: npx isol8 setup
         env:
           ISOL8_TEST_VERSION: ${{ github.event.inputs.version || 'latest' }}
       
