@@ -206,8 +206,14 @@ jobs:
           fi
           git commit -m "chore: update coverage badge [skip ci]"
           git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
-          git pull origin ${TARGET_BRANCH}
-          git push origin HEAD:${TARGET_BRANCH}
+          git fetch origin "${TARGET_BRANCH}"
+          git rebase "origin/${TARGET_BRANCH}"
+          git push origin "HEAD:${TARGET_BRANCH}" || {
+            echo "Push failed, retrying after refreshing branch..."
+            git fetch origin "${TARGET_BRANCH}"
+            git rebase "origin/${TARGET_BRANCH}"
+            git push origin "HEAD:${TARGET_BRANCH}"
+          }
         continue-on-error: true
 
       - name: Generate Coverage Comparison Report
