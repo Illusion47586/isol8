@@ -45,6 +45,12 @@ jobs:
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
       - name: Release
+        # NOTE:
+        # We intentionally publish via @semantic-release/exec in .releaserc.json
+        # instead of @semantic-release/npm. In this monorepo, @semantic-release/npm
+        # runs `npm version` in package roots and can fail with:
+        # "EUNSUPPORTEDPROTOCOL Unsupported URL Type 'workspace:'"
+        # when workspace protocol deps are present in the repo.
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
