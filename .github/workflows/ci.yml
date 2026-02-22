@@ -91,7 +91,10 @@ jobs:
         run: node apps/cli/dist/cli.js setup
 
       - name: Test (Unit + Integration)
-        run: bun test packages/core/tests/unit apps/cli/tests/integration
+        run: |
+          bun test packages/core/tests/unit
+          bun test apps/cli/tests/integration
+          bun test apps/server/tests
 
       - name: Download Main Branch Coverage
         if: github.event_name == 'pull_request'

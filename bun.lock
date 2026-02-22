@@ -22,6 +22,7 @@
         "ora": "^9.3.0",
       },
       "devDependencies": {
+        "@isol8/server": "workspace:*",
         "@types/bun": "latest",
         "@types/node": "^25.2.3",
         "typescript": "^5.9.3",
@@ -47,7 +48,9 @@
       },
       "devDependencies": {
         "@types/bun": "latest",
+        "@types/dockerode": "^4.0.1",
         "@types/node": "^25.2.3",
+        "dockerode": "^4.0.9",
         "typescript": "^5.9.3",
         "ultracite": "^7.2.0",
       },

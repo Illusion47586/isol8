@@ -1,7 +1,17 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { RemoteIsol8 } from "@isol8/core";
-import { createServer } from "@isol8/server";
-import { hasDocker } from "./setup";
+import Docker from "dockerode";
+import { createServer } from "../src/index.js";
+
+// Check if Docker is available
+let hasDocker = false;
+try {
+  const docker = new Docker();
+  await docker.ping();
+  hasDocker = true;
+} catch {
+  hasDocker = false;
+}
 
 describe("Integration: Server Auto-Pruner", () => {
   if (!hasDocker) {
