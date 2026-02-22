@@ -38,13 +38,41 @@
     "schema": "turbo run schema",
     "docs:dev": "bun run --filter @isol8/docs dev",
     "docs:validate": "bun run --filter @isol8/docs validate",
-    "docs:broken-links": "bun run --filter @isol8/docs broken-links"
+    "docs:broken-links": "bun run --filter @isol8/docs broken-links",
+    "prepare": "simple-git-hooks"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.15",
+    "@commitlint/cli": "^20.4.1",
+    "@commitlint/config-conventional": "^20.4.1",
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/exec": "^7.1.0",
+    "@semantic-release/git": "^10.0.1",
+    "@semantic-release/github": "^12.0.6",
+    "@semantic-release/npm": "^13.1.4",
+    "lint-staged": "^16.2.7",
+    "semantic-release": "^25.0.3",
+    "simple-git-hooks": "^2.13.1",
     "turbo": "^2.4.4",
     "typescript": "^5.9.3",
     "ultracite": "^7.2.0"
   },
-  "packageManager": "bun@1.2.4"
+  "packageManager": "bun@1.2.4",
+  "simple-git-hooks": {
+    "pre-commit": "bun run lint-staged",
+    "commit-msg": "bunx commitlint --edit $1"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "ultracite fix",
+      "bash -c 'bunx tsc --noEmit'"
+    ],
+    "packages/core/src/types.ts": [
+      "bash -c 'bun run schema'",
+      "git add packages/core/schema/isol8.config.schema.json"
+    ],
+    "*.{yaml,yml,json}": [
+      "ultracite fix"
+    ]
+  }
 }
