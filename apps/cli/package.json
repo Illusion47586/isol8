@@ -26,7 +26,7 @@
     "lint:fix": "ultracite fix"
   },
   "dependencies": {
-    "@isol8/core": "^0.14.0",
+    "@isol8/core": "workspace:*",
     "commander": "^14.0.3",
     "ora": "^9.3.0"
   },
