@@ -1,0 +1,170 @@
+{
+  "timestamp": "2026-02-19T07:30:07.142Z",
+  "results": [
+    {
+      "provider": "python",
+      "iterations": [
+        {
+          "ttiMs": 0,
+          "error": "Was there a typo in the url or port?"
+        },
+        {
+          "ttiMs": 0,
+          "error": "Was there a typo in the url or port?"
+        },
+        {
+          "ttiMs": 0,
+          "error": "Was there a typo in the url or port?"
+        },
+        {
+          "ttiMs": 0,
+          "error": "Was there a typo in the url or port?"
+        },
+        {
+          "ttiMs": 0,
+          "error": "Was there a typo in the url or port?"
+        }
+      ],
+      "summary": {
+        "ttiMs": {
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "avg": 0
+        }
+      }
+    },
+    {
+      "provider": "node",
+      "iterations": [
+        {
+          "ttiMs": 0,
+          "error": "Was there a typo in the url or port?"
+        },
+        {
+          "ttiMs": 0,
+          "error": "Was there a typo in the url or port?"
+        },
+        {
+          "ttiMs": 0,
+          "error": "Was there a typo in the url or port?"
+        },
+        {
+          "ttiMs": 0,
+          "error": "Was there a typo in the url or port?"
+        },
+        {
+          "ttiMs": 0,
+          "error": "Was there a typo in the url or port?"
+        }
+      ],
+      "summary": {
+        "ttiMs": {
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "avg": 0
+        }
+      }
+    },
+    {
+      "provider": "bun",
+      "iterations": [
+        {
+          "ttiMs": 0,
+          "error": "Was there a typo in the url or port?"
+        },
+        {
+          "ttiMs": 0,
+          "error": "Was there a typo in the url or port?"
+        },
+        {
+          "ttiMs": 0,
+          "error": "Was there a typo in the url or port?"
+        },
+        {
+          "ttiMs": 0,
+          "error": "Was there a typo in the url or port?"
+        },
+        {
+          "ttiMs": 0,
+          "error": "Was there a typo in the url or port?"
+        }
+      ],
+      "summary": {
+        "ttiMs": {
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "avg": 0
+        }
+      }
+    },
+    {
+      "provider": "deno",
+      "iterations": [
+        {
+          "ttiMs": 0,
+          "error": "Was there a typo in the url or port?"
+        },
+        {
+          "ttiMs": 0,
+          "error": "Was there a typo in the url or port?"
+        },
+        {
+          "ttiMs": 0,
+          "error": "Was there a typo in the url or port?"
+        },
+        {
+          "ttiMs": 0,
+          "error": "Was there a typo in the url or port?"
+        },
+        {
+          "ttiMs": 0,
+          "error": "Was there a typo in the url or port?"
+        }
+      ],
+      "summary": {
+        "ttiMs": {
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "avg": 0
+        }
+      }
+    },
+    {
+      "provider": "bash",
+      "iterations": [
+        {
+          "ttiMs": 0,
+          "error": "Was there a typo in the url or port?"
+        },
+        {
+          "ttiMs": 0,
+          "error": "Was there a typo in the url or port?"
+        },
+        {
+          "ttiMs": 0,
+          "error": "Was there a typo in the url or port?"
+        },
+        {
+          "ttiMs": 0,
+          "error": "Was there a typo in the url or port?"
+        },
+        {
+          "ttiMs": 0,
+          "error": "Was there a typo in the url or port?"
+        }
+      ],
+      "summary": {
+        "ttiMs": {
+          "min": 0,
+          "max": 0,
+          "median": 0,
+          "avg": 0
+        }
+      }
+    }
+  ]
+}

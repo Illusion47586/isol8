@@ -12,6 +12,7 @@ export type { RemoteIsol8Options } from "./client/remote";
 export { RemoteIsol8 } from "./client/remote";
 // ─── Config ───
 export { loadConfig } from "./config";
+export { Semaphore } from "./engine/concurrency";
 export type { DockerIsol8Options } from "./engine/docker";
 // ─── Engine ───
 export { DockerIsol8 } from "./engine/docker";
