@@ -183,7 +183,7 @@ jobs:
           overwrite: true
 
       - name: Commit Coverage Badge
-        if: github.ref != 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && github.actor != 'isol8-ci[bot]' && github.actor != 'isol8-ci'
         env:
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
         run: |
@@ -197,8 +197,8 @@ jobs:
           else
             TARGET_BRANCH="${{ github.ref_name }}"
           fi
-          git config user.name "isol8-bot"
-          git config user.email "isol8-github-bot[bot]@users.noreply.github.com"
+          git config user.name "isol8-ci"
+          git config user.email "isol8-ci[bot]@users.noreply.github.com"
           git add coverage/coverage-badge.svg
           if git diff --cached --quiet; then
             echo "No coverage badge changes to commit."
