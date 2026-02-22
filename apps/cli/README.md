@@ -4,7 +4,7 @@ CLI for isol8 secure code execution.
 
 > **Note**: This package is published as `@isol8/cli` but installs the `isol8` command.
 
-For full documentation, usage examples, and contribution guidelines, see the main [isol8 README](../README.md).
+For full documentation, usage examples, and contribution guidelines, see the main [isol8 README](https://github.com/Illusion47586/isol8/blob/main/README.md).
 
 ## Installation
 
@@ -32,8 +32,8 @@ isol8 serve --key your-api-key
 - `isol8 serve` - Start remote execution server
 - `isol8 config` - Show configuration
 
-See [CLI Documentation](https://isol8.dev/docs/cli) for full command reference.
+See [CLI Documentation](https://isol8.dev/docs/cli) for full command reference, and [isol8 README](https://github.com/Illusion47586/isol8/blob/main/README.md) for project-wide details.
 
 ## License
 
-MIT - See [../LICENSE](../LICENSE)
+MIT - See [LICENSE](https://github.com/Illusion47586/isol8/blob/main/LICENSE)

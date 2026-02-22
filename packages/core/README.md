@@ -4,7 +4,7 @@ Core engine for isol8 secure code execution.
 
 > **Note**: The `isol8` package is deprecated. Use `@isol8/core` instead.
 
-For full documentation, usage examples, and contribution guidelines, see the main [isol8 README](../README.md).
+For full documentation, usage examples, and contribution guidelines, see the main [isol8 README](https://github.com/Illusion47586/isol8/blob/main/README.md).
 
 ## Installation
 
@@ -32,8 +32,8 @@ await engine.stop();
 
 ## API
 
-See [API Documentation](https://isol8.dev/docs/api) for full API reference.
+See [Library Documentation](https://isol8.dev/docs/library) for full API usage and [isol8 README](https://github.com/Illusion47586/isol8/blob/main/README.md) for project-wide details.
 
 ## License
 
-MIT - See [../LICENSE](../LICENSE)
+MIT - See [LICENSE](https://github.com/Illusion47586/isol8/blob/main/LICENSE)
