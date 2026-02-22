@@ -1,6 +1,27 @@
 {
-  "name": "isol8-monorepo",
-  "private": true,
+  "name": "isol8",
+  "version": "0.13.0",
+  "description": "Secure code execution engine for AI agents",
+  "author": "Illusion47586",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Illusion47586/isol8.git"
+  },
+  "homepage": "https://github.com/Illusion47586/isol8",
+  "bugs": {
+    "url": "https://github.com/Illusion47586/isol8/issues"
+  },
+  "keywords": [
+    "sandbox",
+    "docker",
+    "code-execution",
+    "isolation",
+    "security",
+    "ai-agents",
+    "container",
+    "runtime"
+  ],
   "workspaces": [
     "packages/*",
     "apps/*"

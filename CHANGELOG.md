@@ -1,3 +1,10 @@
+# [0.13.0](https://github.com/Illusion47586/isol8/compare/v0.12.2...v0.13.0) (2026-02-22)
+
+
+### Features
+
+* **skills:** add project-issues-batch skill ([#82](https://github.com/Illusion47586/isol8/issues/82)) ([02e1b11](https://github.com/Illusion47586/isol8/commit/02e1b11c88c3699bc10302028edc85f516841e4e))
+
 ## [0.12.2](https://github.com/Illusion47586/isol8/compare/v0.12.1...v0.12.2) (2026-02-21)
 
 
