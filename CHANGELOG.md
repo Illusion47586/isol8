@@ -1,3 +1,17 @@
+# [0.14.0](https://github.com/Illusion47586/isol8/compare/v0.13.0...v0.14.0) (2026-02-22)
+
+
+### Bug Fixes
+
+* coverage badge publishing and release CLI build resolution ([#84](https://github.com/Illusion47586/isol8/issues/84)) ([20bb72c](https://github.com/Illusion47586/isol8/commit/20bb72c30111a99764e2fddf7759150cdb113456))
+* **release:** avoid npm workspace protocol failure ([#85](https://github.com/Illusion47586/isol8/issues/85)) ([f279acb](https://github.com/Illusion47586/isol8/commit/f279acbe1f0109a7585db4b2c6b75369548af9e9))
+
+
+### Features
+
+* **cli:** add first-class custom image build command ([#87](https://github.com/Illusion47586/isol8/issues/87)) ([9cfa4ba](https://github.com/Illusion47586/isol8/commit/9cfa4ba0010b47b18cd22dea87052a08c1059ef7)), closes [#35](https://github.com/Illusion47586/isol8/issues/35)
+* migrate to Turborepo monorepo structure ([#83](https://github.com/Illusion47586/isol8/issues/83)) ([c91fc57](https://github.com/Illusion47586/isol8/commit/c91fc572a3a55507e61f142f64ab5c748c46e830)), closes [#76](https://github.com/Illusion47586/isol8/issues/76) [#76](https://github.com/Illusion47586/isol8/issues/76) [#76](https://github.com/Illusion47586/isol8/issues/76) [#76](https://github.com/Illusion47586/isol8/issues/76) [#76](https://github.com/Illusion47586/isol8/issues/76) [#76](https://github.com/Illusion47586/isol8/issues/76) [#76](https://github.com/Illusion47586/isol8/issues/76) [#76](https://github.com/Illusion47586/isol8/issues/76) [#76](https://github.com/Illusion47586/isol8/issues/76) [#76](https://github.com/Illusion47586/isol8/issues/76) [#76](https://github.com/Illusion47586/isol8/issues/76) [#76](https://github.com/Illusion47586/isol8/issues/76) [#76](https://github.com/Illusion47586/isol8/issues/76) [#76](https://github.com/Illusion47586/isol8/issues/76) [#76](https://github.com/Illusion47586/isol8/issues/76) [#76](https://github.com/Illusion47586/isol8/issues/76) [#76](https://github.com/Illusion47586/isol8/issues/76) [#76](https://github.com/Illusion47586/isol8/issues/76) [#76](https://github.com/Illusion47586/isol8/issues/76) [#76](https://github.com/Illusion47586/isol8/issues/76) [#76](https://github.com/Illusion47586/isol8/issues/76) [#76](https://github.com/Illusion47586/isol8/issues/76) [#76](https://github.com/Illusion47586/isol8/issues/76)
+
 # [0.13.0](https://github.com/Illusion47586/isol8/compare/v0.12.2...v0.13.0) (2026-02-22)
 
 
