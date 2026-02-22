@@ -96,14 +96,9 @@ jobs:
           echo "=========================================="
           echo "Benchmark Results Summary"
           echo "=========================================="
+          cd ../.. && python3 scripts/parse-bench-summary.py
           
-          # Write summary
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## Benchmark Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          tail -20 ../../bench-output.log >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat bench-summary.md >> $GITHUB_STEP_SUMMARY
         env:
           ISOL8_TEST_VERSION: ${{ github.event.inputs.version || 'latest' }}
 
