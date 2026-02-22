@@ -32,15 +32,15 @@ jobs:
       
       - name: Install isol8 globally
         run: |
-          bun i -g isol8@${{ github.event.inputs.version || 'latest' }}
+          bun i -g @isol8/cli@${{ github.event.inputs.version || 'latest' }}
           # Add bun global bin to PATH for subsequent steps
           echo "$(bun global bin)" >> $GITHUB_PATH
-      
+       
       - name: Verify Docker is running
         run: docker info
-      
+       
       - name: Setup isol8 images
-        run: isol8 setup
+        run: npx @isol8/cli setup
         env:
           ISOL8_TEST_VERSION: ${{ github.event.inputs.version || 'latest' }}
       

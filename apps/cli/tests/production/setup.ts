@@ -13,7 +13,7 @@ export function getTestVersion(): string {
 // Pre-build images to speed up tests
 async function prebuildImages(): Promise<void> {
   const version = getTestVersion();
-  const command = `bunx isol8@${version} setup`;
+  const command = `bunx @isol8/cli@${version} setup`;
 
   console.log(`[Setup] Building isol8 images (version: ${version})...`);
   console.log(`[Setup] Command: ${command}`);
