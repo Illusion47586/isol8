@@ -1,18 +1,22 @@
 #!/usr/bin/env bun
 /**
  * Sync version across all packages in the monorepo.
- * Usage: bun run scripts/sync-versions.ts <version>
+ * Usage: bun run scripts/sync-versions.ts [version]
+ * If no version is provided, reads from root package.json
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 const root = dirname(import.meta.dir);
-const version = process.argv[2];
+
+let version = process.argv[2];
 
 if (!version) {
-  console.error("Usage: bun run scripts/sync-versions.ts <version>");
-  process.exit(1);
+  const rootPkgPath = join(root, "package.json");
+  const rootPkg = JSON.parse(readFileSync(rootPkgPath, "utf-8"));
+  version = rootPkg.version;
+  console.log(`📦 No version provided, reading from root package.json: ${version}`);
 }
 
 const packages = [
@@ -28,7 +32,7 @@ for (const pkgPath of packages) {
   const fullPath = join(root, pkgPath);
   const pkg = JSON.parse(readFileSync(fullPath, "utf-8"));
   pkg.version = version;
-  writeFileSync(fullPath, JSON.stringify(pkg, null, 2) + "\n");
+  writeFileSync(fullPath, `${JSON.stringify(pkg, null, 2)}\n`);
   console.log(`   ✓ ${pkg.name} → ${version}`);
 }
 
@@ -36,7 +40,7 @@ for (const pkgPath of packages) {
 const rootPkgPath = join(root, "package.json");
 const rootPkg = JSON.parse(readFileSync(rootPkgPath, "utf-8"));
 rootPkg.version = version;
-writeFileSync(rootPkgPath, JSON.stringify(rootPkg, null, 2) + "\n");
+writeFileSync(rootPkgPath, `${JSON.stringify(rootPkg, null, 2)}\n`);
 console.log(`   ✓ isol8 (root) → ${version}`);
 
 console.log("✅ All packages synced!");
