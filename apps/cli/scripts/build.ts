@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 const root = dirname(import.meta.dir);
@@ -9,6 +9,10 @@ const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf-8")
 const version: string = packageJson.version;
 
 console.log("📦 Building @isol8/cli...");
+
+// Clean previous build
+rmSync(outDir, { recursive: true, force: true });
+mkdirSync(outDir, { recursive: true });
 
 // Bundle CLI for Node.js target
 const cliBuild = await Bun.build({
@@ -27,6 +31,14 @@ if (!cliBuild.success) {
     console.error(log);
   }
   process.exit(1);
+}
+
+// Copy docker directory from @isol8/core to dist
+const coreDockerDir = join(root, "..", "..", "packages", "core", "docker");
+const distDockerDir = join(outDir, "docker");
+if (existsSync(coreDockerDir)) {
+  cpSync(coreDockerDir, distDockerDir, { recursive: true });
+  console.log("   Docker:  dist/docker/");
 }
 
 console.log(`✅ Build complete → dist/cli.js (v${version})`);

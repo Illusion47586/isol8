@@ -1,4 +1,0 @@
-
-[0m[2m[35m$[0m [2m[1mbun run scripts/build.ts[0m
-📦 Building @isol8/cli...
-✅ Build complete → dist/cli.js (v0.12.2)
