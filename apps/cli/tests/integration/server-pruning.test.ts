@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { RemoteIsol8 } from "../../src/client/remote";
-import { createServer } from "../../src/server/index";
+import { RemoteIsol8 } from "@isol8/core";
+import { createServer } from "@isol8/server";
 import { hasDocker } from "./setup";
 
 describe("Integration: Server Auto-Pruner", () => {

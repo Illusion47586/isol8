@@ -1,6 +1,6 @@
 import { beforeAll } from "bun:test";
+import { buildBaseImages } from "@isol8/core";
 import Docker from "dockerode";
-import { buildBaseImages } from "../../src/engine/image-builder";
 
 // Check if Docker is available
 const docker = new Docker();

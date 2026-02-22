@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { unlinkSync, writeFileSync } from "node:fs";
-import { DockerIsol8 } from "../../src/engine/docker";
+import { DockerIsol8 } from "@isol8/core";
 import { hasDocker } from "./setup";
 
 describe("Integration: Seccomp", () => {

@@ -18,7 +18,7 @@ import {
   NodeAdapter,
   PythonAdapter,
   RuntimeRegistry,
-} from "../../src/index";
+} from "@isol8/core";
 import { hasDocker } from "./setup";
 
 describe("Library: Public API Imports", () => {

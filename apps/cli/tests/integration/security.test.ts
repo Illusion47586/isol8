@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DockerIsol8 } from "../../src/engine/docker";
+import { DockerIsol8 } from "@isol8/core";
 import { hasDocker } from "./setup";
 
 describe("Integration: Security & Limits", () => {
