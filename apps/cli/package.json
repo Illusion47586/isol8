@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@isol8/core": "workspace:*",
+    "@isol8/server": "workspace:*",
     "commander": "^14.0.3",
     "ora": "^9.3.0"
   },
