@@ -27,7 +27,7 @@
         "isol8": "./dist/cli.js",
       },
       "dependencies": {
-        "@isol8/core": "^0.13.0-alpha.1",
+        "@isol8/core": "^0.14.0",
         "commander": "^14.0.3",
         "ora": "^9.3.0",
       },
@@ -2225,8 +2225,6 @@
     "@grpc/grpc-js/@grpc/proto-loader": ["@grpc/proto-loader@0.8.0", "", { "dependencies": { "lodash.camelcase": "^4.3.0", "long": "^5.0.0", "protobufjs": "^7.5.3", "yargs": "^17.7.2" }, "bin": { "proto-loader-gen-types": "build/bin/proto-loader-gen-types.js" } }, "sha512-rc1hOQtjIWGxcxpb9aHAfLpIctjEnsDehj0DAiVfBlmT84uvR0uUtN2hEi/ecvWVjXUGf5qPF4qEgiLOx1YIMQ=="],
 
     "@inquirer/core/wrap-ansi": ["wrap-ansi@6.2.0", "", { "dependencies": { "ansi-styles": "^4.0.0", "string-width": "^4.1.0", "strip-ansi": "^6.0.0" } }, "sha512-r6lPcBGxZXlIcymEu7InxDMhdW0KDxpLgoFLcguasxCaJ/SOIZwINatK9KY/tf+ZrlywOKU0UDj3ATXUBfxJXA=="],
-
-    "@isol8/cli/@isol8/core": ["@isol8/core@0.13.0-alpha.3", "", { "dependencies": { "dockerode": "^4.0.9", "hono": "^4.11.9" } }, "sha512-tfsZxjZl/9eWH934AkedCDiFqiKGEQozth+cEqt3w4r7Ui+M0/a2WbzdDkGMoA97eQOLare+/R1drXfs9qxhuw=="],
 
     "@mdx-js/mdx/source-map": ["source-map@0.7.6", "", {}, "sha512-i5uvt8C3ikiWeNZSVZNWcfZPItFQOsYTUAOkcUPGd8DqDy1uOUikjt5dG+uRlwyvR108Fb9DOd4GvXfT0N2/uQ=="],
 
