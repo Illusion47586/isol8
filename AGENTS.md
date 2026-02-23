@@ -161,7 +161,31 @@ cd packages/core && bun run schema  # Regenerate JSON schema
 
 # Docs
 cd apps/docs && bun run dev   # Start docs dev server
+
+# Changesets
+bun run changeset            # Create a changeset file for releasable package changes
+bun run version-packages     # Apply pending changesets (release workflow step)
 ```
+
+## Changesets Release Workflow
+
+Use Changesets for all releasable package changes (`@isol8/core`, `@isol8/cli`, `@isol8/server`, `@isol8/docs`).
+
+When to run `bun run changeset`:
+- any PR that changes runtime behavior, public API, CLI behavior, or package contents
+- bug fixes, features, refactors, or docs changes that affect published package output
+- release-trigger commits where a publish must be forced
+
+When not required:
+- non-package repo maintenance only (for example local tooling that does not ship in published packages)
+- pure CI/infrastructure tweaks that do not change package artifacts
+
+Operational rules:
+- prefer `patch` unless introducing a backward-compatible feature (`minor`) or breaking change (`major`)
+- keep changeset summary short and user-facing (what changed, not implementation detail)
+- commit the generated `.changeset/*.md` file with the PR/branch changes
+- do not hand-edit package versions directly; use `changeset version` in release flow
+- do not commit temporary publish rewrites for workspace dependencies
 
 ## Guidelines for Changes
 
