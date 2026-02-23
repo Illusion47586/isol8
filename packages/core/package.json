@@ -1,6 +1,6 @@
 {
   "name": "@isol8/core",
-  "version": "0.14.3",
+  "version": "0.14.4",
   "description": "Core engine for isol8 secure code execution",
   "author": "Illusion47586",
   "license": "MIT",
