@@ -48,6 +48,8 @@ jobs:
 
       - name: Version Packages and Commit
         id: versioning
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           bun run version-packages
 
