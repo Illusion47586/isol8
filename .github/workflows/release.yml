@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
 
     steps:
       - name: Checkout code
@@ -29,6 +30,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      - name: Upgrade npm for Trusted Publishing
+        run: |
+          npm i -g npm@^11.5.1
+          npm --version
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -53,43 +59,43 @@ jobs:
         run: |
           bun run version-packages
 
+          VERSION=$(jq -r '.version' packages/core/package.json)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
           if git diff --quiet; then
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
             echo "No changesets to release."
-            exit 0
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+
+            git add -A
+            # Skip CI for this release-generated commit to avoid a workflow loop.
+            git commit -m "chore(release): v${VERSION} [skip ci]"
+            git push origin HEAD:main
           fi
 
-          VERSION=$(jq -r '.version' packages/core/package.json)
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "has_changes=true" >> "$GITHUB_OUTPUT"
-
-          git add -A
-          # Skip CI for this release-generated commit to avoid a workflow loop.
-          git commit -m "chore(release): v${VERSION} [skip ci]"
-          git push origin HEAD:main
-
       - name: Publish Packages
-        if: steps.versioning.outputs.has_changes == 'true'
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: bun run release:publish
 
       - name: Create and Push Tag
-        if: steps.versioning.outputs.has_changes == 'true'
+        id: tag
         run: |
           TAG="v${{ steps.versioning.outputs.version }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
             echo "Tag $TAG already exists."
+            echo "tag_created=false" >> "$GITHUB_OUTPUT"
           else
             git tag "$TAG"
             git push origin "$TAG"
+            echo "tag_created=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Create GitHub Release
-        if: steps.versioning.outputs.has_changes == 'true'
+        if: steps.tag.outputs.tag_created == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.versioning.outputs.version }}
+          tag_name: ${{ steps.tag.outputs.tag }}
           generate_release_notes: true
           files: |
             apps/server/dist/isol8-server-linux-x64
