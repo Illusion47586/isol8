@@ -6,7 +6,7 @@
  * for publish artifacts without mutating repository package.json files.
  */
 
-import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const args = new Set(process.argv.slice(2));
@@ -84,6 +84,7 @@ await runMaybe(["bun", "run", "build"]);
 await runMaybe(["bun", "run", "build:all"], "apps/server");
 
 const publishTargets = ["packages/core", "apps/cli"];
+const coreVersion = (await getPackageInfo("packages/core")).version;
 
 for (const pkgPath of publishTargets) {
   const { name, version } = await getPackageInfo(pkgPath);
@@ -94,15 +95,38 @@ for (const pkgPath of publishTargets) {
     continue;
   }
 
-  console.log(`Packing ${name}@${version}...`);
-  await runMaybe(["bun", "pm", "pack"], pkgPath);
+  const publishOne = async () => {
+    console.log(`Packing ${name}@${version}...`);
+    await runMaybe(["bun", "pm", "pack"], pkgPath);
 
-  const tarball = findTarball(pkgPath, name, version);
-  console.log(`Publishing ${name}@${version} from ${tarball}...`);
-  await runMaybe(["npm", "publish", tarball, "--access", "public", "--provenance"]);
+    const tarball = findTarball(pkgPath, name, version);
+    console.log(`Publishing ${name}@${version} from ${tarball}...`);
+    await runMaybe(["npm", "publish", tarball, "--access", "public", "--provenance"]);
 
-  if (!dryRun) {
-    rmSync(tarball, { force: true });
+    if (!dryRun) {
+      rmSync(tarball, { force: true });
+    }
+  };
+
+  // Ensure published CLI artifacts always contain a concrete @isol8/core semver.
+  if (pkgPath === "apps/cli" && !dryRun) {
+    const cliPkgPath = join(pkgPath, "package.json");
+    const original = readFileSync(cliPkgPath, "utf8");
+
+    try {
+      const cliPkg = JSON.parse(original) as {
+        dependencies?: Record<string, string>;
+      };
+      cliPkg.dependencies = cliPkg.dependencies ?? {};
+      cliPkg.dependencies["@isol8/core"] = `^${coreVersion}`;
+      writeFileSync(cliPkgPath, `${JSON.stringify(cliPkg, null, 2)}\n`);
+
+      await publishOne();
+    } finally {
+      writeFileSync(cliPkgPath, original);
+    }
+  } else {
+    await publishOne();
   }
 }
 
