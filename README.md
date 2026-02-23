@@ -550,8 +550,7 @@ Releases are automated with Changesets:
    bun run changeset
    ```
 2. Merge to `main`.
-3. The `Release` workflow creates/updates a "version packages" PR.
-4. When that PR is merged, CI publishes `@isol8/core` and `@isol8/cli` to npm and creates a `vX.Y.Z` GitHub release with server binaries.
+3. After CI passes, the `Release` workflow versions packages, commits directly to `main` as `isol8-ci`, publishes `@isol8/core` and `@isol8/cli`, and creates a `vX.Y.Z` GitHub release with server binaries.
 
 ## License
 

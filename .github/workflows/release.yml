@@ -12,7 +12,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pull-requests: write
 
     steps:
       - name: Checkout code
@@ -41,40 +40,54 @@ jobs:
           app-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
-      - name: Create Release PR or Publish
-        id: changesets
-        uses: changesets/action@v1
-        with:
-          version: bun run version-packages
-          publish: bun run release:publish
-          commit: "chore: version packages"
-          title: "chore: version packages"
-          commitMode: github-api
-        env:
-          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Resolve Published Version
-        if: steps.changesets.outputs.published == 'true'
-        id: version
-        run: echo "version=$(jq -r '.version' packages/core/package.json)" >> "$GITHUB_OUTPUT"
-
-      - name: Create Tag
-        if: steps.changesets.outputs.published == 'true'
+      - name: Configure Git Identity
         run: |
-          TAG="v${{ steps.version.outputs.version }}"
-          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists."
+          git config user.name "isol8-ci"
+          git config user.email "isol8-ci[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/${{ github.repository }}.git"
+
+      - name: Version Packages and Commit
+        id: versioning
+        run: |
+          bun run version-packages
+
+          if git diff --quiet; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "No changesets to release."
             exit 0
           fi
-          git tag "$TAG"
-          git push origin "$TAG"
+
+          VERSION=$(jq -r '.version' packages/core/package.json)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "has_changes=true" >> "$GITHUB_OUTPUT"
+
+          git add -A
+          # Skip CI for this release-generated commit to avoid a workflow loop.
+          git commit -m "chore(release): v${VERSION} [skip ci]"
+          git push origin HEAD:main
+
+      - name: Publish Packages
+        if: steps.versioning.outputs.has_changes == 'true'
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: bun run release:publish
+
+      - name: Create and Push Tag
+        if: steps.versioning.outputs.has_changes == 'true'
+        run: |
+          TAG="v${{ steps.versioning.outputs.version }}"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists."
+          else
+            git tag "$TAG"
+            git push origin "$TAG"
+          fi
 
       - name: Create GitHub Release
-        if: steps.changesets.outputs.published == 'true'
+        if: steps.versioning.outputs.has_changes == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.version.outputs.version }}
+          tag_name: v${{ steps.versioning.outputs.version }}
           generate_release_notes: true
           files: |
             apps/server/dist/isol8-server-linux-x64
