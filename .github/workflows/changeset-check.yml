@@ -3,11 +3,14 @@ name: Changeset Check
 on:
   pull_request:
     branches: ["main"]
+    types: [opened, synchronize, reopened, edited, ready_for_review]
     paths-ignore:
       - "coverage/coverage-badge.svg"
 
 permissions:
   contents: read
+  issues: write
+  pull-requests: write
 
 jobs:
   changeset:
@@ -18,7 +21,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check for Required Changeset
+      - name: Detect Releasable Changes and Changeset
+        id: detect
         run: |
           set -euo pipefail
 
@@ -29,30 +33,116 @@ jobs:
           echo "Changed files:"
           echo "${CHANGED_FILES}"
 
-          # Paths that do not require a changeset (docs/chore-only updates).
           EXEMPT_PATTERN='^(apps/docs/|\.github/|coverage/|.*\.md$|.*\.mdx$|.*\.txt$|.*\.gitignore$|LICENSE$)'
 
-          REQUIRES_CHANGESET=false
+          RELEASABLE=false
           while IFS= read -r file; do
             if [ -z "${file}" ]; then
               continue
             fi
             if ! echo "${file}" | grep -Eq "${EXEMPT_PATTERN}"; then
-              REQUIRES_CHANGESET=true
+              RELEASABLE=true
               break
             fi
           done <<< "${CHANGED_FILES}"
 
-          if [ "${REQUIRES_CHANGESET}" = false ]; then
-            echo "Only docs/chore paths changed; skipping changeset requirement."
-            exit 0
-          fi
-
+          HAS_CHANGESET=false
           if echo "${CHANGED_FILES}" | grep -Eq '^\.changeset/.+\.md$'; then
-            echo "Changeset file detected."
-            exit 0
+            HAS_CHANGESET=true
           fi
 
-          echo "Missing changeset: this PR changes releasable code but has no .changeset/*.md file."
-          echo "Run 'bun run changeset' and commit the generated file."
-          exit 1
+          echo "releasable=${RELEASABLE}" >> "$GITHUB_OUTPUT"
+          echo "has_changeset=${HAS_CHANGESET}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - name: Update PR Changeset Status Comment
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const marker = "<!-- isol8-changeset-status -->";
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issue_number = context.issue.number;
+            const releasable = "${{ steps.detect.outputs.releasable }}" === "true";
+            const hasChangeset = "${{ steps.detect.outputs.has_changeset }}" === "true";
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+
+            const existing = comments.find((comment) =>
+              comment.body?.includes(marker) &&
+              (comment.user?.login === "isol8-ci[bot]" || comment.user?.login === "isol8-ci")
+            );
+
+            if (!releasable) {
+              if (existing) {
+                await github.rest.issues.deleteComment({
+                  owner,
+                  repo,
+                  comment_id: existing.id,
+                });
+              }
+              core.info("No releasable changes in this PR.");
+              return;
+            }
+
+            if (!hasChangeset) {
+              const body = [
+                marker,
+                "## Changeset Status",
+                "",
+                "Releasable changes detected, but no `.changeset/*.md` file is present.",
+                "No package release will be made from this PR until a changeset is added.",
+                "",
+                "Run `bun run changeset` and commit the generated file."
+              ].join("\n");
+
+              if (existing) {
+                await github.rest.issues.updateComment({
+                  owner,
+                  repo,
+                  comment_id: existing.id,
+                  body,
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number,
+                  body,
+                });
+              }
+              return;
+            }
+
+            // Do not create a new comment when PR already has a changeset.
+            if (!existing) {
+              core.info("Changeset already present; no comment created.");
+              return;
+            }
+
+            const body = [
+              marker,
+              "## Changeset Status",
+              "",
+              ":check: Releasable changes detected and a `.changeset/*.md` file is present.",
+              "A package release will be generated when this PR lands on `main`."
+            ].join("\n");
+
+            await github.rest.issues.updateComment({
+              owner,
+              repo,
+              comment_id: existing.id,
+              body,
+            });
