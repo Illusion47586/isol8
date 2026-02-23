@@ -1,5 +1,14 @@
 # @isol8/cli
 
+## 0.14.3
+
+### Patch Changes
+
+- [`6fb1955`](https://github.com/Illusion47586/isol8/commit/6fb1955d7a3eefd96e508ed9b572c21c1c4286dd) Thanks [@Illusion47586](https://github.com/Illusion47586)! - Trigger a patch release from main.
+
+- Updated dependencies []:
+  - @isol8/core@0.14.3
+
 ## 0.14.2
 
 ### Patch Changes
