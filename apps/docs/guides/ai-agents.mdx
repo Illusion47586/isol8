@@ -30,7 +30,7 @@ For agent workloads, start with:
 - secrets passed via engine `secrets` (not raw echoing in code/output)
 
 ```typescript
-import { DockerIsol8 } from "isol8";
+import { DockerIsol8 } from "@isol8/core";
 
 const engine = new DockerIsol8({
   mode: "ephemeral",
@@ -48,7 +48,7 @@ await engine.start();
 Wrap execution so your orchestrator always receives normalized fields.
 
 ```typescript
-import type { Runtime } from "isol8";
+import type { Runtime } from "@isol8/core";
 
 async function executeAgentCode(code: string, runtime: Runtime) {
   const result = await engine.execute({
@@ -154,7 +154,7 @@ Use the same tool contract with remote execution when you need centralized polic
   </Tab>
   <Tab title="Library client">
     ```typescript
-    import { RemoteIsol8 } from "isol8";
+    import { RemoteIsol8 } from "@isol8/core";
 
     const remote = new RemoteIsol8(
       {

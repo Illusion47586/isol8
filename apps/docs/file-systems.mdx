@@ -33,9 +33,9 @@ In certain use cases (e.g., legacy workloads or specific compilation tasks), you
     Set `readonlyRootFs: false` in your configuration.
     <CodeGroup>
     ```typescript Input
-    import { Isol8 } from 'isol8';
+    import { DockerIsol8 } from '@isol8/core';
 
-    const engine = new Isol8();
+    const engine = new DockerIsol8();
     await engine.execute({
       runtime: 'python',
       code: "open('/writable.txt', 'w').write('test')",

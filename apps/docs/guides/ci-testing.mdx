@@ -27,7 +27,7 @@ For untrusted CI workloads, start with:
 - no persistent state unless explicitly required
 
 ```typescript
-import { DockerIsol8 } from "isol8";
+import { DockerIsol8 } from "@isol8/core";
 
 const engine = new DockerIsol8({
   mode: "ephemeral",
@@ -215,7 +215,7 @@ const results = await Promise.all(jobs);
 For centralized build/test infrastructure, use remote server + `RemoteIsol8`.
 
 ```typescript
-import { RemoteIsol8 } from "isol8";
+import { RemoteIsol8 } from "@isol8/core";
 
 const remote = new RemoteIsol8(
   {

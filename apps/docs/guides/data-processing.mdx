@@ -30,7 +30,7 @@ flowchart TD
 ## Baseline configuration
 
 ```typescript
-import { DockerIsol8 } from "isol8";
+import { DockerIsol8 } from "@isol8/core";
 
 const engine = new DockerIsol8({
   mode: "ephemeral",
@@ -195,7 +195,7 @@ await session.stop();
 For distributed workers, use remote `sessionId` instead of keeping local engine state.
 
 ```typescript
-import { RemoteIsol8 } from "isol8";
+import { RemoteIsol8 } from "@isol8/core";
 
 const remote = new RemoteIsol8(
   {

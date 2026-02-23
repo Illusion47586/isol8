@@ -157,7 +157,7 @@ curl -X POST http://localhost:3000/execute \
 ## 8) Library-level debugging patterns
 
 ```typescript
-import { DockerIsol8 } from "isol8";
+import { DockerIsol8 } from "@isol8/core";
 
 const engine = new DockerIsol8({
   mode: "ephemeral",
@@ -187,7 +187,7 @@ await engine.stop();
 For remote client debugging:
 
 ```typescript
-import { RemoteIsol8 } from "isol8";
+import { RemoteIsol8 } from "@isol8/core";
 
 const remote = new RemoteIsol8(
   {

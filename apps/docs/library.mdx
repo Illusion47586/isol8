@@ -19,11 +19,11 @@ Both implement `Isol8Engine`.
 
 <CodeGroup>
 ```bash npm
-npm install isol8
+npm install @isol8/core
 ```
 
 ```bash bun
-bun add isol8
+bun add @isol8/core
 ```
 </CodeGroup>
 
@@ -31,7 +31,7 @@ bun add isol8
 
 <CodeGroup>
 ```typescript Input
-import { DockerIsol8 } from "isol8";
+import { DockerIsol8 } from "@isol8/core";
 
 const isol8 = new DockerIsol8({
   mode: "ephemeral",
@@ -141,7 +141,7 @@ result.exitCode === 0;
 ## RemoteIsol8
 
 ```typescript
-import { RemoteIsol8 } from "isol8";
+import { RemoteIsol8 } from "@isol8/core";
 
 const isol8 = new RemoteIsol8(
   {
@@ -304,7 +304,7 @@ const isol8 = new RemoteIsol8(
 
 <CodeGroup>
 ```typescript Input
-import { DockerIsol8 } from "isol8";
+import { DockerIsol8 } from "@isol8/core";
 
 const result = await DockerIsol8.cleanup();
 console.log(result.removed, result.failed, result.errors);

@@ -44,7 +44,7 @@ flowchart TD
 Run each step in an isolated execution and pass structured output forward via `stdin`.
 
 ```typescript
-import { DockerIsol8 } from "isol8";
+import { DockerIsol8 } from "@isol8/core";
 
 const engine = new DockerIsol8({
   mode: "ephemeral",
@@ -305,7 +305,7 @@ console.log(executed.stdout); // 10
 For centralized orchestration, use dedicated remote sessions per runtime role.
 
 ```typescript
-import { RemoteIsol8 } from "isol8";
+import { RemoteIsol8 } from "@isol8/core";
 
 const pyRemote = new RemoteIsol8(
   {

@@ -25,7 +25,7 @@ Enable only approved hosts first, then run scraping logic.
 <Tabs>
   <Tab title="Library">
     ```typescript
-    import { DockerIsol8 } from "isol8";
+    import { DockerIsol8 } from "@isol8/core";
 
     const engine = new DockerIsol8({
       mode: "ephemeral",
@@ -195,7 +195,7 @@ In non-stream mode, CLI prints collected network log entries when available.
 For centralized scraping infrastructure, run remote server and use `RemoteIsol8`.
 
 ```typescript
-import { RemoteIsol8 } from "isol8";
+import { RemoteIsol8 } from "@isol8/core";
 
 const remote = new RemoteIsol8(
   {
