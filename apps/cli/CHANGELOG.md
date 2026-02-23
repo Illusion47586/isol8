@@ -1,5 +1,14 @@
 # @isol8/cli
 
+## 0.14.2
+
+### Patch Changes
+
+- [`d0247d7`](https://github.com/Illusion47586/isol8/commit/d0247d760461a463ccdd1709ab5def78bd0b79a0) Thanks [@Illusion47586](https://github.com/Illusion47586)! - Publish `@isol8/cli` with a semver dependency on `@isol8/core` instead of `workspace:*` so global installs from npm resolve correctly.
+
+- Updated dependencies []:
+  - @isol8/core@0.14.2
+
 ## 0.14.1
 
 ### Patch Changes
