@@ -199,7 +199,7 @@ jobs:
             echo "No coverage badge changes to commit."
             exit 0
           fi
-          git commit -m "chore: update coverage badge [skip ci]"
+          git commit -m "chore: update coverage badge"
           git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
           git fetch origin "${TARGET_BRANCH}"
           git rebase "origin/${TARGET_BRANCH}"
