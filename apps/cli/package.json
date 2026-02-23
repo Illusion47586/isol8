@@ -1,7 +1,7 @@
 {
   "name": "@isol8/cli",
   "version": "0.14.6",
-  "description": "CLI for isol8 secure code execution",
+  "description": "CLI for AI agents to run untrusted code safely in isolated Docker sandboxes",
   "author": "Illusion47586",
   "license": "MIT",
   "repository": {
@@ -38,5 +38,13 @@
   },
   "files": [
     "dist"
+  ],
+  "keywords": [
+    "isol8",
+    "ai-agent",
+    "cli",
+    "sandbox",
+    "secure-execution",
+    "docker"
   ]
 }

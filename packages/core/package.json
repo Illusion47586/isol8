@@ -1,7 +1,7 @@
 {
   "name": "@isol8/core",
   "version": "0.14.6",
-  "description": "Core engine for isol8 secure code execution",
+  "description": "Sandboxed code execution engine for AI agents and apps (Docker, runtime and network controls)",
   "author": "Illusion47586",
   "license": "MIT",
   "repository": {
@@ -46,6 +46,14 @@
     "dist",
     "schema",
     "docker"
+  ],
+  "keywords": [
+    "isol8",
+    "ai-agent",
+    "sandbox",
+    "secure-execution",
+    "docker",
+    "typescript"
   ],
   "jsonValidation": [
     {
