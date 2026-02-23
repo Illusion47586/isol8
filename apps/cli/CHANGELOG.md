@@ -1,5 +1,14 @@
 # @isol8/cli
 
+## 0.14.7
+
+### Patch Changes
+
+- [`2a9498c`](https://github.com/Illusion47586/isol8/commit/2a9498cba662df57b186800c76175eccab7e72e4) Thanks [@Illusion47586](https://github.com/Illusion47586)! - improve CLI and core package docs/metadata for AI agent usage and feature discoverability
+
+- Updated dependencies [[`2a9498c`](https://github.com/Illusion47586/isol8/commit/2a9498cba662df57b186800c76175eccab7e72e4)]:
+  - @isol8/core@0.14.7
+
 ## 0.14.6
 
 ### Patch Changes

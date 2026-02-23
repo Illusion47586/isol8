@@ -1,5 +1,12 @@
 # @isol8/server
 
+## 0.14.7
+
+### Patch Changes
+
+- Updated dependencies [[`2a9498c`](https://github.com/Illusion47586/isol8/commit/2a9498cba662df57b186800c76175eccab7e72e4)]:
+  - @isol8/core@0.14.7
+
 ## 0.14.6
 
 ### Patch Changes
