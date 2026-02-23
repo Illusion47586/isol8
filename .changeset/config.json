@@ -1,0 +1,16 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@3.1.1/schema.json",
+  "changelog": [
+    "@changesets/changelog-github",
+    {
+      "repo": "Illusion47586/isol8"
+    }
+  ],
+  "commit": false,
+  "fixed": [["@isol8/core", "@isol8/cli", "@isol8/server", "@isol8/docs"]],
+  "linked": [],
+  "access": "public",
+  "baseBranch": "main",
+  "updateInternalDependencies": "patch",
+  "ignore": []
+}
