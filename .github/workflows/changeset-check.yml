@@ -1,0 +1,58 @@
+name: Changeset Check
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths-ignore:
+      - "coverage/coverage-badge.svg"
+
+permissions:
+  contents: read
+
+jobs:
+  changeset:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for Required Changeset
+        run: |
+          set -euo pipefail
+
+          BASE_REF="${{ github.base_ref }}"
+          git fetch origin "${BASE_REF}" --depth=1
+
+          CHANGED_FILES="$(git diff --name-only "origin/${BASE_REF}...HEAD")"
+          echo "Changed files:"
+          echo "${CHANGED_FILES}"
+
+          # Paths that do not require a changeset (docs/chore-only updates).
+          EXEMPT_PATTERN='^(apps/docs/|\.github/|coverage/|.*\.md$|.*\.mdx$|.*\.txt$|.*\.gitignore$|LICENSE$)'
+
+          REQUIRES_CHANGESET=false
+          while IFS= read -r file; do
+            if [ -z "${file}" ]; then
+              continue
+            fi
+            if ! echo "${file}" | grep -Eq "${EXEMPT_PATTERN}"; then
+              REQUIRES_CHANGESET=true
+              break
+            fi
+          done <<< "${CHANGED_FILES}"
+
+          if [ "${REQUIRES_CHANGESET}" = false ]; then
+            echo "Only docs/chore paths changed; skipping changeset requirement."
+            exit 0
+          fi
+
+          if echo "${CHANGED_FILES}" | grep -Eq '^\.changeset/.+\.md$'; then
+            echo "Changeset file detected."
+            exit 0
+          fi
+
+          echo "Missing changeset: this PR changes releasable code but has no .changeset/*.md file."
+          echo "Run 'bun run changeset' and commit the generated file."
+          exit 1
