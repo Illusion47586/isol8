@@ -1,5 +1,12 @@
 # @isol8/server
 
+## 0.14.6
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @isol8/core@0.14.6
+
 ## 0.14.5
 
 ### Patch Changes

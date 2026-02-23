@@ -1,5 +1,14 @@
 # @isol8/cli
 
+## 0.14.6
+
+### Patch Changes
+
+- [`feea82b`](https://github.com/Illusion47586/isol8/commit/feea82b729c7be7930311c79410849794875a326) Thanks [@Illusion47586](https://github.com/Illusion47586)! - fix release packaging to publish CLI with the correct @isol8/core dependency version
+
+- Updated dependencies []:
+  - @isol8/core@0.14.6
+
 ## 0.14.5
 
 ### Patch Changes
