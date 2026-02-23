@@ -67,6 +67,9 @@ jobs:
             echo "No changesets to release."
           else
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            # Refresh lockfile after version bump so workspace dependency
+            # resolution used by `bun pm pack` matches current versions.
+            bun install
 
             git add -A
             # Skip CI for this release-generated commit to avoid a workflow loop.
