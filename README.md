@@ -541,6 +541,18 @@ cd packages/core && bun run schema   # Regenerate JSON schema
 cd apps/docs && bun run dev          # Start docs dev server
 ```
 
+## Releases (Maintainers)
+
+Releases are automated with Changesets:
+
+1. Add a changeset in your feature PR:
+   ```bash
+   bun run changeset
+   ```
+2. Merge to `main`.
+3. The `Release` workflow creates/updates a "version packages" PR.
+4. When that PR is merged, CI publishes `@isol8/core` and `@isol8/cli` to npm and creates a `vX.Y.Z` GitHub release with server binaries.
+
 ## License
 
 MIT

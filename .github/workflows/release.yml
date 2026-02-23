@@ -8,14 +8,11 @@ on:
 
 jobs:
   release:
-    # Only run if CI passed
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      issues: write
       pull-requests: write
-      id-token: write
 
     steps:
       - name: Checkout code
@@ -32,7 +29,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 22
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -44,14 +41,45 @@ jobs:
           app-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
-      - name: Release
-        # NOTE:
-        # We intentionally publish via @semantic-release/exec in .releaserc.json
-        # instead of @semantic-release/npm. In this monorepo, @semantic-release/npm
-        # runs `npm version` in package roots and can fail with:
-        # "EUNSUPPORTEDPROTOCOL Unsupported URL Type 'workspace:'"
-        # when workspace protocol deps are present in the repo.
+      - name: Create Release PR or Publish
+        id: changesets
+        uses: changesets/action@v1
+        with:
+          version: bun run version-packages
+          publish: bun run release:publish
+          commit: "chore: version packages"
+          title: "chore: version packages"
+          commitMode: github-api
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: bunx semantic-release
+
+      - name: Resolve Published Version
+        if: steps.changesets.outputs.published == 'true'
+        id: version
+        run: echo "version=$(jq -r '.version' packages/core/package.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Create Tag
+        if: steps.changesets.outputs.published == 'true'
+        run: |
+          TAG="v${{ steps.version.outputs.version }}"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists."
+            exit 0
+          fi
+          git tag "$TAG"
+          git push origin "$TAG"
+
+      - name: Create GitHub Release
+        if: steps.changesets.outputs.published == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          generate_release_notes: true
+          files: |
+            apps/server/dist/isol8-server-linux-x64
+            apps/server/dist/isol8-server-linux-arm64
+            apps/server/dist/isol8-server-darwin-x64
+            apps/server/dist/isol8-server-darwin-arm64
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
