@@ -69,7 +69,7 @@ jobs:
           echo "Downloading coverage badge artifact: $ARTIFACT_ID"
           gh api repos/${{ github.repository }}/actions/artifacts/$ARTIFACT_ID/zip \
             --method GET \
-            -o coverage-badge.zip
+            > coverage-badge.zip
           
           unzip -o coverage-badge.zip -d coverage/
           rm coverage-badge.zip
