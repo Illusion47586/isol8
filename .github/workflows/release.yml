@@ -53,12 +53,25 @@ jobs:
           git remote set-url origin "https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/${{ github.repository }}.git"
 
       - name: Download Coverage Badge
-        uses: actions/download-artifact@v4
-        with:
-          name: coverage-badge
-          path: coverage/
-          run-id: ${{ github.event.workflow_run.id }}
-        continue-on-error: true
+        env:
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          # Get artifact ID from the triggering workflow run
+          ARTIFACT_ID=$(gh api repos/${{ github.repository }}/actions/runs/$RUN_ID/artifacts \
+            --jq '.artifacts[] | select(.name == "coverage-badge") | .id')
+          
+          if [ -z "$ARTIFACT_ID" ]; then
+            echo "No coverage badge artifact found in triggering workflow"
+            exit 0
+          fi
+          
+          echo "Downloading coverage badge artifact: $ARTIFACT_ID"
+          gh api repos/${{ github.repository }}/actions/artifacts/$ARTIFACT_ID/zip \
+            --method GET \
+            -o coverage-badge.zip
+          
+          unzip -o coverage-badge.zip -d coverage/
+          rm coverage-badge.zip
 
       - name: Version Packages and Commit
         id: versioning
