@@ -21,6 +21,24 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Download Coverage Badge
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-badge
+          path: coverage/
+        continue-on-error: true
+
+      - name: Commit Coverage Badge
+        if: success() && hashFiles('coverage/coverage-badge.svg')
+        run: |
+          git add coverage/coverage-badge.svg
+          if git diff --cached --quiet; then
+            echo "No coverage badge changes to commit."
+          else
+            git commit -m "chore: update coverage badge"
+            git push origin HEAD:main
+          fi
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
