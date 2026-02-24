@@ -11,7 +11,8 @@ This page explains how isol8 is assembled under the hood so you can reason about
 | Layer | Key implementation | Responsibility |
 |:--|:--|:--|
 | Public engine contract | `Isol8Engine` in `src/types.ts` | common `start/stop/execute/executeStream/putFile/getFile` interface |
-| Local engine | `DockerIsol8` in `src/engine/docker.ts` | Docker-backed execution, pooling, security controls |
+| Local engine | `DockerIsol8` in `src/engine/docker.ts` | Orchestrator/Facade - delegates to managers |
+| Manager classes | `NetworkManager`, `ExecutionManager`, `VolumeManager` in `src/engine/managers/` | Domain-specific operations |
 | Remote engine | `RemoteIsol8` in `src/client/remote.ts` | HTTP client for remote server execution |
 | Runtime selection | `RuntimeRegistry` in `src/runtime/adapter.ts` + `src/runtime/index.ts` | runtime adapter lookup and file extension detection |
 | HTTP server | `createServer()` in `src/server/index.ts` | `/execute`, `/execute/stream`, session + file endpoints |
@@ -29,6 +30,18 @@ flowchart TD
   D --> G["ContainerPool (ephemeral path)"]
   D --> H["Persistent container (session path)"]
 ```
+
+## Manager classes
+
+`DockerIsol8` delegates to specialized manager classes to reduce coupling and improve testability:
+
+- **`NetworkManager`** (`src/engine/managers/network-manager.ts`): Handles network setup including proxy startup and iptables configuration for filtered network mode.
+
+- **`ExecutionManager`** (`src/engine/managers/execution-manager.ts`): Handles command building, package installation, output streaming/collection, secret masking, and environment variable construction.
+
+- **`VolumeManager`** (`src/engine/managers/volume-manager.ts`): Handles file I/O operations (read/write via exec), tar-based archive operations, and output file retrieval.
+
+This separation allows each manager to be tested more independently and makes the codebase easier to maintain.
 
 ## Execution model
 
