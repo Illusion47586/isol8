@@ -57,6 +57,8 @@ jobs:
         with:
           name: coverage-badge
           path: coverage/
+          workflow: ci.yml
+          run-id: ${{ github.event.workflow_run.id }}
         continue-on-error: true
 
       - name: Version Packages and Commit
