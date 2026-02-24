@@ -64,9 +64,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          # Stage coverage badge if it exists
+          # Check if coverage badge exists before staging
+          HAS_BADGE=false
           if [ -f coverage/coverage-badge.svg ]; then
+            HAS_BADGE=true
             git add coverage/coverage-badge.svg
+          fi
+
+          # Check if there are changeset files (indicates a changeset release)
+          HAS_CHANGESET=false
+          if [ -d .changeset ] && [ -n "$(ls -A .changeset/)" ]; then
+            HAS_CHANGESET=true
           fi
 
           # Run versioning
@@ -84,9 +92,22 @@ jobs:
             # resolution used by `bun pm pack` matches current versions.
             bun install
 
+            # Build commit message based on what changed
+            if [ "$HAS_CHANGESET" = true ] && [ "$HAS_BADGE" = true ]; then
+              COMMIT_MSG="chore(release): v${VERSION} + coverage badge [skip ci]"
+            elif [ "$HAS_CHANGESET" = true ]; then
+              COMMIT_MSG="chore(release): v${VERSION} [skip ci]"
+            elif [ "$HAS_BADGE" = true ]; then
+              COMMIT_MSG="chore(release): v${VERSION} (coverage badge only) [skip ci]"
+            else
+              COMMIT_MSG="chore(release): v${VERSION} [skip ci]"
+            fi
+
+            echo "Commit message: $COMMIT_MSG"
+
             git add -A
             # Skip CI for this release-generated commit to avoid a workflow loop.
-            git commit -m "chore(release): v${VERSION} [skip ci]"
+            git commit -m "$COMMIT_MSG"
             git push origin HEAD:main
           fi
 
