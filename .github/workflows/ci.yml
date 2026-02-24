@@ -3,12 +3,8 @@ name: CI
 on:
   push:
     branches: ["main"]
-    paths-ignore:
-      - "coverage/coverage-badge.svg"
   pull_request:
     branches: ["main"]
-    paths-ignore:
-      - "coverage/coverage-badge.svg"
   workflow_dispatch:
 
 permissions:
@@ -185,31 +181,6 @@ jobs:
           path: coverage/coverage-badge.svg
           retention-days: 7
           overwrite: true
-
-      - name: Commit Coverage Badge
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref != 'main' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'isol8-ci[bot]' && github.actor != 'isol8-ci'
-        env:
-          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
-        run: |
-          TARGET_BRANCH="${{ github.event.pull_request.head.ref }}"
-          git config user.name "isol8-ci"
-          git config user.email "isol8-ci[bot]@users.noreply.github.com"
-          git add coverage/coverage-badge.svg
-          if git diff --cached --quiet; then
-            echo "No coverage badge changes to commit."
-            exit 0
-          fi
-          git commit -m "chore: update coverage badge"
-          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
-          git fetch origin "${TARGET_BRANCH}"
-          git rebase "origin/${TARGET_BRANCH}"
-          git push origin "HEAD:${TARGET_BRANCH}" || {
-            echo "Push failed, retrying after refreshing branch..."
-            git fetch origin "${TARGET_BRANCH}"
-            git rebase "origin/${TARGET_BRANCH}"
-            git push origin "HEAD:${TARGET_BRANCH}"
-          }
-        continue-on-error: true
 
       - name: Generate Coverage Comparison Report
         if: github.event_name == 'pull_request'
