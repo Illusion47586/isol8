@@ -55,6 +55,7 @@ jobs:
       - name: Download Coverage Badge
         env:
           RUN_ID: ${{ github.event.workflow_run.id }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           # Get artifact ID from the triggering workflow run
           ARTIFACT_ID=$(gh api repos/${{ github.repository }}/actions/runs/$RUN_ID/artifacts \
