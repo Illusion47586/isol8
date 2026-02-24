@@ -8,7 +8,6 @@
 
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { PassThrough, type Readable } from "node:stream";
 import Docker from "dockerode";
 import { RuntimeRegistry } from "../runtime";
 import type { RuntimeAdapter } from "../runtime/adapter";
@@ -32,357 +31,13 @@ import { fetchRemoteCode } from "./code-fetcher";
 import { Semaphore } from "./concurrency";
 import { EMBEDDED_DEFAULT_SECCOMP_PROFILE } from "./default-seccomp-profile";
 import { getCustomImageTag, normalizePackages } from "./image-builder";
+import { ExecutionManager, NetworkManager, VolumeManager } from "./managers";
 import { ContainerPool } from "./pool";
 import { type ContainerResourceUsage, calculateResourceDelta, getContainerStats } from "./stats";
-import {
-  createTarBuffer,
-  extractFromTar,
-  maskSecrets,
-  parseMemoryLimit,
-  truncateOutput,
-} from "./utils";
-
-/**
- * Writes a file into a running container using `docker exec`.
- * This bypasses the `putArchive` limitation where Docker rejects archive
- * uploads when `ReadonlyRootfs` is enabled — even to writable tmpfs mounts.
- *
- * Uses base64 encoding. Small files use direct command (fast), large files
- * use chunked approach to avoid command line length limits.
- */
-async function writeFileViaExec(
-  container: Docker.Container,
-  filePath: string,
-  content: Buffer | string
-): Promise<void> {
-  const data = typeof content === "string" ? Buffer.from(content, "utf-8") : content;
-  const b64 = data.toString("base64");
-
-  // Fast path for small files (< 20KB)
-  if (b64.length < 20_000) {
-    const exec = await container.exec({
-      Cmd: ["sh", "-c", `printf '%s' '${b64}' | base64 -d > ${filePath}`],
-      User: "sandbox",
-    });
-
-    await exec.start({ Detach: true });
-
-    let info = await exec.inspect();
-    while (info.Running) {
-      await new Promise((r) => setTimeout(r, 5));
-      info = await exec.inspect();
-    }
-
-    if (info.ExitCode !== 0) {
-      throw new Error(`Failed to write file ${filePath} in container (exit code ${info.ExitCode})`);
-    }
-    return;
-  }
-
-  // Chunked approach for larger files
-  const tempPath = `/tmp/b64_${Date.now()}.tmp`;
-
-  const chunkSize = 8000;
-  for (let i = 0; i < b64.length; i += chunkSize) {
-    const chunk = b64.slice(i, i + chunkSize);
-    const exec = await container.exec({
-      Cmd: ["sh", "-c", `printf '%s' '${chunk}' >> ${tempPath}`],
-      User: "sandbox",
-    });
-    await exec.start({ Detach: true });
-    await exec.inspect();
-  }
-
-  // Decode
-  const decodeExec = await container.exec({
-    Cmd: ["sh", "-c", `base64 -d ${tempPath} > ${filePath} && rm ${tempPath}`],
-    User: "sandbox",
-  });
-  await decodeExec.start({ Detach: true });
-
-  let info = await decodeExec.inspect();
-  while (info.Running) {
-    await new Promise((r) => setTimeout(r, 5));
-    info = await decodeExec.inspect();
-  }
-
-  if (info.ExitCode !== 0) {
-    throw new Error(`Failed to write file ${filePath} in container (exit code ${info.ExitCode})`);
-  }
-}
-
-/**
- * Reads a file from a running container using `docker exec`.
- * This bypasses the `getArchive` limitation where Docker rejects archive
- * downloads when `ReadonlyRootfs` is enabled — even from writable tmpfs mounts.
- *
- * Works by running `base64 <path>` and decoding the output.
- */
-async function readFileViaExec(container: Docker.Container, filePath: string): Promise<Buffer> {
-  const exec = await container.exec({
-    Cmd: ["base64", filePath],
-    AttachStdout: true,
-    AttachStderr: true,
-    User: "sandbox",
-  });
-
-  const stream = await exec.start({ Tty: false });
-
-  const chunks: Buffer[] = [];
-  const stderrChunks: Buffer[] = [];
-
-  const stdoutStream = new PassThrough();
-  const stderrStream = new PassThrough();
-  container.modem.demuxStream(stream, stdoutStream, stderrStream);
-
-  stdoutStream.on("data", (chunk: Buffer) => chunks.push(chunk));
-  stderrStream.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
-
-  await new Promise<void>((resolve, reject) => {
-    stream.on("end", resolve);
-    stream.on("error", reject);
-  });
-
-  const inspectResult = await exec.inspect();
-  if (inspectResult.ExitCode !== 0) {
-    const stderr = Buffer.concat(stderrChunks).toString("utf-8").trim();
-    throw new Error(
-      `Failed to read file ${filePath} in container: ${stderr} (exit code ${inspectResult.ExitCode})`
-    );
-  }
-
-  const b64Output = Buffer.concat(chunks).toString("utf-8").trim();
-  return Buffer.from(b64Output, "base64");
-}
+import { parseMemoryLimit } from "./utils";
 
 const SANDBOX_WORKDIR = "/sandbox";
 const MAX_OUTPUT_BYTES = 1024 * 1024; // 1MB default
-const PROXY_PORT = 8118;
-const PROXY_STARTUP_TIMEOUT_MS = 5000;
-const PROXY_POLL_INTERVAL_MS = 100;
-
-/**
- * Starts the bash proxy inside the container for filtered network mode.
- * Waits until the proxy is listening on PROXY_PORT before returning.
- */
-async function startProxy(
-  container: Docker.Container,
-  networkFilter?: { whitelist: string[]; blacklist: string[] }
-): Promise<void> {
-  const envParts: string[] = [];
-  if (networkFilter) {
-    envParts.push(`ISOL8_WHITELIST='${JSON.stringify(networkFilter.whitelist)}'`);
-    envParts.push(`ISOL8_BLACKLIST='${JSON.stringify(networkFilter.blacklist)}'`);
-  }
-  const envPrefix = envParts.length > 0 ? `${envParts.join(" ")} ` : "";
-
-  // Start proxy in background
-  const startExec = await container.exec({
-    Cmd: ["sh", "-c", `${envPrefix}bash /usr/local/bin/proxy.sh &`],
-  });
-  await startExec.start({ Detach: true });
-
-  // Poll until proxy is ready
-  const deadline = Date.now() + PROXY_STARTUP_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    try {
-      const checkExec = await container.exec({
-        Cmd: ["sh", "-c", `nc -z 127.0.0.1 ${PROXY_PORT} 2>/dev/null`],
-      });
-      await checkExec.start({ Detach: true });
-      let info = await checkExec.inspect();
-      while (info.Running) {
-        await new Promise((r) => setTimeout(r, 50));
-        info = await checkExec.inspect();
-      }
-      if (info.ExitCode === 0) {
-        return;
-      }
-    } catch {
-      // Ignore, keep polling
-    }
-    await new Promise((r) => setTimeout(r, PROXY_POLL_INTERVAL_MS));
-  }
-  throw new Error("Proxy failed to start within timeout");
-}
-
-/**
- * Sets up iptables rules inside the container to enforce network filtering.
- *
- * Only traffic from the `sandbox` user (uid 100) to the local proxy
- * on PROXY_PORT is allowed. All other outbound traffic from the sandbox
- * user is dropped at the kernel level, preventing raw-socket bypass of
- * the HTTP proxy.
- *
- * Rules added (in order):
- *   1. Allow all loopback traffic (lo interface)
- *   2. Allow established/related connections (return traffic)
- *   3. Allow sandbox user → 127.0.0.1:PROXY_PORT (TCP)
- *   4. Drop all other outbound from sandbox user (uid 100)
- *
- * Must be called AFTER startProxy() since the proxy needs to bind first.
- * Runs as root (default exec user) since iptables requires CAP_NET_ADMIN.
- */
-async function setupIptables(container: Docker.Container): Promise<void> {
-  const rules = [
-    // Allow all loopback traffic
-    "/usr/sbin/iptables -A OUTPUT -o lo -j ACCEPT",
-    // Allow established/related connections (responses to allowed requests)
-    "/usr/sbin/iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT",
-    // Allow sandbox user to reach the proxy
-    `/usr/sbin/iptables -A OUTPUT -p tcp -d 127.0.0.1 --dport ${PROXY_PORT} -m owner --uid-owner 100 -j ACCEPT`,
-    // Drop everything else from the sandbox user
-    "/usr/sbin/iptables -A OUTPUT -m owner --uid-owner 100 -j DROP",
-  ].join(" && ");
-
-  const exec = await container.exec({
-    Cmd: ["sh", "-c", rules],
-    // Runs as root (default) — iptables requires elevated privileges
-  });
-  await exec.start({ Detach: true });
-
-  // Wait for the exec to complete
-  let info = await exec.inspect();
-  while (info.Running) {
-    await new Promise((r) => setTimeout(r, 50));
-    info = await exec.inspect();
-  }
-
-  if (info.ExitCode !== 0) {
-    throw new Error(`Failed to set up iptables rules (exit code ${info.ExitCode})`);
-  }
-
-  logger.debug("[Filtered] iptables rules applied — sandbox user restricted to proxy only");
-}
-
-/**
- * Wraps a command with the `timeout` utility so the process is killed
- * after the specified duration. Returns the wrapped command.
- */
-function wrapWithTimeout(cmd: string[], timeoutSec: number): string[] {
-  return ["timeout", "-s", "KILL", String(timeoutSec), ...cmd];
-}
-
-/**
- * Returns the package manager install command for a given runtime.
- */
-function getInstallCommand(runtime: string, packages: string[]): string[] {
-  switch (runtime) {
-    case "python":
-      return [
-        "pip",
-        "install",
-        "--user",
-        "--no-cache-dir",
-        "--break-system-packages",
-        "--disable-pip-version-check",
-        "--retries",
-        "0",
-        "--timeout",
-        "15",
-        ...packages,
-      ];
-    case "node":
-      // Install to /sandbox (local node_modules) so resolution works for both CJS and ESM
-      return ["npm", "install", "--prefix", "/sandbox", ...packages];
-    case "bun":
-      // Bun global install - use /sandbox for writable location
-      return ["bun", "install", "-g", "--global-dir=/sandbox/.bun-global", ...packages];
-    case "deno":
-      // Deno uses URL imports; cache modules to /sandbox
-      return ["sh", "-c", packages.map((p) => `deno cache ${p}`).join(" && ")];
-    case "bash":
-      return ["apk", "add", "--no-cache", ...packages];
-    default:
-      throw new Error(`Unknown runtime for package install: ${runtime}`);
-  }
-}
-
-/**
- * Installs packages inside a container using the runtime's package manager.
- */
-async function installPackages(
-  container: Docker.Container,
-  runtime: string,
-  packages: string[],
-  timeoutMs: number
-): Promise<void> {
-  const timeoutSec = Math.max(1, Math.ceil(timeoutMs / 1000));
-  const cmd = wrapWithTimeout(getInstallCommand(runtime, packages), timeoutSec);
-  // Debug log
-  logger.debug(`Installing packages: ${JSON.stringify(cmd)}`);
-
-  // Set environment for writable install locations
-  // Use /sandbox instead of /tmp because /tmp has noexec flag which prevents loading .so files
-  const env: string[] = [
-    "PATH=/sandbox/.local/bin:/sandbox/.npm-global/bin:/sandbox/.bun-global/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin",
-  ];
-
-  if (runtime === "python") {
-    env.push("PYTHONUSERBASE=/sandbox/.local");
-  } else if (runtime === "node") {
-    env.push("NPM_CONFIG_PREFIX=/sandbox/.npm-global");
-    env.push("NPM_CONFIG_CACHE=/sandbox/.npm-cache");
-    env.push("npm_config_cache=/sandbox/.npm-cache");
-    env.push("NPM_CONFIG_FETCH_RETRIES=0");
-    env.push("npm_config_fetch_retries=0");
-    env.push("NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=1000");
-    env.push("npm_config_fetch_retry_mintimeout=1000");
-    env.push("NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=2000");
-    env.push("npm_config_fetch_retry_maxtimeout=2000");
-  } else if (runtime === "bun") {
-    env.push("BUN_INSTALL_GLOBAL_DIR=/sandbox/.bun-global");
-    env.push("BUN_INSTALL_CACHE_DIR=/sandbox/.bun-cache");
-    env.push("BUN_INSTALL_BIN=/sandbox/.bun-global/bin");
-  } else if (runtime === "deno") {
-    env.push("DENO_DIR=/sandbox/.deno");
-  }
-
-  const exec = await container.exec({
-    Cmd: cmd,
-    AttachStdout: true,
-    AttachStderr: true,
-    Env: env,
-    // Bash uses apk which requires root; all others install to user directories
-    User: runtime === "bash" ? "root" : "sandbox",
-  });
-
-  const stream = await exec.start({ Detach: false, Tty: false });
-
-  return new Promise<void>((resolve, reject) => {
-    let stderr = "";
-    const stdoutStream = new PassThrough();
-    const stderrStream = new PassThrough();
-
-    container.modem.demuxStream(stream, stdoutStream, stderrStream);
-
-    stderrStream.on("data", (chunk) => {
-      const text = chunk.toString();
-      stderr += text;
-      logger.debug(`[install:${runtime}:stderr] ${text.trimEnd()}`);
-    });
-
-    stdoutStream.on("data", (chunk) => {
-      const text = chunk.toString();
-      logger.debug(`[install:${runtime}:stdout] ${text.trimEnd()}`);
-    });
-
-    stream.on("end", async () => {
-      try {
-        const info = await exec.inspect();
-        if (info.ExitCode !== 0) {
-          reject(new Error(`Package install failed (exit code ${info.ExitCode}): ${stderr}`));
-        } else {
-          resolve();
-        }
-      } catch (err) {
-        reject(err);
-      }
-    });
-
-    stream.on("error", reject);
-  });
-}
 
 /** Options for constructing a {@link DockerIsol8} instance. Extends {@link Isol8Options} with Docker-specific settings. */
 export interface DockerIsol8Options extends Isol8Options {
@@ -429,6 +84,10 @@ export class DockerIsol8 implements Isol8Engine {
   private readonly dependencies: Isol8Dependencies;
   private readonly auditLogger?: AuditLogger;
   private readonly remoteCodePolicy: RemoteCodePolicy;
+
+  private readonly networkManager: NetworkManager;
+  private readonly executionManager: ExecutionManager;
+  private readonly volumeManager: VolumeManager;
 
   private container: Docker.Container | null = null;
   private persistentRuntime: RuntimeAdapter | null = null;
@@ -506,6 +165,22 @@ export class DockerIsol8 implements Isol8Engine {
     if (options.audit) {
       this.auditLogger = new AuditLogger(options.audit);
     }
+
+    // Initialize managers
+    this.networkManager = new NetworkManager({
+      network: this.network,
+      networkFilter: this.networkFilter,
+    });
+
+    this.executionManager = new ExecutionManager({
+      secrets: this.secrets,
+      maxOutputSize: this.maxOutputSize,
+    });
+
+    this.volumeManager = new VolumeManager({
+      readonlyRootFs: this.readonlyRootFs,
+      sandboxWorkdir: SANDBOX_WORKDIR,
+    });
 
     if (options.debug) {
       logger.setDebug(true);
@@ -782,12 +457,7 @@ export class DockerIsol8 implements Isol8Engine {
     if (!this.container) {
       throw new Error("No active container. Call execute() first in persistent mode.");
     }
-    if (this.readonlyRootFs) {
-      await writeFileViaExec(this.container, path, content);
-    } else {
-      const tar = createTarBuffer(path, content);
-      await this.container.putArchive(tar, { path: "/" });
-    }
+    await this.volumeManager.putFile(this.container, path, content);
   }
 
   /**
@@ -802,18 +472,7 @@ export class DockerIsol8 implements Isol8Engine {
       throw new Error("No active container. Call execute() first in persistent mode.");
     }
 
-    if (this.readonlyRootFs) {
-      return readFileViaExec(this.container, path);
-    }
-
-    const stream = await this.container.getArchive({ path });
-
-    const chunks: Buffer[] = [];
-    for await (const chunk of stream as AsyncIterable<Buffer>) {
-      chunks.push(chunk);
-    }
-    const tarBuffer = Buffer.concat(chunks);
-    return extractFromTar(tarBuffer, path);
+    return this.volumeManager.getFile(this.container, path);
   }
 
   /** The Docker container ID, or `null` if no container is active. Used by the server for session tracking. */
@@ -838,7 +497,12 @@ export class DockerIsol8 implements Isol8Engine {
         Image: image,
         Cmd: ["sleep", "infinity"],
         WorkingDir: SANDBOX_WORKDIR,
-        Env: this.buildEnv(),
+        Env: this.executionManager.buildEnv(
+          undefined,
+          this.networkManager.proxyPort,
+          this.network,
+          this.networkFilter
+        ),
         NetworkDisabled: this.network === "none",
         HostConfig: this.buildHostConfig(),
         StopTimeout: 2,
@@ -847,25 +511,28 @@ export class DockerIsol8 implements Isol8Engine {
       try {
         await container.start();
 
-        if (this.network === "filtered") {
-          await startProxy(container, this.networkFilter);
-          await setupIptables(container);
-        }
+        await this.networkManager.startProxy(container);
+        await this.networkManager.setupIptables(container);
 
         // Write code
         const ext = request.fileExtension ?? adapter.getFileExtension();
         const filePath = `${SANDBOX_WORKDIR}/main${ext}`;
-        await writeFileViaExec(container, filePath, request.code);
+        await this.volumeManager.writeFileViaExec(container, filePath, request.code);
 
         // Install packages if requested
         if (request.installPackages?.length) {
-          await installPackages(container, request.runtime, request.installPackages, timeoutMs);
+          await this.executionManager.installPackages(
+            container,
+            request.runtime,
+            request.installPackages,
+            timeoutMs
+          );
         }
 
         // Inject input files
         if (request.files) {
           for (const [fPath, fContent] of Object.entries(request.files)) {
-            await writeFileViaExec(container, fPath, fContent);
+            await this.volumeManager.writeFileViaExec(container, fPath, fContent);
           }
         }
 
@@ -875,16 +542,24 @@ export class DockerIsol8 implements Isol8Engine {
         let cmd: string[];
         if (request.stdin) {
           const stdinPath = `${SANDBOX_WORKDIR}/_stdin`;
-          await writeFileViaExec(container, stdinPath, request.stdin);
+          await this.volumeManager.writeFileViaExec(container, stdinPath, request.stdin);
           const cmdStr = rawCmd.map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(" ");
-          cmd = wrapWithTimeout(["sh", "-c", `cat ${stdinPath} | ${cmdStr}`], timeoutSec);
+          cmd = this.executionManager.wrapWithTimeout(
+            ["sh", "-c", `cat ${stdinPath} | ${cmdStr}`],
+            timeoutSec
+          );
         } else {
-          cmd = wrapWithTimeout(rawCmd, timeoutSec);
+          cmd = this.executionManager.wrapWithTimeout(rawCmd, timeoutSec);
         }
 
         const exec = await container.exec({
           Cmd: cmd,
-          Env: this.buildEnv(request.env),
+          Env: this.executionManager.buildEnv(
+            request.env,
+            this.networkManager.proxyPort,
+            this.network,
+            this.networkFilter
+          ),
           AttachStdout: true,
           AttachStderr: true,
           WorkingDir: SANDBOX_WORKDIR,
@@ -893,7 +568,7 @@ export class DockerIsol8 implements Isol8Engine {
 
         const execStream = await exec.start({ Tty: false });
 
-        yield* this.streamExecOutput(execStream, exec, container, timeoutMs);
+        yield* this.executionManager.streamExecOutput(execStream, exec, container, timeoutMs);
       } finally {
         if (this.persist) {
           logger.debug(`[Persist] Leaving container running for inspection: ${container.id}`);
@@ -989,7 +664,12 @@ export class DockerIsol8 implements Isol8Engine {
         createOptions: {
           Cmd: ["sleep", "infinity"],
           WorkingDir: SANDBOX_WORKDIR,
-          Env: this.buildEnv(),
+          Env: this.executionManager.buildEnv(
+            undefined,
+            this.networkManager.proxyPort,
+            this.network,
+            this.networkFilter
+          ),
           NetworkDisabled: this.network === "none",
           HostConfig: this.buildHostConfig(),
           StopTimeout: 2,
@@ -1026,10 +706,8 @@ export class DockerIsol8 implements Isol8Engine {
 
     try {
       // Start proxy for filtered network mode
-      if (this.network === "filtered") {
-        await startProxy(container, this.networkFilter);
-        await setupIptables(container);
-      }
+      await this.networkManager.startProxy(container);
+      await this.networkManager.setupIptables(container);
 
       // Fast path: for simple executions, avoid file write and execute inline.
       // Falls back to file-based path for runtimes that require file input (e.g. Deno)
@@ -1045,19 +723,24 @@ export class DockerIsol8 implements Isol8Engine {
         } catch {
           const ext = req.fileExtension ?? adapter.getFileExtension();
           const filePath = `${SANDBOX_WORKDIR}/main${ext}`;
-          await writeFileViaExec(container, filePath, req.code);
+          await this.volumeManager.writeFileViaExec(container, filePath, req.code);
           rawCmd = adapter.getCommand(req.code, filePath);
         }
       } else {
         const ext = req.fileExtension ?? adapter.getFileExtension();
         const filePath = `${SANDBOX_WORKDIR}/main${ext}`;
-        await writeFileViaExec(container, filePath, req.code);
+        await this.volumeManager.writeFileViaExec(container, filePath, req.code);
         rawCmd = adapter.getCommand(req.code, filePath);
       }
 
       // Install packages if requested
       if (req.installPackages?.length) {
-        await installPackages(container, req.runtime, req.installPackages, timeoutMs);
+        await this.executionManager.installPackages(
+          container,
+          req.runtime,
+          req.installPackages,
+          timeoutMs
+        );
       }
 
       // Execute the actual command, wrapped with timeout to ensure kill on expiry
@@ -1067,23 +750,31 @@ export class DockerIsol8 implements Isol8Engine {
       let cmd: string[];
       if (req.stdin) {
         const stdinPath = `${SANDBOX_WORKDIR}/_stdin`;
-        await writeFileViaExec(container, stdinPath, req.stdin);
+        await this.volumeManager.writeFileViaExec(container, stdinPath, req.stdin);
         const cmdStr = rawCmd.map((a) => `'${a.replace(/'/g, "'\\''")}' `).join("");
-        cmd = wrapWithTimeout(["sh", "-c", `cat ${stdinPath} | ${cmdStr}`], timeoutSec);
+        cmd = this.executionManager.wrapWithTimeout(
+          ["sh", "-c", `cat ${stdinPath} | ${cmdStr}`],
+          timeoutSec
+        );
       } else {
-        cmd = wrapWithTimeout(rawCmd, timeoutSec);
+        cmd = this.executionManager.wrapWithTimeout(rawCmd, timeoutSec);
       }
 
       // Inject input files
       if (req.files) {
         for (const [fPath, fContent] of Object.entries(req.files)) {
-          await writeFileViaExec(container, fPath, fContent);
+          await this.volumeManager.writeFileViaExec(container, fPath, fContent);
         }
       }
 
       const exec = await container.exec({
         Cmd: cmd,
-        Env: this.buildEnv(req.env),
+        Env: this.executionManager.buildEnv(
+          req.env,
+          this.networkManager.proxyPort,
+          this.network,
+          this.networkFilter
+        ),
         AttachStdout: true,
         AttachStderr: true,
         WorkingDir: SANDBOX_WORKDIR,
@@ -1093,7 +784,7 @@ export class DockerIsol8 implements Isol8Engine {
       const start = performance.now();
       const execStream = await exec.start({ Tty: false });
 
-      const { stdout, stderr, truncated } = await this.collectExecOutput(
+      const { stdout, stderr, truncated } = await this.executionManager.collectExecOutput(
         execStream,
         container,
         timeoutMs
@@ -1127,8 +818,8 @@ export class DockerIsol8 implements Isol8Engine {
       }
 
       const result: ExecutionResult = {
-        stdout: this.postProcessOutput(stdout, truncated),
-        stderr: this.postProcessOutput(stderr, false),
+        stdout: this.executionManager.postProcessOutput(stdout, truncated),
+        stderr: this.executionManager.postProcessOutput(stderr, false),
         exitCode: inspectResult.ExitCode ?? 1,
         durationMs,
         truncated,
@@ -1138,7 +829,9 @@ export class DockerIsol8 implements Isol8Engine {
         containerId: container.id,
         ...(resourceUsage ? { resourceUsage } : {}),
         ...(networkLogs ? { networkLogs } : {}),
-        ...(req.outputPaths ? { files: await this.retrieveFiles(container, req.outputPaths) } : {}),
+        ...(req.outputPaths
+          ? { files: await this.volumeManager.retrieveFiles(container, req.outputPaths) }
+          : {}),
       };
 
       // Record audit log if audit logger is configured
@@ -1180,22 +873,12 @@ export class DockerIsol8 implements Isol8Engine {
     const filePath = `${SANDBOX_WORKDIR}/exec_${Date.now()}${ext}`;
 
     // Write code to the container
-    if (this.readonlyRootFs) {
-      await writeFileViaExec(this.container!, filePath, req.code);
-    } else {
-      const tar = createTarBuffer(filePath, req.code);
-      await this.container!.putArchive(tar, { path: "/" });
-    }
+    await this.volumeManager.putFile(this.container!, filePath, req.code);
 
     // Inject input files
     if (req.files) {
       for (const [fPath, fContent] of Object.entries(req.files)) {
-        if (this.readonlyRootFs) {
-          await writeFileViaExec(this.container!, fPath, fContent);
-        } else {
-          const tar = createTarBuffer(fPath, fContent);
-          await this.container!.putArchive(tar, { path: "/" });
-        }
+        await this.volumeManager.putFile(this.container!, fPath, fContent);
       }
     }
 
@@ -1204,21 +887,34 @@ export class DockerIsol8 implements Isol8Engine {
 
     // Install packages if requested
     if (req.installPackages?.length) {
-      await installPackages(this.container!, req.runtime, req.installPackages, timeoutMs);
+      await this.executionManager.installPackages(
+        this.container!,
+        req.runtime,
+        req.installPackages,
+        timeoutMs
+      );
     }
 
     // Handle stdin
     let cmd: string[];
     if (req.stdin) {
       const stdinPath = `${SANDBOX_WORKDIR}/_stdin_${Date.now()}`;
-      await writeFileViaExec(this.container!, stdinPath, req.stdin);
+      await this.volumeManager.writeFileViaExec(this.container!, stdinPath, req.stdin);
       const cmdStr = rawCmd.map((a) => `'${a.replace(/'/g, "'\\''")}' `).join("");
-      cmd = wrapWithTimeout(["sh", "-c", `cat ${stdinPath} | ${cmdStr}`], timeoutSec);
+      cmd = this.executionManager.wrapWithTimeout(
+        ["sh", "-c", `cat ${stdinPath} | ${cmdStr}`],
+        timeoutSec
+      );
     } else {
-      cmd = wrapWithTimeout(rawCmd, timeoutSec);
+      cmd = this.executionManager.wrapWithTimeout(rawCmd, timeoutSec);
     }
 
-    const execEnv = this.buildEnv(req.env);
+    const execEnv = this.executionManager.buildEnv(
+      req.env,
+      this.networkManager.proxyPort,
+      this.network,
+      this.networkFilter
+    );
 
     const exec = await this.container!.exec({
       Cmd: cmd,
@@ -1232,7 +928,7 @@ export class DockerIsol8 implements Isol8Engine {
     const start = performance.now();
     const execStream = await exec.start({ Tty: false });
 
-    const { stdout, stderr, truncated } = await this.collectExecOutput(
+    const { stdout, stderr, truncated } = await this.executionManager.collectExecOutput(
       execStream,
       this.container!,
       timeoutMs
@@ -1272,8 +968,8 @@ export class DockerIsol8 implements Isol8Engine {
     }
 
     const result: ExecutionResult = {
-      stdout: this.postProcessOutput(stdout, truncated),
-      stderr: this.postProcessOutput(stderr, false),
+      stdout: this.executionManager.postProcessOutput(stdout, truncated),
+      stderr: this.executionManager.postProcessOutput(stderr, false),
       exitCode: inspectResult.ExitCode ?? 1,
       durationMs,
       truncated,
@@ -1300,27 +996,7 @@ export class DockerIsol8 implements Isol8Engine {
     container: Docker.Container,
     paths: string[]
   ): Promise<Record<string, string>> {
-    const files: Record<string, string> = {};
-    for (const p of paths) {
-      try {
-        const buf = this.readonlyRootFs
-          ? await readFileViaExec(container, p)
-          : await this.getFileFromContainer(container, p);
-        files[p] = buf.toString("base64");
-      } catch {
-        // Skip files that don't exist
-      }
-    }
-    return files;
-  }
-
-  private async getFileFromContainer(container: Docker.Container, path: string): Promise<Buffer> {
-    const stream = await container.getArchive({ path });
-    const chunks: Buffer[] = [];
-    for await (const chunk of stream as AsyncIterable<Buffer>) {
-      chunks.push(chunk);
-    }
-    return extractFromTar(Buffer.concat(chunks), path);
+    return this.volumeManager.retrieveFiles(container, paths);
   }
 
   private async startPersistentContainer(adapter: RuntimeAdapter): Promise<void> {
@@ -1330,7 +1006,12 @@ export class DockerIsol8 implements Isol8Engine {
       Image: image,
       Cmd: ["sleep", "infinity"],
       WorkingDir: SANDBOX_WORKDIR,
-      Env: this.buildEnv(),
+      Env: this.executionManager.buildEnv(
+        undefined,
+        this.networkManager.proxyPort,
+        this.network,
+        this.networkFilter
+      ),
       NetworkDisabled: this.network === "none",
       HostConfig: this.buildHostConfig(),
       StopTimeout: 2,
@@ -1343,10 +1024,8 @@ export class DockerIsol8 implements Isol8Engine {
     await this.container.start();
 
     // Start proxy for filtered network mode
-    if (this.network === "filtered") {
-      await startProxy(this.container, this.networkFilter);
-      await setupIptables(this.container);
-    }
+    await this.networkManager.startProxy(this.container);
+    await this.networkManager.setupIptables(this.container);
 
     this.persistentRuntime = adapter;
   }
@@ -1440,233 +1119,6 @@ export class DockerIsol8 implements Isol8Engine {
     }
 
     throw new Error("Embedded default seccomp profile is unavailable");
-  }
-
-  private buildEnv(extra?: Record<string, string>): string[] {
-    const env: string[] = [
-      "PYTHONUNBUFFERED=1",
-      "PYTHONUSERBASE=/sandbox/.local",
-      "NPM_CONFIG_PREFIX=/sandbox/.npm-global",
-      "DENO_DIR=/sandbox/.deno",
-      "PATH=/sandbox/.local/bin:/sandbox/.npm-global/bin:/sandbox/.bun-global/bin:/usr/local/bin:/usr/bin:/bin",
-      "NODE_PATH=/usr/local/lib/node_modules:/sandbox/.npm-global/lib/node_modules:/sandbox/node_modules",
-    ];
-
-    // Add secrets as env vars
-    for (const [key, value] of Object.entries(this.secrets)) {
-      env.push(`${key}=${value}`);
-    }
-
-    // Add extra env vars
-    if (extra) {
-      for (const [key, value] of Object.entries(extra)) {
-        env.push(`${key}=${value}`);
-      }
-    }
-
-    // Add proxy config for filtered mode. Always set the HTTP(S)_PROXY
-    // environment variables when running in "filtered" mode so runtimes
-    // will use the in-container proxy. If a networkFilter is provided,
-    // also export the whitelist/blacklist JSON so the proxy enforces rules.
-    if (this.network === "filtered") {
-      if (this.networkFilter) {
-        env.push(`ISOL8_WHITELIST=${JSON.stringify(this.networkFilter.whitelist)}`);
-        env.push(`ISOL8_BLACKLIST=${JSON.stringify(this.networkFilter.blacklist)}`);
-      }
-      env.push(`HTTP_PROXY=http://127.0.0.1:${PROXY_PORT}`);
-      env.push(`HTTPS_PROXY=http://127.0.0.1:${PROXY_PORT}`);
-      env.push(`http_proxy=http://127.0.0.1:${PROXY_PORT}`);
-      env.push(`https_proxy=http://127.0.0.1:${PROXY_PORT}`);
-    }
-
-    return env;
-  }
-
-  private async *streamExecOutput(
-    stream: NodeJS.ReadableStream,
-    exec: Docker.Exec,
-    container: Docker.Container,
-    timeoutMs: number
-  ): AsyncGenerator<StreamEvent> {
-    // Bridge event-based stream to async generator via a queue
-    const queue: StreamEvent[] = [];
-    let resolve: (() => void) | null = null;
-    let done = false;
-
-    const push = (event: StreamEvent) => {
-      queue.push(event);
-      if (resolve) {
-        resolve();
-        resolve = null;
-      }
-    };
-
-    const timer = setTimeout(() => {
-      push({ type: "error", data: "EXECUTION TIMED OUT" });
-      push({ type: "exit", data: "137" });
-      done = true;
-    }, timeoutMs);
-
-    const stdoutStream = new PassThrough();
-    const stderrStream = new PassThrough();
-
-    container.modem.demuxStream(stream, stdoutStream, stderrStream);
-
-    stdoutStream.on("data", (chunk: Buffer) => {
-      let text = chunk.toString("utf-8");
-      if (Object.keys(this.secrets).length > 0) {
-        text = maskSecrets(text, this.secrets);
-      }
-      push({ type: "stdout", data: text });
-    });
-
-    stderrStream.on("data", (chunk: Buffer) => {
-      let text = chunk.toString("utf-8");
-      if (Object.keys(this.secrets).length > 0) {
-        text = maskSecrets(text, this.secrets);
-      }
-      push({ type: "stderr", data: text });
-    });
-
-    stream.on("end", async () => {
-      clearTimeout(timer);
-      try {
-        const info = await exec.inspect();
-        push({ type: "exit", data: (info.ExitCode ?? 0).toString() });
-      } catch {
-        push({ type: "exit", data: "1" });
-      }
-      done = true;
-    });
-
-    stream.on("error", (err: Error) => {
-      clearTimeout(timer);
-      push({ type: "error", data: err.message });
-      push({ type: "exit", data: "1" });
-      done = true;
-    });
-
-    // Drain the queue as events arrive
-    while (!done || queue.length > 0) {
-      if (queue.length > 0) {
-        yield queue.shift()!;
-      } else if (resolve) {
-        await new Promise<void>((r) => {
-          resolve = r;
-        });
-      } else {
-        await new Promise((r) => setTimeout(r, 10));
-      }
-    }
-  }
-
-  private async collectExecOutput(
-    stream: NodeJS.ReadableStream,
-    container: Docker.Container,
-    timeoutMs: number
-  ): Promise<{ stdout: string; stderr: string; truncated: boolean }> {
-    return new Promise((resolve, reject) => {
-      let stdout = "";
-      let stderr = "";
-      let truncated = false;
-      let settled = false;
-      let stdoutEnded = false;
-      let stderrEnded = false;
-
-      const timer = setTimeout(() => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        // Destroy stream to ensure no more data comes in
-        if ((stream as Readable).destroy) {
-          (stream as Readable).destroy();
-        }
-        resolve({ stdout, stderr: `${stderr}\n--- EXECUTION TIMED OUT ---`, truncated });
-      }, timeoutMs);
-
-      const stdoutStream = new PassThrough();
-      const stderrStream = new PassThrough();
-
-      container.modem.demuxStream(stream, stdoutStream, stderrStream);
-
-      stdoutStream.on("data", (chunk: Buffer) => {
-        stdout += chunk.toString("utf-8");
-        if (stdout.length > this.maxOutputSize) {
-          const result = truncateOutput(stdout, this.maxOutputSize);
-          stdout = result.text;
-          truncated = true;
-        }
-      });
-
-      stderrStream.on("data", (chunk: Buffer) => {
-        stderr += chunk.toString("utf-8");
-        if (stderr.length > this.maxOutputSize) {
-          const result = truncateOutput(stderr, this.maxOutputSize);
-          stderr = result.text;
-          truncated = true;
-        }
-      });
-
-      const checkDone = () => {
-        if (settled) {
-          return;
-        }
-        if (stdoutEnded && stderrEnded) {
-          settled = true;
-          clearTimeout(timer);
-          resolve({ stdout, stderr, truncated });
-        }
-      };
-
-      stdoutStream.on("end", () => {
-        stdoutEnded = true;
-        checkDone();
-      });
-
-      stderrStream.on("end", () => {
-        stderrEnded = true;
-        checkDone();
-      });
-
-      stream.on("error", (err: Error) => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        clearTimeout(timer);
-        reject(err);
-      });
-
-      // Safety net: if the main stream ends but substreams don't (shouldn't happen with PassThrough but good for safety)
-      stream.on("end", () => {
-        // If main stream ends, substreams usually end too. But if they don't within a short grace period, force close.
-        if (settled) {
-          return;
-        }
-
-        // Give substreams a moment to flush
-        setTimeout(() => {
-          if (!settled) {
-            stdoutEnded = true;
-            stderrEnded = true;
-            checkDone();
-          }
-        }, 100);
-      });
-    });
-  }
-
-  private postProcessOutput(output: string, _truncated: boolean): string {
-    let result = output;
-
-    // Mask secrets
-    if (Object.keys(this.secrets).length > 0) {
-      result = maskSecrets(result, this.secrets);
-    }
-
-    // Trim trailing whitespace
-    return result.trimEnd();
   }
 
   /**
