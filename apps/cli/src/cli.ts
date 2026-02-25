@@ -4,13 +4,15 @@ import {
   chmodSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   renameSync,
+  statSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { arch, homedir, platform } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, relative, resolve } from "node:path";
 import type {
   ExecutionRequest,
   Isol8Engine,
@@ -33,6 +35,13 @@ import {
 import { Command } from "commander";
 import Docker from "dockerode";
 import ora from "ora";
+import {
+  addProfile,
+  getDefaultProfile,
+  loadProfiles,
+  removeProfile,
+  setDefaultProfile,
+} from "./remote.js";
 
 const program = new Command();
 
@@ -1048,6 +1057,302 @@ program
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
+// ─── remote ───────────────────────────────────────────────────────────
+
+const remoteCmd = program.command("remote").description("Manage saved remote server connections");
+
+remoteCmd
+  .command("add")
+  .description("Save a remote server profile")
+  .argument("<name>", "Profile name (e.g. staging, prod)")
+  .requiredOption("--host <url>", "Server URL")
+  .requiredOption("--key <key>", "API key")
+  .action((name: string, opts) => {
+    addProfile(name, opts.host, opts.key);
+    console.log(`[OK] Remote profile '${name}' saved.`);
+  });
+
+remoteCmd
+  .command("remove")
+  .description("Remove a saved remote profile")
+  .argument("<name>", "Profile name to remove")
+  .action((name: string) => {
+    if (removeProfile(name)) {
+      console.log(`[OK] Remote profile '${name}' removed.`);
+    } else {
+      console.error(`[ERR] Profile '${name}' not found.`);
+      process.exit(1);
+    }
+  });
+
+remoteCmd
+  .command("list")
+  .description("List all saved remote profiles")
+  .action(() => {
+    const profiles = loadProfiles();
+    if (profiles.length === 0) {
+      console.log("No remote profiles saved.");
+      console.log("  Use: isol8 remote add <name> --host <url> --key <key>");
+      return;
+    }
+
+    console.log("\nRemote Profiles\n");
+    for (const p of profiles) {
+      const marker = p.default ? " (default)" : "";
+      const maskedKey =
+        p.apiKey.length > 4 ? `${p.apiKey.slice(0, 4)}${"*".repeat(p.apiKey.length - 4)}` : "****";
+      console.log(`  ${p.name}${marker}`);
+      console.log(`    Host: ${p.host}`);
+      console.log(`    Key:  ${maskedKey}`);
+    }
+    console.log("");
+  });
+
+remoteCmd
+  .command("use")
+  .description("Set the default remote profile")
+  .argument("<name>", "Profile name to set as default")
+  .action((name: string) => {
+    if (setDefaultProfile(name)) {
+      console.log(`[OK] Default remote set to '${name}'.`);
+    } else {
+      console.error(`[ERR] Profile '${name}' not found.`);
+      process.exit(1);
+    }
+  });
+
+// ─── logs ─────────────────────────────────────────────────────────────
+
+program
+  .command("logs")
+  .description("Stream logs from a remote isol8 server")
+  .option("--host <url>", "Server URL (or use default remote profile)")
+  .option("--key <key>", "API key (or use default remote profile)")
+  .option("-f, --follow", "Follow log output")
+  .option("-n, --lines <n>", "Number of recent lines to show", "50")
+  .action(async (opts) => {
+    const { host, apiKey } = resolveRemoteConnection(opts.host, opts.key);
+
+    const client = new RemoteIsol8({ host, apiKey });
+    const lines = opts.lines ? Number.parseInt(opts.lines, 10) : undefined;
+
+    try {
+      for await (const line of client.getLogs({ follow: opts.follow, lines })) {
+        console.log(line);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[ERR] ${message}`);
+      process.exit(1);
+    }
+  });
+
+// ─── signal ───────────────────────────────────────────────────────────
+
+program
+  .command("signal")
+  .description("Send a signal to a running remote container")
+  .argument("<session-id>", "Session ID of the running container")
+  .option("--signal <name>", "Signal to send (SIGINT, SIGTERM, SIGKILL)", "SIGTERM")
+  .option("--host <url>", "Server URL (or use default remote profile)")
+  .option("--key <key>", "API key (or use default remote profile)")
+  .action(async (sessionId: string, opts) => {
+    const { host, apiKey } = resolveRemoteConnection(opts.host, opts.key);
+
+    const client = new RemoteIsol8({ host, apiKey });
+    const signal = opts.signal ?? "SIGTERM";
+
+    const spinner = ora(`Sending ${signal} to ${sessionId}...`).start();
+    try {
+      await client.signal(sessionId, signal);
+      spinner.succeed(`Signal ${signal} sent to session ${sessionId}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      spinner.fail(`Failed to send signal: ${message}`);
+      process.exit(1);
+    }
+  });
+
+// ─── forward ──────────────────────────────────────────────────────────
+
+program
+  .command("forward")
+  .description("Forward a remote container port to local (coming soon)")
+  .argument("<session-id>", "Session ID of the running container")
+  .argument("<ports>", "Port mapping: remote:local (e.g. 8080:3000)")
+  .option("--host <url>", "Server URL")
+  .option("--key <key>", "API key")
+  .action((_sessionId: string, _ports: string) => {
+    console.log("[INFO] Port forwarding is not yet implemented.");
+    console.log("       This feature requires WebSocket TCP proxy support on the server.");
+    console.log("       See: https://github.com/Illusion47586/isol8/issues/75");
+    process.exit(0);
+  });
+
+// ─── sync ─────────────────────────────────────────────────────────────
+
+const syncCmd = program
+  .command("sync")
+  .description("Synchronize files with a remote persistent container");
+
+syncCmd
+  .command("push")
+  .description("Upload a local directory to a remote container")
+  .argument("<session-id>", "Session ID (persistent mode)")
+  .argument("<local-dir>", "Local directory to upload")
+  .argument("[remote-dir]", "Remote directory path", "/sandbox")
+  .option("--host <url>", "Server URL")
+  .option("--key <key>", "API key")
+  .option("--watch", "Watch for changes and re-sync automatically")
+  .action(async (sessionId: string, localDir: string, remoteDir: string, opts) => {
+    const { host, apiKey } = resolveRemoteConnection(opts.host, opts.key);
+
+    const client = new RemoteIsol8({ host, apiKey, sessionId });
+    const resolvedLocal = resolve(localDir);
+
+    if (!existsSync(resolvedLocal)) {
+      console.error(`[ERR] Local directory not found: ${resolvedLocal}`);
+      process.exit(1);
+    }
+
+    const uploadDir = async () => {
+      const files = collectFiles(resolvedLocal);
+      const spinner = ora(`Uploading ${files.length} file(s)...`).start();
+      let uploaded = 0;
+
+      for (const filePath of files) {
+        const relPath = relative(resolvedLocal, filePath);
+        const remotePath = `${remoteDir}/${relPath}`;
+        const content = readFileSync(filePath);
+        await client.putFile(remotePath, content);
+        uploaded++;
+        spinner.text = `Uploading ${uploaded}/${files.length}: ${relPath}`;
+      }
+
+      spinner.succeed(`Uploaded ${uploaded} file(s) to ${remoteDir}`);
+    };
+
+    await uploadDir();
+
+    if (opts.watch) {
+      const { watch } = await import("node:fs");
+      console.log(`[INFO] Watching ${resolvedLocal} for changes...`);
+
+      watch(resolvedLocal, { recursive: true }, async (_event, filename) => {
+        if (!filename) {
+          return;
+        }
+        const fullPath = join(resolvedLocal, filename);
+        if (!(existsSync(fullPath) && statSync(fullPath).isFile())) {
+          return;
+        }
+        const remotePath = `${remoteDir}/${filename}`;
+        try {
+          const content = readFileSync(fullPath);
+          await client.putFile(remotePath, content);
+          console.log(`[SYNC] ${filename} -> ${remotePath}`);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error(`[ERR] Failed to sync ${filename}: ${message}`);
+        }
+      });
+
+      // Keep process alive
+      await new Promise(() => {});
+    }
+  });
+
+syncCmd
+  .command("pull")
+  .description("Download files from a remote container to a local directory")
+  .argument("<session-id>", "Session ID (persistent mode)")
+  .argument("<remote-path>", "Remote file or directory path")
+  .argument("[local-dir]", "Local directory to download into", ".")
+  .option("--host <url>", "Server URL")
+  .option("--key <key>", "API key")
+  .action(async (sessionId: string, remotePath: string, localDir: string, opts) => {
+    const { host, apiKey } = resolveRemoteConnection(opts.host, opts.key);
+
+    const client = new RemoteIsol8({ host, apiKey, sessionId });
+    const resolvedLocal = resolve(localDir);
+
+    mkdirSync(resolvedLocal, { recursive: true });
+
+    const spinner = ora(`Downloading ${remotePath}...`).start();
+    try {
+      const content = await client.getFile(remotePath);
+      const fileName = basename(remotePath);
+      const outPath = join(resolvedLocal, fileName);
+      writeFileSync(outPath, content);
+      spinner.succeed(`Downloaded ${remotePath} -> ${outPath} (${content.length} bytes)`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      spinner.fail(`Failed to download: ${message}`);
+      process.exit(1);
+    }
+  });
+
+// ─── Helpers ──────────────────────────────────────────────────────────
+
+/**
+ * Resolve remote connection details from explicit flags, env vars, or the default profile.
+ * Exits with an error if no connection can be determined.
+ */
+function resolveRemoteConnection(
+  hostFlag?: string,
+  keyFlag?: string
+): { host: string; apiKey: string } {
+  const host = hostFlag ?? process.env.ISOL8_HOST;
+  const apiKey = keyFlag ?? process.env.ISOL8_API_KEY;
+
+  if (host && apiKey) {
+    return { host, apiKey };
+  }
+
+  // Fall back to default remote profile
+  const profile = getDefaultProfile();
+  if (profile) {
+    return {
+      host: host ?? profile.host,
+      apiKey: apiKey ?? profile.apiKey,
+    };
+  }
+
+  if (!host) {
+    console.error(
+      "[ERR] No remote host specified. Use --host, ISOL8_HOST, or set a default remote profile."
+    );
+    console.error("      See: isol8 remote add <name> --host <url> --key <key>");
+    process.exit(1);
+  }
+
+  if (!apiKey) {
+    console.error(
+      "[ERR] No API key specified. Use --key, ISOL8_API_KEY, or set a default remote profile."
+    );
+    process.exit(1);
+  }
+
+  return { host, apiKey };
+}
+
+/**
+ * Recursively collect all file paths in a directory.
+ */
+function collectFiles(dir: string): string[] {
+  const results: string[] = [];
+  const entries = readdirSync(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...collectFiles(fullPath));
+    } else if (entry.isFile()) {
+      results.push(fullPath);
+    }
+  }
+  return results;
+}
+
 // biome-ignore lint/suspicious/noExplicitAny: commander opts are untyped
 async function resolveRunInput(file: string | undefined, opts: any) {
   const config = loadConfig();
@@ -1195,8 +1500,24 @@ async function resolveRunInput(file: string | undefined, opts: any) {
       engineOptions
     );
   } else {
-    logger.debug("[Run] Using local Docker engine");
-    engine = new DockerIsol8(engineOptions, config.maxConcurrent);
+    // Check for a default remote profile when --host is not provided
+    const defaultProfile = getDefaultProfile();
+    if (defaultProfile) {
+      logger.debug(
+        `[Run] Using default remote profile: ${defaultProfile.name} (${defaultProfile.host})`
+      );
+      engine = new RemoteIsol8(
+        {
+          host: defaultProfile.host,
+          apiKey: opts.key ?? process.env.ISOL8_API_KEY ?? defaultProfile.apiKey,
+          sessionId: opts.persistent ? `cli-${Date.now()}` : undefined,
+        },
+        engineOptions
+      );
+    } else {
+      logger.debug("[Run] Using local Docker engine");
+      engine = new DockerIsol8(engineOptions, config.maxConcurrent);
+    }
   }
 
   return {
