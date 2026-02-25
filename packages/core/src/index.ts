@@ -34,6 +34,7 @@ export {
 export type { RuntimeAdapter } from "./runtime/adapter";
 // ─── Types ───
 export type {
+  AuthConfig,
   ExecutionRequest,
   ExecutionResult,
   Isol8Config,

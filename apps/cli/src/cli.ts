@@ -411,6 +411,7 @@ program
   .description("Start the isol8 remote server")
   .option("-p, --port <port>", "Port to listen on")
   .option("-k, --key <key>", "API key for authentication")
+  .option("--auth-db <path>", "Enable DB-backed auth with SQLite at <path>")
   .option("--update", "Force re-download the server binary")
   .option("--debug", "Enable debug logging")
   .action(async (opts) => {
@@ -432,7 +433,12 @@ program
     if (typeof globalThis.Bun !== "undefined") {
       logger.debug("[Serve] Running under Bun, starting server in-process");
       const { createServer } = await import("@isol8/server");
-      const server = await createServer({ port, apiKey, debug: opts.debug ?? false });
+      const server = await createServer({
+        port,
+        apiKey,
+        debug: opts.debug ?? false,
+        authDbPath: opts.authDb,
+      });
       let shuttingDown = false;
       const bunServer = Bun.serve({ fetch: server.app.fetch, port });
 
@@ -469,6 +475,9 @@ program
 
       console.log(`[INFO] isol8 server v${VERSION} listening on http://localhost:${port}`);
       console.log("       Auth: Bearer token required");
+      if (opts.authDb) {
+        console.log(`       Auth DB: ${opts.authDb}`);
+      }
       return;
     }
 
@@ -481,6 +490,9 @@ program
     const binaryArgs = ["--port", String(port), "--key", apiKey];
     if (opts.debug) {
       binaryArgs.push("--debug");
+    }
+    if (opts.authDb) {
+      binaryArgs.push("--auth-db", opts.authDb);
     }
     const child = spawnChild(binaryPath, binaryArgs, {
       stdio: "inherit",
@@ -1046,6 +1058,161 @@ program
     }
   });
 
+// ─── login ────────────────────────────────────────────────────────────
+
+/** Shape of stored credentials in ~/.isol8/credentials.json */
+interface StoredCredentials {
+  host: string;
+  token: string;
+  expiresAt: string;
+  keyId: string;
+}
+
+/** Load stored credentials from ~/.isol8/credentials.json */
+function loadCredentials(): StoredCredentials | null {
+  const credPath = join(homedir(), ".isol8", "credentials.json");
+  if (!existsSync(credPath)) {
+    return null;
+  }
+  try {
+    const raw = readFileSync(credPath, "utf-8");
+    return JSON.parse(raw) as StoredCredentials;
+  } catch {
+    return null;
+  }
+}
+
+/** Save credentials to ~/.isol8/credentials.json */
+function saveCredentials(creds: StoredCredentials): void {
+  const credDir = join(homedir(), ".isol8");
+  mkdirSync(credDir, { recursive: true });
+  const credPath = join(credDir, "credentials.json");
+  writeFileSync(credPath, JSON.stringify(creds, null, 2), { mode: 0o600 });
+  logger.debug(`[Auth] Credentials saved to ${credPath}`);
+}
+
+/** Remove stored credentials */
+function removeCredentials(): boolean {
+  const credPath = join(homedir(), ".isol8", "credentials.json");
+  if (existsSync(credPath)) {
+    unlinkSync(credPath);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Resolve the API key for remote operations.
+ * Priority: --key flag > ISOL8_API_KEY env > stored credentials (if host matches)
+ */
+function resolveApiKey(opts: { key?: string; host?: string }): string | undefined {
+  // Explicit key flag or env var always wins
+  if (opts.key) {
+    return opts.key;
+  }
+  if (process.env.ISOL8_API_KEY) {
+    return process.env.ISOL8_API_KEY;
+  }
+
+  // Try stored credentials
+  if (opts.host) {
+    const creds = loadCredentials();
+    if (creds) {
+      // Check host match (normalize trailing slash)
+      const normalizedHost = opts.host.replace(/\/$/, "");
+      const normalizedCredHost = creds.host.replace(/\/$/, "");
+      if (normalizedHost === normalizedCredHost) {
+        // Check expiry
+        if (new Date(creds.expiresAt) > new Date()) {
+          logger.debug("[Auth] Using stored credentials");
+          return creds.token;
+        }
+        logger.debug("[Auth] Stored credentials expired");
+        console.error(
+          "[WARN] Stored credentials have expired. Run `isol8 login` to re-authenticate."
+        );
+      }
+    }
+  }
+
+  return undefined;
+}
+
+program
+  .command("login")
+  .description("Authenticate with an isol8 server and store credentials")
+  .requiredOption("--host <url>", "Server URL (e.g. http://localhost:3000)")
+  .requiredOption("--key <key>", "Master API key")
+  .option("--name <name>", "Name for the login token")
+  .option("--ttl <ms>", "Token TTL in milliseconds (default: 24h)")
+  .action(async (opts) => {
+    const host = opts.host.replace(/\/$/, "");
+    const spinner = ora("Authenticating...").start();
+
+    try {
+      const res = await fetch(`${host}/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${opts.key}`,
+        },
+        body: JSON.stringify({
+          name: opts.name ?? `cli-login-${new Date().toISOString()}`,
+          ...(opts.ttl ? { ttlMs: Number.parseInt(opts.ttl, 10) } : {}),
+        }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        const error = (body as { error?: string }).error ?? res.statusText;
+        spinner.fail(`Authentication failed: ${error}`);
+
+        if (res.status === 400) {
+          console.error("[INFO] DB-backed auth may not be enabled on the server.");
+          console.error("       Start the server with --auth-db <path> to enable it.");
+        }
+        process.exit(1);
+      }
+
+      const body = (await res.json()) as {
+        token: string;
+        expiresAt: string;
+        keyId: string;
+      };
+
+      saveCredentials({
+        host,
+        token: body.token,
+        expiresAt: body.expiresAt,
+        keyId: body.keyId,
+      });
+
+      const expiresDate = new Date(body.expiresAt);
+      spinner.succeed("Authenticated successfully");
+      console.log(`  Host:    ${host}`);
+      console.log(`  Expires: ${expiresDate.toLocaleString()}`);
+      console.log("  Stored:  ~/.isol8/credentials.json");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      spinner.fail(`Login failed: ${message}`);
+      process.exit(1);
+    }
+  });
+
+// ─── logout ───────────────────────────────────────────────────────────
+
+program
+  .command("logout")
+  .description("Remove stored isol8 credentials")
+  .action(() => {
+    const removed = removeCredentials();
+    if (removed) {
+      console.log("[OK] Credentials removed from ~/.isol8/credentials.json");
+    } else {
+      console.log("[INFO] No stored credentials found.");
+    }
+  });
+
 // ─── Helpers ──────────────────────────────────────────────────────────
 
 // biome-ignore lint/suspicious/noExplicitAny: commander opts are untyped
@@ -1185,9 +1352,9 @@ async function resolveRunInput(file: string | undefined, opts: any) {
   let engine: Isol8Engine;
   if (opts.host) {
     logger.debug(`[Run] Using remote engine: ${opts.host}`);
-    const apiKey = opts.key ?? process.env.ISOL8_API_KEY;
+    const apiKey = resolveApiKey({ key: opts.key, host: opts.host });
     if (!apiKey) {
-      console.error("[ERR] API key required. Use --key or ISOL8_API_KEY env var.");
+      console.error("[ERR] API key required. Use --key, ISOL8_API_KEY env var, or `isol8 login`.");
       process.exit(1);
     }
     engine = new RemoteIsol8(

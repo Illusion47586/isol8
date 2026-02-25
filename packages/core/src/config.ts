@@ -72,6 +72,12 @@ const DEFAULT_CONFIG: Isol8Config = {
     includeCode: false,
     includeOutput: false,
   },
+  auth: {
+    enabled: false,
+    dbPath: join(homedir(), ".isol8", "auth.db"),
+    defaultTtlMs: 86_400_000, // 24 hours
+    cleanupIntervalMs: 3_600_000, // 1 hour
+  },
   debug: false,
 };
 
@@ -154,6 +160,10 @@ function mergeConfig(defaults: Isol8Config, overrides: Partial<Isol8Config>): Is
     audit: {
       ...defaults.audit,
       ...overrides.audit,
+    },
+    auth: {
+      ...defaults.auth,
+      ...overrides.auth,
     },
     debug: overrides.debug ?? defaults.debug,
   };

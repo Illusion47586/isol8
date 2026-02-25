@@ -3,7 +3,8 @@
  *
  * HTTP server for remote isol8 execution. Built with Hono, designed to run
  * on Bun. Provides endpoints for code execution, file I/O, session management,
- * and health checks. All endpoints (except `/health`) require Bearer token auth.
+ * key management, and health checks. All endpoints (except `/health`) require
+ * Bearer token auth.
  */
 
 import type { ExecutionRequest, Isol8Options } from "@isol8/core";
@@ -15,10 +16,12 @@ import { authMiddleware } from "./auth.js";
 export interface ServerOptions {
   /** Port to listen on. */
   port: number;
-  /** API key required for Bearer token authentication. */
+  /** API key required for Bearer token authentication (master key). */
   apiKey: string;
   /** Enable debug logging for internal server operations. */
   debug?: boolean;
+  /** Path to SQLite database for DB-backed API keys. When set, enables DB auth. */
+  authDbPath?: string;
 }
 
 /** Internal state for a persistent isol8 session. */
@@ -69,6 +72,20 @@ export async function createServer(options: ServerOptions) {
   const globalSemaphore = new Semaphore(config.maxConcurrent);
   let pruneInterval: ReturnType<typeof setInterval> | undefined;
   let cleanupInFlight: Promise<CleanupResult> | null = null;
+
+  // Initialize AuthDB if enabled via flag or config
+  const authDbPath = options.authDbPath ?? (config.auth.enabled ? config.auth.dbPath : undefined);
+  let authDb: AuthDB | undefined;
+  if (authDbPath) {
+    authDb = new AuthDB(authDbPath);
+    logger.info(`[Server] DB-backed auth enabled: ${authDbPath}`);
+
+    // Periodic cleanup of expired keys
+    const cleanupInterval = config.auth.cleanupIntervalMs;
+    setInterval(() => {
+      authDb?.cleanup();
+    }, cleanupInterval);
+  }
 
   const cleanupSessions = async (): Promise<{
     removed: number;
@@ -130,8 +147,8 @@ export async function createServer(options: ServerOptions) {
     }
   };
 
-  // Auth middleware
-  app.use("*", authMiddleware(options.apiKey));
+  // Auth middleware — supports static key and/or DB-backed keys
+  app.use("*", authMiddleware({ staticKey: options.apiKey, authDb }));
 
   // ─── Health ───
   app.get("/health", (c) => c.json({ status: "ok", version: VERSION }));
@@ -377,6 +394,92 @@ export async function createServer(options: ServerOptions) {
     }
   });
 
+  // ─── Auth / Key Management (master key required) ───
+
+  // Create a new API key
+  app.post("/auth/keys", requireMasterKey(), async (c) => {
+    if (!authDb) {
+      return c.json({ error: "DB-backed auth is not enabled" }, 400);
+    }
+
+    const body = await c.req.json<{
+      name: string;
+      tenantId?: string;
+      ttlMs?: number;
+    }>();
+
+    if (!body.name) {
+      return c.json({ error: "name is required" }, 400);
+    }
+
+    const result = authDb.createKey({
+      name: body.name,
+      tenantId: body.tenantId ?? "default",
+      ttlMs: body.ttlMs ?? config.auth.defaultTtlMs,
+    });
+
+    logger.info(`[Server] Created API key: id=${result.id} name=${result.name}`);
+
+    return c.json(result, 201);
+  });
+
+  // List API keys (no plaintext keys)
+  app.get("/auth/keys", requireMasterKey(), async (c) => {
+    if (!authDb) {
+      return c.json({ error: "DB-backed auth is not enabled" }, 400);
+    }
+
+    const tenantId = c.req.query("tenantId");
+    const keys = authDb.listKeys(tenantId ?? undefined);
+    return c.json({ keys });
+  });
+
+  // Revoke an API key
+  app.delete("/auth/keys/:id", requireMasterKey(), async (c) => {
+    if (!authDb) {
+      return c.json({ error: "DB-backed auth is not enabled" }, 400);
+    }
+
+    const id = c.req.param("id");
+    const revoked = authDb.revokeKey(id);
+
+    if (!revoked) {
+      return c.json({ error: "Key not found" }, 404);
+    }
+
+    logger.info(`[Server] Revoked API key: id=${id}`);
+    return c.json({ ok: true, id });
+  });
+
+  // Login: exchange master key for a short-lived token
+  app.post("/auth/login", requireMasterKey(), async (c) => {
+    if (!authDb) {
+      return c.json({ error: "DB-backed auth is not enabled" }, 400);
+    }
+
+    const body = await c.req
+      .json<{
+        name?: string;
+        tenantId?: string;
+        ttlMs?: number;
+      }>()
+      .catch(() => ({}) as { name?: string; tenantId?: string; ttlMs?: number });
+
+    const result = authDb.createKey({
+      name: body.name ?? `login-${new Date().toISOString()}`,
+      tenantId: body.tenantId ?? "default",
+      ttlMs: body.ttlMs ?? config.auth.defaultTtlMs,
+    });
+
+    logger.info(`[Server] Login token issued: id=${result.id}`);
+
+    return c.json({
+      token: result.key,
+      expiresAt: result.expiresAt,
+      keyId: result.id,
+    });
+  });
+
   // Periodic cleanup of stale sessions
   if (config.cleanup.autoPrune) {
     pruneInterval = setInterval(async () => {
@@ -408,6 +511,9 @@ export async function createServer(options: ServerOptions) {
         pruneInterval = undefined;
       }
       await runCleanup(includeImages);
+      if (authDb) {
+        authDb.close();
+      }
     },
   };
 }
