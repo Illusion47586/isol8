@@ -32,6 +32,45 @@ interface SessionState {
 
 const sessions = new Map<string, SessionState>();
 
+// ─── Log Ring Buffer ───
+
+/** In-memory ring buffer for server log entries. */
+class LogRingBuffer {
+  private readonly buffer: string[] = [];
+  private readonly maxSize: number;
+  private readonly listeners = new Set<(line: string) => void>();
+
+  constructor(maxSize = 1000) {
+    this.maxSize = maxSize;
+  }
+
+  push(line: string): void {
+    this.buffer.push(line);
+    if (this.buffer.length > this.maxSize) {
+      this.buffer.shift();
+    }
+    for (const listener of this.listeners) {
+      listener(line);
+    }
+  }
+
+  getRecent(n?: number): string[] {
+    if (n === undefined || n >= this.buffer.length) {
+      return [...this.buffer];
+    }
+    return this.buffer.slice(-n);
+  }
+
+  subscribe(listener: (line: string) => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+}
+
+const logBuffer = new LogRingBuffer(1000);
+
 interface CleanupResult {
   sessions: { removed: number; failed: number; errors: string[] };
   containers: { removed: number; failed: number; errors: string[] };
@@ -69,6 +108,35 @@ export async function createServer(options: ServerOptions) {
   const globalSemaphore = new Semaphore(config.maxConcurrent);
   let pruneInterval: ReturnType<typeof setInterval> | undefined;
   let cleanupInFlight: Promise<CleanupResult> | null = null;
+
+  // Intercept logger output to feed the ring buffer
+  const origInfo = logger.info.bind(logger);
+  const origWarn = logger.warn.bind(logger);
+  const origError = logger.error.bind(logger);
+  const origDebug = logger.debug.bind(logger);
+
+  const captureLog = (level: string, args: unknown[]) => {
+    const ts = new Date().toISOString();
+    const msg = args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+    logBuffer.push(`${ts} [${level}] ${msg}`);
+  };
+
+  logger.info = (...args: unknown[]) => {
+    captureLog("INFO", args);
+    origInfo(...args);
+  };
+  logger.warn = (...args: unknown[]) => {
+    captureLog("WARN", args);
+    origWarn(...args);
+  };
+  logger.error = (...args: unknown[]) => {
+    captureLog("ERROR", args);
+    origError(...args);
+  };
+  logger.debug = (...args: unknown[]) => {
+    captureLog("DEBUG", args);
+    origDebug(...args);
+  };
 
   const cleanupSessions = async (): Promise<{
     removed: number;
@@ -359,6 +427,101 @@ export async function createServer(options: ServerOptions) {
       logger.debug(`[Server] Session not found (already cleaned up): ${id}`);
     }
     return c.json({ ok: true });
+  });
+
+  // ─── Signal ───
+  app.post("/session/:id/signal", async (c) => {
+    const id = c.req.param("id");
+    const body = await c.req.json<{ signal: string }>();
+    const sig = body.signal ?? "SIGTERM";
+
+    logger.debug(`[Server] POST /session/${id}/signal signal=${sig}`);
+
+    const session = sessions.get(id);
+    if (!session) {
+      logger.debug(`[Server] Session not found: ${id}`);
+      return c.json({ error: "Session not found" }, 404);
+    }
+
+    try {
+      const containerId = session.engine.containerId;
+      if (!containerId) {
+        return c.json({ error: "No running container for session" }, 400);
+      }
+
+      const Docker = (await import("dockerode")).default;
+      const docker = new Docker();
+      const container = docker.getContainer(containerId);
+      await container.kill({ signal: sig });
+      logger.debug(`[Server] Signal ${sig} sent to container ${containerId}`);
+      return c.json({ ok: true, signal: sig, containerId });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error(`[Server] Signal failed: ${message}`);
+      return c.json({ error: message }, 500);
+    }
+  });
+
+  // ─── Logs (SSE) ───
+  app.get("/logs", (c) => {
+    const follow = c.req.query("follow") === "true";
+    const linesParam = c.req.query("lines");
+    const lines = linesParam ? Number.parseInt(linesParam, 10) : undefined;
+
+    logger.debug(`[Server] GET /logs follow=${follow} lines=${lines ?? "all"}`);
+
+    const encoder = new TextEncoder();
+
+    if (!follow) {
+      // Return recent logs as a single response
+      const recent = logBuffer.getRecent(lines);
+      const body = recent.map((line) => `data: ${line}\n\n`).join("");
+      return new Response(body, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+        },
+      });
+    }
+
+    // Follow mode: stream existing + new logs
+    const stream = new ReadableStream({
+      start(controller) {
+        // Send existing logs
+        const recent = logBuffer.getRecent(lines);
+        for (const line of recent) {
+          controller.enqueue(encoder.encode(`data: ${line}\n\n`));
+        }
+
+        // Subscribe to new logs
+        const unsubscribe = logBuffer.subscribe((line) => {
+          try {
+            controller.enqueue(encoder.encode(`data: ${line}\n\n`));
+          } catch {
+            // Stream closed
+            unsubscribe();
+          }
+        });
+
+        // Clean up when the stream is cancelled
+        c.req.raw.signal.addEventListener("abort", () => {
+          unsubscribe();
+          try {
+            controller.close();
+          } catch {
+            // Already closed
+          }
+        });
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    });
   });
 
   // ─── Remote Cleanup ───

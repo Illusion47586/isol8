@@ -199,6 +199,88 @@ export class RemoteIsol8 implements Isol8Engine {
     return Buffer.from(body.content, "base64");
   }
 
+  /**
+   * Send a signal to a running container session.
+   *
+   * @param sessionId - Target session identifier.
+   * @param signal - POSIX signal name (e.g. `"SIGINT"`, `"SIGTERM"`, `"SIGKILL"`).
+   */
+  async signal(sessionId: string, signal: string): Promise<void> {
+    const res = await this.fetch(`/session/${sessionId}/signal`, {
+      method: "POST",
+      body: JSON.stringify({ signal }),
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(`Signal failed: ${(body as { error?: string }).error ?? res.statusText}`);
+    }
+  }
+
+  /**
+   * Stream server logs via SSE.
+   *
+   * @param options - Log retrieval options.
+   * @returns An async iterable of log line strings.
+   */
+  async *getLogs(options?: { follow?: boolean; lines?: number }): AsyncIterable<string> {
+    const params = new URLSearchParams();
+    if (options?.follow) {
+      params.set("follow", "true");
+    }
+    if (options?.lines !== undefined) {
+      params.set("lines", String(options.lines));
+    }
+
+    const res = await this.fetch(`/logs?${params}`);
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(`Logs failed: ${(body as { error?: string }).error ?? res.statusText}`);
+    }
+
+    if (!res.body) {
+      throw new Error("No response body for log streaming");
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6).trim();
+            if (data) {
+              yield data;
+            }
+          }
+        }
+      }
+
+      // Process remaining buffer
+      if (buffer.startsWith("data: ")) {
+        const data = buffer.slice(6).trim();
+        if (data) {
+          yield data;
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
   /** Internal fetch wrapper that attaches auth and content-type headers. */
   private async fetch(path: string, init?: RequestInit): Promise<Response> {
     return globalThis.fetch(`${this.host}${path}`, {
