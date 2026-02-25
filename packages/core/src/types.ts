@@ -531,9 +531,29 @@ export interface AuditConfig {
  * @see {@link loadConfig} for the loading/merge logic.
  * @see `schema/isol8.config.schema.json` for the JSON Schema.
  */
+/** Configuration for the server's connection queue. */
+export interface QueueConfig {
+  /**
+   * Maximum number of requests that can wait in the queue.
+   * `0` means unlimited (no cap on queue size).
+   * @default 0
+   */
+  maxSize: number;
+
+  /**
+   * Maximum time in milliseconds a request can wait in the queue before timing out.
+   * `0` means unlimited (no timeout).
+   * @default 30000
+   */
+  timeoutMs: number;
+}
+
 export interface Isol8Config {
   /** Maximum number of containers that can run concurrently. @default 10 */
   maxConcurrent: number;
+
+  /** Connection queue settings for the server. Controls backpressure when all slots are busy. */
+  queue: QueueConfig;
 
   /** Default execution settings applied to all runs. */
   defaults: Isol8Defaults;
@@ -585,6 +605,9 @@ export interface Isol8UserConfig {
 
   /** Maximum number of containers that can run concurrently. @default 10 */
   maxConcurrent?: number;
+
+  /** Connection queue settings for the server. Controls backpressure when all slots are busy. */
+  queue?: Partial<QueueConfig>;
 
   /** Default execution settings applied to all runs. (Partial override allowed). */
   defaults?: Partial<Isol8Defaults>;

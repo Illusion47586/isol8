@@ -17,6 +17,10 @@ import type { Isol8Config } from "./types";
  */
 const DEFAULT_CONFIG: Isol8Config = {
   maxConcurrent: 10,
+  queue: {
+    maxSize: 0,
+    timeoutMs: 30_000,
+  },
   defaults: {
     timeoutMs: 30_000,
     memoryLimit: "512m",
@@ -120,6 +124,10 @@ export function loadConfig(cwd?: string): Isol8Config {
 function mergeConfig(defaults: Isol8Config, overrides: Partial<Isol8Config>): Isol8Config {
   return {
     maxConcurrent: overrides.maxConcurrent ?? defaults.maxConcurrent,
+    queue: {
+      ...defaults.queue,
+      ...overrides.queue,
+    },
     defaults: {
       ...defaults.defaults,
       ...overrides.defaults,

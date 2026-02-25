@@ -12,7 +12,8 @@ export type { RemoteIsol8Options } from "./client/remote";
 export { RemoteIsol8 } from "./client/remote";
 // ─── Config ───
 export { loadConfig } from "./config";
-export { Semaphore } from "./engine/concurrency";
+export type { QueueOptions, SemaphoreStats } from "./engine/concurrency";
+export { QueueFullError, QueueTimeoutError, Semaphore } from "./engine/concurrency";
 export type { DockerIsol8Options } from "./engine/docker";
 // ─── Engine ───
 export { DockerIsol8 } from "./engine/docker";
@@ -42,6 +43,7 @@ export type {
   Isol8Options,
   NetworkFilterConfig,
   NetworkMode,
+  QueueConfig,
   RemoteCodePolicy,
   Runtime,
   StreamEvent,

@@ -224,6 +224,23 @@
           "enum": ["secure", "fast"],
           "type": "string"
         },
+        "queue": {
+          "additionalProperties": false,
+          "description": "Connection queue settings for the server. Controls backpressure when all slots are busy.",
+          "properties": {
+            "maxSize": {
+              "default": 0,
+              "description": "Maximum number of requests that can wait in the queue. `0` means unlimited (no cap on queue size).",
+              "type": "number"
+            },
+            "timeoutMs": {
+              "default": 30000,
+              "description": "Maximum time in milliseconds a request can wait in the queue before timing out. `0` means unlimited (no timeout).",
+              "type": "number"
+            }
+          },
+          "type": "object"
+        },
         "remoteCode": {
           "additionalProperties": false,
           "description": "Remote code fetching policy. (Partial override allowed).",
