@@ -6,9 +6,11 @@
  * and health checks. All endpoints (except `/health`) require Bearer token auth.
  */
 
-import type { ExecutionRequest, Isol8Options } from "@isol8/core";
+import type { ExecutionRequest, Isol8Options, WsClientMessage } from "@isol8/core";
 import { DockerIsol8, loadConfig, logger, Semaphore, VERSION } from "@isol8/core";
+import type { ServerWebSocket } from "bun";
 import { Hono } from "hono";
+import { createBunWebSocket } from "hono/bun";
 import { authMiddleware } from "./auth.js";
 
 /** Configuration for the isol8 HTTP server. */
@@ -65,6 +67,7 @@ export async function createServer(options: ServerOptions) {
   logger.debug(`[Server] Max concurrent: ${config.maxConcurrent}`);
   logger.debug(`[Server] Auto-prune: ${config.cleanup.autoPrune}`);
 
+  const { upgradeWebSocket, websocket } = createBunWebSocket<ServerWebSocket>();
   const app = new Hono();
   const globalSemaphore = new Semaphore(config.maxConcurrent);
   let pruneInterval: ReturnType<typeof setInterval> | undefined;
@@ -300,6 +303,136 @@ export async function createServer(options: ServerOptions) {
     });
   });
 
+  // ─── Execute Stream (WebSocket) ───
+  app.get(
+    "/execute/ws",
+    upgradeWebSocket((c) => {
+      // Auth check: token from query param since WS can't easily pass headers
+      const token = c.req.query("token");
+      let authenticated = false;
+      if (token && token === options.apiKey) {
+        authenticated = true;
+      } else {
+        // Also check Authorization header (some WS clients support it)
+        const authHeader = c.req.header("Authorization");
+        if (authHeader) {
+          const headerToken = authHeader.replace(/^Bearer\s+/i, "");
+          if (headerToken === options.apiKey) {
+            authenticated = true;
+          }
+        }
+      }
+
+      return {
+        onOpen(_evt, ws) {
+          if (!authenticated) {
+            logger.debug("[Server] WebSocket connection rejected: invalid auth");
+            ws.send(JSON.stringify({ type: "error", data: "Authentication failed" }));
+            ws.close(1008, "Authentication failed");
+            return;
+          }
+          logger.debug("[Server] WebSocket connection established");
+        },
+
+        async onMessage(evt, ws) {
+          if (!authenticated) {
+            return;
+          }
+
+          let msg: WsClientMessage;
+          try {
+            const raw = typeof evt.data === "string" ? evt.data : evt.data.toString();
+            msg = JSON.parse(raw) as WsClientMessage;
+          } catch {
+            ws.send(JSON.stringify({ type: "error", data: "Invalid JSON message" }));
+            ws.close(1003, "Invalid JSON");
+            return;
+          }
+
+          if (msg.type === "stdin") {
+            logger.debug("[Server] WebSocket stdin message received (ignored - future use)");
+            return;
+          }
+
+          if (msg.type === "signal") {
+            logger.debug(
+              `[Server] WebSocket signal message received: ${msg.signal} (ignored - future use)`
+            );
+            return;
+          }
+
+          if (msg.type !== "execute") {
+            ws.send(
+              JSON.stringify({
+                type: "error",
+                data: `Unknown message type: ${(msg as { type: string }).type}`,
+              })
+            );
+            return;
+          }
+
+          logger.debug(`[Server] WebSocket execute: runtime=${msg.request.runtime}`);
+          logger.debug(
+            `[Server] Code source: ${msg.request.codeUrl ? `url=${msg.request.codeUrl}` : `inline (${msg.request.code?.length ?? 0} chars)`}`
+          );
+
+          const {
+            poolStrategy: _ignoredPoolStrategy,
+            poolSize: _ignoredPoolSize,
+            ...requestOptions
+          } = msg.options ?? {};
+
+          const engineOptions: Isol8Options = {
+            network: config.defaults.network,
+            memoryLimit: config.defaults.memoryLimit,
+            cpuLimit: config.defaults.cpuLimit,
+            timeoutMs: config.defaults.timeoutMs,
+            sandboxSize: config.defaults.sandboxSize,
+            tmpSize: config.defaults.tmpSize,
+            poolStrategy: config.poolStrategy,
+            poolSize: config.poolSize,
+            dependencies: config.dependencies,
+            remoteCode: config.remoteCode,
+            ...requestOptions,
+            mode: "ephemeral",
+          };
+
+          const engine = new DockerIsol8(engineOptions, config.maxConcurrent);
+
+          try {
+            await engine.start();
+            logger.debug("[Server] WebSocket: acquiring semaphore");
+            await globalSemaphore.acquire();
+            try {
+              for await (const event of engine.executeStream(msg.request)) {
+                ws.send(JSON.stringify(event));
+              }
+              logger.debug("[Server] WebSocket stream completed");
+            } finally {
+              globalSemaphore.release();
+            }
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            logger.debug(`[Server] WebSocket stream error: ${message}`);
+            ws.send(JSON.stringify({ type: "error", data: message }));
+          } finally {
+            logger.debug("[Server] WebSocket: cleaning up engine");
+            await engine.stop();
+            ws.close(1000, "Execution complete");
+          }
+        },
+
+        onClose(_evt) {
+          logger.debug("[Server] WebSocket connection closed");
+        },
+
+        onError(evt) {
+          logger.error(`[Server] WebSocket error: ${evt}`);
+        },
+      };
+    })
+  );
+
   // ─── File Upload ───
   app.post("/file", async (c) => {
     const body = await c.req.json<{
@@ -401,6 +534,7 @@ export async function createServer(options: ServerOptions) {
     app,
     fetch: app.fetch,
     port: options.port,
+    websocket,
     cleanup: async (includeImages = true) => runCleanup(includeImages),
     shutdown: async (includeImages = true) => {
       if (pruneInterval) {
