@@ -28,7 +28,7 @@
     "test:prod": "echo 'No production tests in core package'",
     "lint:check": "ultracite check",
     "lint:fix": "ultracite fix",
-    "schema": "ts-json-schema-generator --path src/types.ts --type Isol8UserConfig --tsconfig tsconfig.json -o schema/isol8.config.schema.json && ultracite fix schema/isol8.config.schema.json"
+    "schema": "ts-json-schema-generator --path src/types.ts --type Isol8UserConfig --tsconfig tsconfig.json --no-type-check -o schema/isol8.config.schema.json && ultracite fix schema/isol8.config.schema.json"
   },
   "dependencies": {
     "dockerode": "^4.0.9",
