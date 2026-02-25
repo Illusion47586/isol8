@@ -21,11 +21,6 @@ export function authMiddleware(apiKey: string) {
       return next();
     }
 
-    // Skip auth for WebSocket upgrade (auth is handled inside the WS handler)
-    if (c.req.path === "/execute/ws") {
-      return next();
-    }
-
     const authHeader = c.req.header("Authorization");
     if (!authHeader) {
       return c.json({ error: "Missing Authorization header" }, 401);

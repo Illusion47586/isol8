@@ -125,14 +125,20 @@ export class RemoteIsol8 implements Isol8Engine {
    * @internal
    */
   private async *executeStreamWs(req: ExecutionRequest): AsyncIterable<StreamEvent> {
-    const wsUrl = `${this.host.replace(/^http/, "ws")}/execute/ws?token=${encodeURIComponent(this.apiKey)}`;
+    const wsUrl = `${this.host.replace(/^http/, "ws")}/execute/ws`;
 
     const events: StreamEvent[] = [];
     let resolve: (() => void) | null = null;
     let done = false;
     let wsError: Error | null = null;
 
-    const ws = new WebSocket(wsUrl);
+    // Bun's WebSocket supports custom headers via a second options argument.
+    // The standard WebSocket type doesn't include this, so we cast through unknown.
+    const ws = new WebSocket(wsUrl, {
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+    } as never);
 
     const waitForEvent = (): Promise<void> =>
       new Promise<void>((r) => {

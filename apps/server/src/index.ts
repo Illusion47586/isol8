@@ -306,39 +306,13 @@ export async function createServer(options: ServerOptions) {
   // ─── Execute Stream (WebSocket) ───
   app.get(
     "/execute/ws",
-    upgradeWebSocket((c) => {
-      // Auth check: token from query param since WS can't easily pass headers
-      const token = c.req.query("token");
-      let authenticated = false;
-      if (token && token === options.apiKey) {
-        authenticated = true;
-      } else {
-        // Also check Authorization header (some WS clients support it)
-        const authHeader = c.req.header("Authorization");
-        if (authHeader) {
-          const headerToken = authHeader.replace(/^Bearer\s+/i, "");
-          if (headerToken === options.apiKey) {
-            authenticated = true;
-          }
-        }
-      }
-
+    upgradeWebSocket(() => {
       return {
-        onOpen(_evt, ws) {
-          if (!authenticated) {
-            logger.debug("[Server] WebSocket connection rejected: invalid auth");
-            ws.send(JSON.stringify({ type: "error", data: "Authentication failed" }));
-            ws.close(1008, "Authentication failed");
-            return;
-          }
+        onOpen(_evt, _ws) {
           logger.debug("[Server] WebSocket connection established");
         },
 
         async onMessage(evt, ws) {
-          if (!authenticated) {
-            return;
-          }
-
           let msg: WsClientMessage;
           try {
             const raw = typeof evt.data === "string" ? evt.data : evt.data.toString();
