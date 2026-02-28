@@ -12,7 +12,7 @@ import { DockerIsol8, loadConfig, logger, Semaphore, VERSION } from "@isol8/core
 import type { ServerWebSocket } from "bun";
 import { Hono } from "hono";
 import { createBunWebSocket } from "hono/bun";
-import { authMiddleware } from "./auth.js";
+import { authMiddleware, requireMasterKey } from "./auth.js";
 
 /** Configuration for the isol8 HTTP server. */
 export interface ServerOptions {
