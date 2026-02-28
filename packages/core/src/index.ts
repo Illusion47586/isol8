@@ -47,6 +47,8 @@ export type {
   RemoteCodePolicy,
   Runtime,
   StreamEvent,
+  WsClientMessage,
+  WsServerMessage,
 } from "./types";
 // ─── Utils ───
 export { logger } from "./utils/logger";

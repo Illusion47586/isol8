@@ -325,6 +325,10 @@ Real-time output is essential for long-running tasks or LLM code generation.
   </Tab>
 </Tabs>
 
+<Info>
+  When using `RemoteIsol8`, `executeStream()` automatically selects the best available transport: WebSocket (`/execute/ws`) with automatic SSE (`/execute/stream`) fallback. See the [WebSocket endpoint reference](/server/get-execute-ws) for protocol details.
+</Info>
+
 ## Resource Limits & Safety
 
 isol8 enforces strict limits to contain untrusted code.

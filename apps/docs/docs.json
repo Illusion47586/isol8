@@ -96,6 +96,7 @@
               "server/get-health",
               "server/post-execute",
               "server/post-execute-stream",
+              "server/get-execute-ws",
               "server/post-file",
               "server/get-file",
               "server/delete-session",
