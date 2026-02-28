@@ -330,6 +330,54 @@ Logs counts of removed and failed isol8 containers/images plus any error message
   Error list for failed removals.
 </ResponseField>
 
+## Concurrency and Queue Utilities
+
+The `Semaphore` class and related queue types are exported from `@isol8/core` for advanced use cases.
+
+```typescript
+import {
+  Semaphore,
+  QueueFullError,
+  QueueTimeoutError,
+} from "@isol8/core";
+import type { QueueOptions, SemaphoreStats } from "@isol8/core";
+
+const sem = new Semaphore(3, { maxSize: 10, timeoutMs: 5000 });
+
+try {
+  await sem.acquire();
+  // ... do work ...
+} catch (err) {
+  if (err instanceof QueueFullError) {
+    // Queue is at capacity — reject immediately
+  } else if (err instanceof QueueTimeoutError) {
+    // Waited too long in queue
+  }
+} finally {
+  sem.release();
+}
+
+// Monitor state
+const stats: SemaphoreStats = sem.stats;
+// { current: 1, max: 3, available: 2, pending: 0 }
+```
+
+<ResponseField name="QueueFullError" type="class">
+  Thrown when the semaphore's waiting queue is at capacity (`maxSize > 0` and queue is full). Properties: `queueSize`, `maxSize`.
+</ResponseField>
+
+<ResponseField name="QueueTimeoutError" type="class">
+  Thrown when a queued `acquire()` call exceeds the configured timeout. Properties: `timeoutMs`, `waitedMs`.
+</ResponseField>
+
+<ResponseField name="QueueOptions" type="interface">
+  Options for the semaphore queue: `maxSize` (default `0` = unlimited) and `timeoutMs` (default `0` = unlimited).
+</ResponseField>
+
+<ResponseField name="SemaphoreStats" type="interface">
+  Snapshot of semaphore state: `current`, `max`, `available`, `pending`.
+</ResponseField>
+
 ## FAQ
 
 <Accordion title="When should I switch from DockerIsol8 to RemoteIsol8?">

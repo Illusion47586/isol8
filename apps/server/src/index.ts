@@ -7,7 +7,15 @@
  */
 
 import type { ExecutionRequest, Isol8Options, WsClientMessage } from "@isol8/core";
-import { DockerIsol8, loadConfig, logger, Semaphore, VERSION } from "@isol8/core";
+import {
+  DockerIsol8,
+  loadConfig,
+  logger,
+  QueueFullError,
+  QueueTimeoutError,
+  Semaphore,
+  VERSION,
+} from "@isol8/core";
 import type { ServerWebSocket } from "bun";
 import { Hono } from "hono";
 import { createBunWebSocket } from "hono/bun";

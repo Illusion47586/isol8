@@ -108,6 +108,8 @@ Server messages use the same `StreamEvent` format as the SSE endpoint.
 - **Invalid JSON**: Server sends `{"type":"error","data":"Invalid JSON message"}` then closes with code `1003`.
 - **Unknown message type**: Server sends `{"type":"error","data":"Unknown message type: ..."}` (connection stays open).
 - **Execution error**: Server sends `{"type":"error","data":"..."}` then closes with `1000`.
+- **Queue full**: Server sends `{"type":"error","data":"Queue is full (N/N)"}` then closes with `1000`. Unlike HTTP endpoints which return `429`, WebSocket connections are already upgraded, so queue errors are delivered as error events.
+- **Queue timeout**: Server sends `{"type":"error","data":"Queue timeout after Nms (limit: Nms)"}` then closes with `1000`.
 
 <Note>
   The WebSocket endpoint always uses ephemeral execution mode. Persistent sessions via `sessionId` are not supported on WebSocket — use `POST /execute` for persistent sessions.

@@ -52,3 +52,31 @@ data: {"type":"stdout","data":"2\n"}
 data: {"type":"exit","data":"0"}
 ```
 </ResponseExample>
+
+## Error responses
+
+### 429 Too Many Requests
+
+Returned when the server's connection queue is full. The semaphore acquire is attempted before the SSE stream starts, so the client receives a normal JSON error response (not an SSE frame).
+
+```json
+{
+  "error": "Too many requests — queue is full",
+  "queue": { "current": 10, "max": 10, "available": 0, "pending": 50 }
+}
+```
+
+### 408 Request Timeout
+
+Returned when a queued request exceeds `queue.timeoutMs` waiting for an execution slot.
+
+```json
+{
+  "error": "Request timed out waiting in queue after 30012ms",
+  "queue": { "current": 10, "max": 10, "available": 0, "pending": 4 }
+}
+```
+
+<Tip>
+  Queue errors return standard JSON, not SSE frames, so clients should check the response `Content-Type` header or HTTP status code before attempting to parse SSE data.
+</Tip>

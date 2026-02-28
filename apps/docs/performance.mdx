@@ -139,7 +139,22 @@ flowchart TD
 - local engine: passed to `new DockerIsol8(options, maxConcurrent)`
 - server mode: loaded from `isol8.config.json` and applied globally
 
+When all slots are busy, incoming requests are queued. The `queue` config controls backpressure:
+
+- `queue.maxSize`: cap on how many requests can wait. `0` = unlimited. When full, new requests get `429`.
+- `queue.timeoutMs`: max wait time in the queue. `0` = unlimited. When exceeded, the request gets `408`.
+
+Monitor queue depth via `GET /queue/status` to detect saturation before it impacts callers.
+
 If latency spikes happen under burst traffic, first check queueing pressure before raising CPU/memory limits.
+
+### Tuning queue settings
+
+| Scenario | Recommendation |
+|:--|:--|
+| Steady low-latency API | Set `queue.maxSize` to 2-3x `maxConcurrent`, `queue.timeoutMs` to match your SLO |
+| Burst-tolerant batch work | Set `queue.maxSize: 0` (unlimited), increase `queue.timeoutMs` |
+| Fail-fast preference | Set `queue.maxSize` small (e.g. `5`), `queue.timeoutMs` low (e.g. `5000`) |
 
 ### How `poolSize` and `maxConcurrent` work together
 

@@ -1,0 +1,82 @@
+---
+title: "Queue status"
+description: "Inspect current semaphore and queue state for monitoring and backpressure visibility."
+api: "GET /queue/status"
+icon: "chart-bar"
+---
+
+Returns a snapshot of the server's concurrency semaphore and queue configuration. Use this endpoint for monitoring dashboards and health probes that need to detect backpressure.
+
+## Success response
+
+<ResponseField name="current" type="number">
+  Number of execution permits currently held (active executions).
+</ResponseField>
+
+<ResponseField name="max" type="number">
+  Maximum number of concurrent permits (matches `maxConcurrent` config).
+</ResponseField>
+
+<ResponseField name="available" type="number">
+  Number of permits available for immediate acquisition (`max - current`).
+</ResponseField>
+
+<ResponseField name="pending" type="number">
+  Number of callers currently waiting in the queue for a permit.
+</ResponseField>
+
+<ResponseField name="queue.maxSize" type="number">
+  Configured maximum queue size. `0` means unlimited.
+</ResponseField>
+
+<ResponseField name="queue.timeoutMs" type="number">
+  Configured queue timeout in milliseconds. `0` means unlimited.
+</ResponseField>
+
+<RequestExample>
+```bash
+curl http://localhost:3000/queue/status \
+  -H "Authorization: Bearer $ISOL8_API_KEY"
+```
+</RequestExample>
+
+<ResponseExample>
+```json
+{
+  "current": 3,
+  "max": 10,
+  "available": 7,
+  "pending": 2,
+  "queue": {
+    "maxSize": 50,
+    "timeoutMs": 30000
+  }
+}
+```
+</ResponseExample>
+
+## Auth
+
+Requires `Authorization: Bearer <api-key>`. Returns `401` without header, `403` with invalid key.
+
+## Use cases
+
+- **Monitoring dashboards**: Poll `/queue/status` to track `pending` and `available` over time.
+- **Auto-scaling triggers**: Alert or scale when `pending` exceeds a threshold.
+- **Load testing**: Observe queue depth during stress tests.
+- **Health checks**: Include in readiness probes to detect saturation (`available === 0`).
+
+<Info>
+  This endpoint is read-only and has no side effects. It is safe to poll at any frequency.
+</Info>
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Configuration reference" icon="gear" href="/configuration">
+    Configure `queue.maxSize` and `queue.timeoutMs`.
+  </Card>
+  <Card title="Performance tuning" icon="gauge-high" href="/performance">
+    Tune concurrency and queue settings for your workload.
+  </Card>
+</CardGroup>

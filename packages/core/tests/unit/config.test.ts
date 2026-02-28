@@ -128,6 +128,52 @@ describe("loadConfig", () => {
     rmSync(tmpDir, { recursive: true });
   });
 
+  // ─── Queue Config ───
+
+  test("queue defaults when no config file exists", () => {
+    const config = loadConfig("/nonexistent/path");
+    expect(config.queue.maxSize).toBe(0);
+    expect(config.queue.timeoutMs).toBe(30_000);
+  });
+
+  test("partial queue override preserves unset defaults", () => {
+    mkdirSync(tmpDir, { recursive: true });
+    writeFileSync(join(tmpDir, "isol8.config.json"), JSON.stringify({ queue: { maxSize: 50 } }));
+
+    const config = loadConfig(tmpDir);
+    expect(config.queue.maxSize).toBe(50);
+    // timeoutMs should retain its default
+    expect(config.queue.timeoutMs).toBe(30_000);
+
+    rmSync(tmpDir, { recursive: true });
+  });
+
+  test("full queue override applies both fields", () => {
+    mkdirSync(tmpDir, { recursive: true });
+    writeFileSync(
+      join(tmpDir, "isol8.config.json"),
+      JSON.stringify({ queue: { maxSize: 100, timeoutMs: 10_000 } })
+    );
+
+    const config = loadConfig(tmpDir);
+    expect(config.queue.maxSize).toBe(100);
+    expect(config.queue.timeoutMs).toBe(10_000);
+
+    rmSync(tmpDir, { recursive: true });
+  });
+
+  test("queue defaults preserved when unrelated fields are overridden", () => {
+    mkdirSync(tmpDir, { recursive: true });
+    writeFileSync(join(tmpDir, "isol8.config.json"), JSON.stringify({ maxConcurrent: 20 }));
+
+    const config = loadConfig(tmpDir);
+    expect(config.maxConcurrent).toBe(20);
+    expect(config.queue.maxSize).toBe(0);
+    expect(config.queue.timeoutMs).toBe(30_000);
+
+    rmSync(tmpDir, { recursive: true });
+  });
+
   test("merges pool defaults from config", () => {
     mkdirSync(tmpDir, { recursive: true });
     writeFileSync(

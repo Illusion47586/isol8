@@ -461,6 +461,30 @@ These keys are config concerns, not per-execution request fields.
   **Library**: second constructor arg (`new DockerIsol8(options, maxConcurrent)`).
 </ResponseField>
 
+<ResponseField name="queue.maxSize" type="number" default="0">
+  Maximum number of requests that can wait in the server queue. `0` means unlimited.
+
+  **CLI**: no dedicated flag.
+
+  **Config**: `queue.maxSize`.
+
+  **API**: not a request body field; applied by server. Monitor via `GET /queue/status`.
+
+  **Library**: `new Semaphore(max, { maxSize })`.
+</ResponseField>
+
+<ResponseField name="queue.timeoutMs" type="number" default="30000">
+  Maximum time in milliseconds a request can wait in the server queue. `0` means unlimited.
+
+  **CLI**: no dedicated flag.
+
+  **Config**: `queue.timeoutMs`.
+
+  **API**: not a request body field; applied by server. Monitor via `GET /queue/status`.
+
+  **Library**: `new Semaphore(max, { timeoutMs })`.
+</ResponseField>
+
 <ResponseField name="cleanup.autoPrune" type="boolean" default="true">
   Idle session pruning in server mode.
 </ResponseField>

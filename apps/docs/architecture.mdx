@@ -16,7 +16,7 @@ This page explains how isol8 is assembled under the hood so you can reason about
 | Remote engine | `RemoteIsol8` in `src/client/remote.ts` | HTTP/WebSocket client for remote server execution |
 | Runtime selection | `RuntimeRegistry` in `src/runtime/adapter.ts` + `src/runtime/index.ts` | runtime adapter lookup and file extension detection |
 | HTTP server | `createServer()` in `src/server/index.ts` | `/execute`, `/execute/stream`, `/execute/ws`, session + file endpoints |
-| Concurrency control | `Semaphore` in `src/engine/concurrency.ts` | caps parallel execution both engine-side and server-side |
+| Concurrency control | `Semaphore` in `src/engine/concurrency.ts` | caps parallel execution both engine-side and server-side; supports configurable queue size limits (`QueueFullError`) and timeouts (`QueueTimeoutError`) for backpressure |
 
 ## Diagram 1: Request path by interface
 
