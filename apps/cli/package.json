@@ -1,6 +1,6 @@
 {
   "name": "@isol8/cli",
-  "version": "0.14.7",
+  "version": "0.15.0",
   "description": "CLI for AI agents to run untrusted code safely in isolated Docker sandboxes",
   "author": "Illusion47586",
   "license": "MIT",

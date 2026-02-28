@@ -165,7 +165,9 @@ export interface ExecutionResult {
    * Only populated when `logNetwork` is enabled and network mode is "filtered".
    */
   networkLogs?: NetworkLogEntry[];
-} /**
+}
+
+/**
  * A chunk of streaming output from an execution.
  *
  * Yielded by {@link Isol8Engine.executeStream} as output arrives in real-time.
@@ -176,6 +178,26 @@ export interface StreamEvent {
   /** Text content for stdout/stderr, exit code string for exit, error message for error. */
   data: string;
 }
+
+// ─── WebSocket Messages ───
+
+/**
+ * Messages sent from the client to the server over a WebSocket connection.
+ *
+ * - `"execute"` — Start a code execution with the given request and options.
+ * - `"stdin"` — Send data to the running process's stdin (reserved for future use).
+ * - `"signal"` — Send a control signal to the running process (reserved for future use).
+ */
+export type WsClientMessage =
+  | { type: "execute"; request: ExecutionRequest; options?: Isol8Options }
+  | { type: "stdin"; data: string }
+  | { type: "signal"; signal: "SIGINT" | "SIGTERM" };
+
+/**
+ * Messages sent from the server to the client over a WebSocket connection.
+ * Identical to {@link StreamEvent} — output chunks, exit, and error events.
+ */
+export type WsServerMessage = StreamEvent;
 
 /**
  * Security events raised during execution (policy violations, alerts).

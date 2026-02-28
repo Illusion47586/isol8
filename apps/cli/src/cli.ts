@@ -440,7 +440,7 @@ program
         authDbPath: opts.authDb,
       });
       let shuttingDown = false;
-      const bunServer = Bun.serve({ fetch: server.app.fetch, port });
+      const bunServer = Bun.serve({ fetch: server.app.fetch, port, websocket: server.websocket });
 
       const shutdown = async () => {
         if (shuttingDown) {

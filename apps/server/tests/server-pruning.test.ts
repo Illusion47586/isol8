@@ -29,6 +29,7 @@ describe("Integration: Server Auto-Pruner", () => {
     serverInstance = Bun.serve({
       fetch: server.app.fetch,
       port: PORT,
+      websocket: server.websocket,
     });
   });
 

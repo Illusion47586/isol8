@@ -16,7 +16,8 @@ Port resolution order is `--port` > `ISOL8_PORT` > `PORT` > `3000`. If the selec
 
 ## What the server provides
 
-- authenticated execution APIs (`/execute`, `/execute/stream`)
+- authenticated execution APIs (`/execute`, `/execute/stream`, `/execute/ws`)
+- WebSocket streaming with automatic SSE fallback in `RemoteIsol8`
 - optional persistent sessions via `sessionId`
 - file upload/download for active sessions
 - global concurrency control via semaphore (`maxConcurrent`)
@@ -39,11 +40,15 @@ flowchart TD
   C --> D["Global semaphore"]
   D --> E["DockerIsol8 engine"]
   E --> F["Sandbox container(s)"]
+
+  style A fill:#f9f,stroke:#333
+  A -- "HTTP" --> B
+  A -- "WebSocket" --> B
 ```
 
 ## Request envelope
 
-`POST /execute` and `POST /execute/stream` accept:
+`POST /execute`, `POST /execute/stream`, and `GET /execute/ws` accept:
 
 ```json
 {
