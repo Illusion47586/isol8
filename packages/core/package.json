@@ -1,6 +1,6 @@
 {
   "name": "@isol8/core",
-  "version": "0.14.7",
+  "version": "0.15.0",
   "description": "Sandboxed code execution engine for AI agents and apps (Docker, runtime and network controls)",
   "author": "Illusion47586",
   "license": "MIT",
