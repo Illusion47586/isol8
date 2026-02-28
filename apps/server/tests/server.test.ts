@@ -29,6 +29,7 @@ describe("Integration: Server & Client", () => {
     serverInstance = Bun.serve({
       fetch: server.app.fetch,
       port: PORT,
+      websocket: server.websocket,
     });
   });
 

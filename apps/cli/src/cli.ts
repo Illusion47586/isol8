@@ -434,7 +434,7 @@ program
       const { createServer } = await import("@isol8/server");
       const server = await createServer({ port, apiKey, debug: opts.debug ?? false });
       let shuttingDown = false;
-      const bunServer = Bun.serve({ fetch: server.app.fetch, port });
+      const bunServer = Bun.serve({ fetch: server.app.fetch, port, websocket: server.websocket });
 
       const shutdown = async () => {
         if (shuttingDown) {

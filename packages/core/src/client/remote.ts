@@ -13,6 +13,7 @@ import type {
   Isol8Options,
   StartOptions,
   StreamEvent,
+  WsClientMessage,
 } from "../types";
 
 /** Connection options for the remote isol8 client. */
@@ -45,6 +46,8 @@ export class RemoteIsol8 implements Isol8Engine {
   private readonly apiKey: string;
   private readonly sessionId?: string;
   private readonly isol8Options?: Isol8Options;
+  /** Whether WebSocket streaming is available on the server. `null` = unknown. */
+  private wsAvailable: boolean | null = null;
 
   /**
    * @param options - Connection options (host, API key, session ID).
@@ -93,10 +96,134 @@ export class RemoteIsol8 implements Isol8Engine {
   }
 
   /**
-   * Execute code on the remote server and stream output chunks via SSE.
+   * Execute code on the remote server and stream output chunks.
+   * Attempts WebSocket first, falls back to SSE if WebSocket is unavailable.
    * Yields {@link StreamEvent} objects as they arrive from the server.
    */
   async *executeStream(req: ExecutionRequest): AsyncIterable<StreamEvent> {
+    // Try WebSocket if we haven't determined it's unavailable
+    if (this.wsAvailable !== false) {
+      try {
+        yield* this.executeStreamWs(req);
+        return;
+      } catch (err) {
+        // If WebSocket fails on first attempt, fall back to SSE
+        if (this.wsAvailable === null) {
+          this.wsAvailable = false;
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    // Fall back to SSE
+    yield* this.executeStreamSse(req);
+  }
+
+  /**
+   * Execute code on the remote server and stream output chunks via WebSocket.
+   * @internal
+   */
+  private async *executeStreamWs(req: ExecutionRequest): AsyncIterable<StreamEvent> {
+    const wsUrl = `${this.host.replace(/^http/, "ws")}/execute/ws`;
+
+    const events: StreamEvent[] = [];
+    let resolve: (() => void) | null = null;
+    let done = false;
+    let wsError: Error | null = null;
+
+    // Bun's WebSocket supports custom headers via a second options argument.
+    // The standard WebSocket type doesn't include this, so we cast through unknown.
+    const ws = new WebSocket(wsUrl, {
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+    } as never);
+
+    const waitForEvent = (): Promise<void> =>
+      new Promise<void>((r) => {
+        if (events.length > 0 || done) {
+          r();
+        } else {
+          resolve = r;
+        }
+      });
+
+    ws.onopen = () => {
+      this.wsAvailable = true;
+      const msg: WsClientMessage = {
+        type: "execute",
+        request: req,
+        ...(this.isol8Options ? { options: this.isol8Options } : {}),
+      };
+      ws.send(JSON.stringify(msg));
+    };
+
+    ws.onmessage = (evt) => {
+      try {
+        const event = JSON.parse(
+          typeof evt.data === "string" ? evt.data : String(evt.data)
+        ) as StreamEvent;
+        events.push(event);
+        if (resolve) {
+          const r = resolve;
+          resolve = null;
+          r();
+        }
+      } catch {
+        // Ignore malformed messages
+      }
+    };
+
+    ws.onerror = () => {
+      if (!done) {
+        wsError = new Error("WebSocket connection failed");
+        done = true;
+        if (resolve) {
+          const r = resolve;
+          resolve = null;
+          r();
+        }
+      }
+    };
+
+    ws.onclose = () => {
+      done = true;
+      if (resolve) {
+        const r = resolve;
+        resolve = null;
+        r();
+      }
+    };
+
+    try {
+      while (true) {
+        await waitForEvent();
+
+        if (wsError) {
+          throw wsError;
+        }
+
+        while (events.length > 0) {
+          yield events.shift()!;
+        }
+
+        if (done) {
+          break;
+        }
+      }
+    } finally {
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+        ws.close();
+      }
+    }
+  }
+
+  /**
+   * Execute code on the remote server and stream output chunks via SSE.
+   * @internal
+   */
+  private async *executeStreamSse(req: ExecutionRequest): AsyncIterable<StreamEvent> {
     const res = await this.fetch("/execute/stream", {
       method: "POST",
       body: JSON.stringify({

@@ -258,6 +258,7 @@ while (true) {
     bunServer = Bun.serve({
       fetch: server.app.fetch,
       port,
+      websocket: server.websocket,
     });
     console.log(`[INFO] isol8 server v${VERSION} listening on http://localhost:${port}`);
     console.log("       Auth: Bearer token required");

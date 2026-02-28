@@ -12,7 +12,7 @@ Use remote mode when you want centralized execution infrastructure and shared po
 flowchart TD
   A["Client (CLI, SDK, app)"] --> B["isol8 serve (Hono server)"]
   B --> C["Auth middleware"]
-  C --> D["/execute and /execute/stream"]
+  C --> D["/execute, /execute/stream, and /execute/ws"]
   D --> E["DockerIsol8 engine"]
   E --> F["Sandboxed containers"]
 ```
@@ -263,11 +263,62 @@ The example above prunes idle sessions after 30 minutes.
 
 ## Streaming behavior
 
-- `POST /execute/stream` emits SSE events (`stdout`, `stderr`, `exit`, `error`).
-- current server implementation always uses ephemeral mode for streaming path.
+`RemoteIsol8.executeStream()` uses a **WebSocket-first** transport strategy:
+
+1. First call attempts WebSocket connection to `GET /execute/ws`.
+2. If WebSocket succeeds, all subsequent calls use WebSocket.
+3. If WebSocket fails on the first attempt (server doesn't support it, proxy blocks upgrade), the client falls back to SSE via `POST /execute/stream`.
+4. If WebSocket was previously available but later fails, the error is thrown (not silently retried as SSE).
+
+Both transports emit the same `StreamEvent` objects (`stdout`, `stderr`, `exit`, `error`).
+
+<Tabs>
+  <Tab title="Library">
+    ```typescript
+    // executeStream() automatically picks the best transport
+    for await (const event of engine.executeStream({
+      code: "for i in range(3): print(i)",
+      runtime: "python",
+    })) {
+      if (event.type === "stdout") process.stdout.write(event.data);
+      if (event.type === "stderr") process.stderr.write(event.data);
+      if (event.type === "exit") console.log(`Exited: ${event.data}`);
+    }
+    ```
+  </Tab>
+  <Tab title="WebSocket API">
+    ```javascript
+    const ws = new WebSocket("ws://localhost:3000/execute/ws", {
+      headers: { Authorization: `Bearer ${API_KEY}` },
+    });
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({
+        type: "execute",
+        request: { runtime: "python", code: "print('hello')" },
+      }));
+    };
+
+    ws.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+      console.log(msg.type, msg.data);
+    };
+    ```
+  </Tab>
+  <Tab title="SSE API">
+    ```bash
+    curl -N -X POST http://localhost:3000/execute/stream \
+      -H "Authorization: Bearer $ISOL8_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{"request": {"runtime": "python", "code": "print(42)"}}'
+    ```
+  </Tab>
+</Tabs>
+
+- current server implementation always uses ephemeral mode for both streaming paths.
 
 <Note>
-  Sending `sessionId` to `/execute/stream` does not create persistent streaming sessions in current implementation.
+  Sending `sessionId` to `/execute/stream` does not create persistent streaming sessions in current implementation. The WebSocket endpoint (`/execute/ws`) is ephemeral-only.
 </Note>
 
 ## File APIs (persistent sessions only)

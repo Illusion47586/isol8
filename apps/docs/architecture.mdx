@@ -13,9 +13,9 @@ This page explains how isol8 is assembled under the hood so you can reason about
 | Public engine contract | `Isol8Engine` in `src/types.ts` | common `start/stop/execute/executeStream/putFile/getFile` interface |
 | Local engine | `DockerIsol8` in `src/engine/docker.ts` | Orchestrator/Facade - delegates to managers |
 | Manager classes | `NetworkManager`, `ExecutionManager`, `VolumeManager` in `src/engine/managers/` | Domain-specific operations |
-| Remote engine | `RemoteIsol8` in `src/client/remote.ts` | HTTP client for remote server execution |
+| Remote engine | `RemoteIsol8` in `src/client/remote.ts` | HTTP/WebSocket client for remote server execution |
 | Runtime selection | `RuntimeRegistry` in `src/runtime/adapter.ts` + `src/runtime/index.ts` | runtime adapter lookup and file extension detection |
-| HTTP server | `createServer()` in `src/server/index.ts` | `/execute`, `/execute/stream`, session + file endpoints |
+| HTTP server | `createServer()` in `src/server/index.ts` | `/execute`, `/execute/stream`, `/execute/ws`, session + file endpoints |
 | Concurrency control | `Semaphore` in `src/engine/concurrency.ts` | caps parallel execution both engine-side and server-side |
 
 ## Diagram 1: Request path by interface
