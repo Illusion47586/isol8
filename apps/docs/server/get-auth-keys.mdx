@@ -1,0 +1,51 @@
+---
+title: "List API keys"
+description: "List all DB-backed API keys, optionally filtered by tenant."
+api: "GET /auth/keys"
+icon: "list"
+---
+
+Returns metadata for all API keys stored in the database. Plaintext keys and hashes are never included.
+
+Requires the **master key**. DB-backed auth must be enabled.
+
+<ParamField query="tenantId" type="string">
+  Filter keys by tenant identifier. Omit to list all keys.
+</ParamField>
+
+<ResponseField name="keys" type="ApiKeyInfo[]">
+  Array of key metadata objects ordered by creation date (newest first).
+
+  Each object contains: `id`, `name`, `keyPrefix`, `tenantId`, `createdAt`, `expiresAt`, `lastUsedAt`, `revoked`.
+</ResponseField>
+
+<RequestExample>
+```bash
+# List all keys
+curl http://localhost:3000/auth/keys \
+  -H "Authorization: Bearer $ISOL8_MASTER_KEY"
+
+# Filter by tenant
+curl "http://localhost:3000/auth/keys?tenantId=team-infra" \
+  -H "Authorization: Bearer $ISOL8_MASTER_KEY"
+```
+</RequestExample>
+
+<ResponseExample>
+```json
+{
+  "keys": [
+    {
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "ci-runner",
+      "keyPrefix": "isol8_4f3c...",
+      "tenantId": "team-infra",
+      "createdAt": "2026-03-01T12:00:00.000Z",
+      "expiresAt": "2026-03-02T12:00:00.000Z",
+      "lastUsedAt": "2026-03-01T14:30:00.000Z",
+      "revoked": false
+    }
+  ]
+}
+```
+</ResponseExample>

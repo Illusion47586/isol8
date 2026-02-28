@@ -102,6 +102,15 @@
               "server/delete-session",
               "server/post-cleanup"
             ]
+          },
+          {
+            "group": "Auth & Key Management",
+            "pages": [
+              "server/post-auth-keys",
+              "server/get-auth-keys",
+              "server/delete-auth-keys",
+              "server/post-auth-login"
+            ]
           }
         ]
       },

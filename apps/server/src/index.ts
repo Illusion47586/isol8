@@ -13,6 +13,7 @@ import type { ServerWebSocket } from "bun";
 import { Hono } from "hono";
 import { createBunWebSocket } from "hono/bun";
 import { authMiddleware, requireMasterKey } from "./auth.js";
+import { AuthDB } from "./db.js";
 
 /** Configuration for the isol8 HTTP server. */
 export interface ServerOptions {

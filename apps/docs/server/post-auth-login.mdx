@@ -1,0 +1,59 @@
+---
+title: "Login (exchange for token)"
+description: "Exchange the master key for a short-lived API token."
+api: "POST /auth/login"
+icon: "right-to-bracket"
+---
+
+Creates a short-lived API token by exchanging the master key. Useful for granting temporary access without sharing the master key itself.
+
+The returned token works with all authenticated endpoints (execution, file I/O, sessions) but **not** with admin endpoints that require the master key (key management).
+
+Requires the **master key**. DB-backed auth must be enabled.
+
+<ParamField body="name" type="string">
+  Label for the token. Defaults to `login-<ISO timestamp>`.
+</ParamField>
+
+<ParamField body="tenantId" type="string">
+  Tenant to associate with the token. Defaults to `"default"`.
+</ParamField>
+
+<ParamField body="ttlMs" type="number">
+  Token lifetime in milliseconds. Defaults to `auth.defaultTtlMs` from server config.
+</ParamField>
+
+<ResponseField name="token" type="string">
+  Short-lived API token prefixed with `isol8_`.
+</ResponseField>
+
+<ResponseField name="expiresAt" type="string">
+  ISO 8601 expiration timestamp.
+</ResponseField>
+
+<ResponseField name="keyId" type="string">
+  UUID of the underlying key record. Can be used with `DELETE /auth/keys/:id` to revoke early.
+</ResponseField>
+
+<RequestExample>
+```bash
+curl -X POST http://localhost:3000/auth/login \
+  -H "Authorization: Bearer $ISOL8_MASTER_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "name": "ci-job-42", "ttlMs": 600000 }'
+```
+</RequestExample>
+
+<ResponseExample>
+```json
+{
+  "token": "isol8_9f2e8d7c...",
+  "expiresAt": "2026-03-01T12:10:00.000Z",
+  "keyId": "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+}
+```
+</ResponseExample>
+
+<Note>
+  Tokens created via login are regular DB-backed keys internally. They appear in `GET /auth/keys` and can be revoked with `DELETE /auth/keys/:id`.
+</Note>
