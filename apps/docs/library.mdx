@@ -193,7 +193,7 @@ const isol8 = new RemoteIsol8(
 </ResponseField>
 
 <ResponseField name="executeStream(req)" type="AsyncIterable<StreamEvent>">
-  Streams `stdout`, `stderr`, `exit`, and `error` events.
+  Streams `stdout`, `stderr`, `exit`, and `error` events. For `RemoteIsol8`, automatically uses WebSocket transport with SSE fallback.
 </ResponseField>
 
 <ResponseField name="putFile(path, content)" type="Promise<void>">
