@@ -598,6 +598,26 @@ export interface Isol8Config {
 
   /** Enable debug logging. @default false */
   debug: boolean;
+
+  /**
+   * Prebuilt images ensuring that custom environments are built and ready
+   * when the server starts. The server will invoke `isol8 build` on these images
+   * automatically during boot if they are not already built locally.
+   * Only applicable in server-mode.
+   */
+  prebuiltImages: PrebuiltImageConfig[];
+}
+
+/**
+ * Configuration for a prebuilt image that the server ensures exists.
+ */
+export interface PrebuiltImageConfig {
+  /** The full docker tag of the custom image to build (e.g. `my-custom-python:latest`). */
+  tag: string;
+  /** The base runtime to extend (e.g. `python`, `node`). */
+  runtime: Runtime;
+  /** The runtime packages to install into the custom image (e.g. `["numpy", "pandas"]`). */
+  installPackages: string[];
 }
 
 /**
