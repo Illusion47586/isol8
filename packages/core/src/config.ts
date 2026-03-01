@@ -74,7 +74,6 @@ const DEFAULT_CONFIG: Isol8Config = {
   },
   auth: {
     enabled: false,
-    connectionString: join(homedir(), ".isol8", "auth.db"),
     defaultTtlMs: 86_400_000, // 24 hours
     cleanupIntervalMs: 3_600_000, // 1 hour
   },

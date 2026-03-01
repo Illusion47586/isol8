@@ -16,7 +16,10 @@ The isol8 server exposes remote code execution over HTTP for centralized infrast
   </Tab>
   <Tab title="With DB-backed auth">
     ```bash
-    # SQLite (file path)
+    # SQLite (default path ~/.isol8/auth.db)
+    isol8 serve --port 3000 --key "$ISOL8_API_KEY" --auth-db
+
+    # SQLite (custom path)
     isol8 serve --port 3000 --key "$ISOL8_API_KEY" --auth-db ./isol8-auth.db
 
     # PostgreSQL
@@ -30,9 +33,9 @@ The isol8 server exposes remote code execution over HTTP for centralized infrast
 
 Port resolution order is `--port` > `ISOL8_PORT` > `PORT` > `3000`. If the selected port is already in use, startup prompts for a different port or can auto-select one.
 
-Pass `--auth-db <connection>` to enable DB-backed API key management. The backend is auto-detected from the connection string:
+Pass `--auth-db` to enable DB-backed API key management. Without a value, it defaults to a SQLite database at `~/.isol8/auth.db`. You can also pass a connection string — the backend is auto-detected:
 
-- **File path** (e.g. `./isol8-auth.db`) → SQLite
+- **No value or file path** (e.g. `./isol8-auth.db`) → SQLite
 - **`postgres://` or `postgresql://`** → PostgreSQL
 - **`mysql://`** → MySQL
 

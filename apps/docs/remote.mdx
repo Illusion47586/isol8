@@ -69,7 +69,7 @@ isol8 supports two authentication modes that can work together.
 
 ### DB-backed keys (optional)
 
-When the server is started with `--auth-db <connection>`, API keys are stored in a database. Supported backends: SQLite (file path), PostgreSQL (`postgres://` or `postgresql://`), and MySQL (`mysql://`). The `--key` value becomes the **master key** with admin privileges:
+When the server is started with `--auth-db`, API keys are stored in a database. Without a value, it defaults to SQLite at `~/.isol8/auth.db`. You can also pass a `postgres://` or `mysql://` connection string for PostgreSQL or MySQL. The `--key` value becomes the **master key** with admin privileges:
 
 - Additional keys are created via `POST /auth/keys` (master key required)
 - DB keys authenticate execution, file, and session endpoints
@@ -108,7 +108,7 @@ const engine = new RemoteIsol8({
 });
 ```
 
-For server-side key management, use the `createServer` function with `authDbPath` (supports SQLite file paths, `postgres://`, and `mysql://` connection strings):
+For server-side key management, use the `createServer` function with `authDbPath`. Pass a file path for SQLite, or a `postgres://` / `mysql://` URL for other backends:
 
 ```typescript
 import { createServer } from "@isol8/server";

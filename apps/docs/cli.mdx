@@ -222,8 +222,9 @@ isol8 serve --key <api-key> [options]
   When `--auth-db` is also provided, this key becomes the **master key** with admin privileges.
 </ResponseField>
 
-<ResponseField name="--auth-db <connection>" type="string">
-  Enable DB-backed API key management. Accepts a file path (SQLite), `postgres://` or `postgresql://` URL (PostgreSQL), or `mysql://` URL (MySQL).
+<ResponseField name="--auth-db [connection]" type="string">
+  Enable DB-backed API key management. When provided without a value or with a file path, uses SQLite (defaults to `~/.isol8/auth.db`).
+  Pass a `postgres://` or `postgresql://` URL for PostgreSQL, or a `mysql://` URL for MySQL.
   The backend is auto-detected from the connection string format.
   When enabled, the `--key` value becomes the master key, and additional keys can be created
   via the `/auth/keys` endpoint or the `isol8 login` flow. See <a href="/server/overview">Server overview</a> for the full authentication model.
@@ -243,7 +244,10 @@ isol8 serve --key <api-key> [options]
 # Static key auth (default)
 isol8 serve --key my-secret-key --port 3000
 
-# DB-backed auth with SQLite
+# DB-backed auth with SQLite (default path ~/.isol8/auth.db)
+isol8 serve --key my-master-key --auth-db --port 3000
+
+# DB-backed auth with SQLite (custom path)
 isol8 serve --key my-master-key --auth-db ./isol8-auth.db --port 3000
 
 # DB-backed auth with PostgreSQL

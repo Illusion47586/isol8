@@ -7,6 +7,9 @@
  * Bearer token auth.
  */
 
+import { mkdirSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 import type { ExecutionRequest, Isol8Options, WsClientMessage } from "@isol8/core";
 import { DockerIsol8, loadConfig, logger, Semaphore, VERSION } from "@isol8/core";
 import type { ServerWebSocket } from "bun";
@@ -77,11 +80,21 @@ export async function createServer(options: ServerOptions) {
   let pruneInterval: ReturnType<typeof setInterval> | undefined;
   let cleanupInFlight: Promise<CleanupResult> | null = null;
 
-  // Initialize auth store if enabled via flag or config
-  const authConnectionString =
-    options.authDbPath ?? (config.auth.enabled ? config.auth.connectionString : undefined);
+  // Initialize auth store if enabled via flag or config.
+  // Resolution: --auth-db flag > config.auth.connectionString > default SQLite at ~/.isol8/auth.db
+  let authConnectionString: string | undefined;
+  if (options.authDbPath) {
+    authConnectionString = options.authDbPath;
+  } else if (config.auth.enabled) {
+    authConnectionString = config.auth.connectionString ?? join(homedir(), ".isol8", "auth.db");
+  }
+
   let authDb: AuthStore | undefined;
   if (authConnectionString) {
+    // Ensure parent directory exists for SQLite file paths
+    if (!authConnectionString.includes("://")) {
+      mkdirSync(dirname(authConnectionString), { recursive: true });
+    }
     authDb = await createAuthStore(authConnectionString);
     logger.info(`[Server] DB-backed auth enabled: ${authConnectionString}`);
 

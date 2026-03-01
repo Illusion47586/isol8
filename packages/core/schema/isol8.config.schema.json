@@ -109,8 +109,7 @@
               "type": "number"
             },
             "connectionString": {
-              "default": "~/.isol8/auth.db",
-              "description": "Connection string or file path. File paths use SQLite, URLs use PostgreSQL/MySQL.",
+              "description": "Database connection string. Omit for the default SQLite database at `~/.isol8/auth.db`. Set to a `postgres://` or `postgresql://` URL for PostgreSQL, or `mysql://` for MySQL.",
               "type": "string"
             },
             "defaultTtlMs": {
