@@ -14,23 +14,22 @@ import type { RuntimeAdapter } from "../runtime/adapter";
 import type {
   ExecutionRequest,
   ExecutionResult,
-  Isol8Dependencies,
+  Isol8Options,
   Isol8Engine,
   Isol8Mode,
-  Isol8Options,
   NetworkFilterConfig,
   NetworkMode,
   RemoteCodePolicy,
   SecurityConfig,
   StartOptions,
   StreamEvent,
-} from "../types";
+} from "../types.js";
 import { logger } from "../utils/logger";
 import { AuditLogger } from "./audit";
 import { fetchRemoteCode } from "./code-fetcher";
 import { Semaphore } from "./concurrency";
 import { EMBEDDED_DEFAULT_SECCOMP_PROFILE } from "./default-seccomp-profile";
-import { getCustomImageTag, normalizePackages } from "./image-builder";
+import { normalizePackages } from "./image-builder";
 import { ExecutionManager, NetworkManager, VolumeManager } from "./managers";
 import { ContainerPool } from "./pool";
 import { type ContainerResourceUsage, calculateResourceDelta, getContainerStats } from "./stats";
@@ -81,7 +80,6 @@ export class DockerIsol8 implements Isol8Engine {
   private readonly logNetwork: boolean;
   private readonly poolStrategy: "secure" | "fast";
   private readonly poolSize: number | { clean: number; dirty: number };
-  private readonly dependencies: Isol8Dependencies;
   private readonly auditLogger?: AuditLogger;
   private readonly remoteCodePolicy: RemoteCodePolicy;
 
@@ -148,7 +146,6 @@ export class DockerIsol8 implements Isol8Engine {
     this.logNetwork = options.logNetwork ?? false;
     this.poolStrategy = options.poolStrategy ?? "fast";
     this.poolSize = options.poolSize ?? { clean: 1, dirty: 1 };
-    this.dependencies = options.dependencies ?? {};
     this.remoteCodePolicy = options.remoteCode ?? {
       enabled: false,
       allowedSchemes: ["https"],
@@ -213,7 +210,8 @@ export class DockerIsol8 implements Isol8Engine {
 
     for (const adapter of adapters) {
       try {
-        images.add(await this.resolveImage(adapter));
+        const resolved = await this.resolveImage(adapter);
+        images.add(resolved.image);
       } catch (err) {
         logger.debug(`[Pool] Pre-warm image resolution failed for ${adapter.name}: ${err}`);
       }
@@ -490,10 +488,11 @@ export class DockerIsol8 implements Isol8Engine {
       const request = await this.resolveExecutionRequest(req);
       const adapter = this.getAdapter(request.runtime);
       const timeoutMs = request.timeoutMs ?? this.defaultTimeoutMs;
-      const image = await this.resolveImage(adapter);
+      const resolved = await this.resolveImage(adapter, request.installPackages);
+      const image = resolved.image;
 
       // Create container (always ephemeral-style for streaming)
-      const container = await this.docker.createContainer({
+      const container: Docker.Container = await this.docker.createContainer({
         Image: image,
         Cmd: ["sleep", "infinity"],
         WorkingDir: SANDBOX_WORKDIR,
@@ -520,11 +519,11 @@ export class DockerIsol8 implements Isol8Engine {
         await this.volumeManager.writeFileViaExec(container, filePath, request.code);
 
         // Install packages if requested
-        if (request.installPackages?.length) {
+        if (resolved.remainingPackages.length > 0) {
           await this.executionManager.installPackages(
             container,
             request.runtime,
-            request.installPackages,
+            resolved.remainingPackages,
             timeoutMs
           );
         }
@@ -587,70 +586,76 @@ export class DockerIsol8 implements Isol8Engine {
 
   // ─── Private methods ───
 
-  private async resolveImage(adapter: RuntimeAdapter): Promise<string> {
+  private async resolveImage(
+    adapter: RuntimeAdapter,
+    requestedPackages?: string[]
+  ): Promise<{ image: string; remainingPackages: string[] }> {
     if (this.overrideImage) {
-      return this.overrideImage;
+      return { image: this.overrideImage, remainingPackages: requestedPackages ?? [] };
     }
 
-    const cacheKey = adapter.image;
+    const cacheKey = `${adapter.name}:${(requestedPackages ?? []).join(",")}`;
     const cached = this.imageCache.get(cacheKey);
     if (cached) {
-      return cached;
+      return { image: cached, remainingPackages: [] }; // Assume cached means fully satisfied
     }
 
-    let resolvedImage = adapter.image;
-    const configuredDeps = this.dependencies[adapter.name];
-    const normalizedDeps = configuredDeps ? normalizePackages(configuredDeps) : [];
+    const baseImage = adapter.image;
+    let bestImage = baseImage;
+    let remainingPackages = requestedPackages ?? [];
 
-    if (normalizedDeps.length > 0) {
-      const hashedCustomTag = getCustomImageTag(adapter.name, normalizedDeps);
-      try {
-        await this.docker.getImage(hashedCustomTag).inspect();
-        resolvedImage = hashedCustomTag;
-      } catch {
-        logger.debug(
-          `[ImageBuilder] Hashed custom image not found for ${adapter.name}: ${hashedCustomTag}`
-        );
-      }
-    }
+    if (requestedPackages && requestedPackages.length > 0) {
+      const { LABELS, normalizePackages } = await import("./image-builder");
+      const normalizedReq = normalizePackages(requestedPackages);
 
-    if (resolvedImage === adapter.image) {
-      // Backward-compatible fallback to legacy non-hashed custom tag.
-      const legacyCustomTag = `${adapter.image}-custom`;
-      try {
-        await this.docker.getImage(legacyCustomTag).inspect();
-        resolvedImage = legacyCustomTag;
-      } catch {
-        // keep base image
-      }
-    }
+      // Search local images for a matching custom image
+      const images = await this.docker.listImages({
+        filters: {
+          label: [`${LABELS.runtime}=${adapter.name}`],
+        },
+      });
 
-    // Ensure the resolved image exists. If not, build it.
-    try {
-      await this.docker.getImage(resolvedImage).inspect();
-    } catch {
-      logger.debug(`[ImageBuilder] Image ${resolvedImage} not found. Building...`);
-      const { buildBaseImages, buildCustomImage } = await import("./image-builder");
+      for (const img of images) {
+        if (!img.RepoTags || img.RepoTags.length === 0) continue;
 
-      if (resolvedImage !== adapter.image && normalizedDeps.length > 0) {
-        // Building custom image: ensure base image exists first
-        try {
-          await this.docker.getImage(adapter.image).inspect();
-        } catch {
-          logger.debug(`[ImageBuilder] Base image ${adapter.image} missing. Building...`);
-          await buildBaseImages(this.docker, undefined, false, [adapter.name]);
+        const depsLabel = img.Labels?.[LABELS.dependencies];
+        if (!depsLabel) continue;
+
+        const imgDeps = depsLabel.split(",");
+
+        // Exact match
+        if (img.RepoTags[0] && normalizedReq.length === imgDeps.length && normalizedReq.every((p) => imgDeps.includes(p))) {
+          bestImage = img.RepoTags[0];
+          remainingPackages = [];
+          logger.debug(`[Docker] Found exact custom image match: ${bestImage}`);
+          break;
         }
-        logger.debug(`[ImageBuilder] Building custom image for ${adapter.name}...`);
-        await buildCustomImage(this.docker, adapter.name, normalizedDeps);
-      } else {
-        // Building base image
-        logger.debug(`[ImageBuilder] Building base image for ${adapter.name}...`);
+
+        // Superset match (image has all requested deps and potentially more)
+        if (img.RepoTags[0] && normalizedReq.every((p) => imgDeps.includes(p))) {
+          bestImage = img.RepoTags[0];
+          remainingPackages = [];
+          logger.debug(`[Docker] Found superset custom image match: ${bestImage}`);
+          // Don't break here, we might find an exact match later
+        }
+      }
+    }
+
+    // Ensure the base image exists if we're falling back to it
+    if (bestImage === baseImage) {
+      try {
+        await this.docker.getImage(baseImage).inspect();
+      } catch {
+        logger.debug(`[Docker] Base image ${baseImage} not found. Building...`);
+        const { buildBaseImages } = await import("./image-builder");
         await buildBaseImages(this.docker, undefined, false, [adapter.name]);
       }
     }
 
-    this.imageCache.set(cacheKey, resolvedImage);
-    return resolvedImage;
+    if (remainingPackages.length === 0) {
+      this.imageCache.set(cacheKey, bestImage);
+    }
+    return { image: bestImage, remainingPackages };
   }
 
   private ensurePool(): ContainerPool {
@@ -686,7 +691,8 @@ export class DockerIsol8 implements Isol8Engine {
   ): Promise<ExecutionResult> {
     const adapter = this.getAdapter(req.runtime);
     const timeoutMs = req.timeoutMs ?? this.defaultTimeoutMs;
-    const image = await this.resolveImage(adapter);
+    const resolved = await this.resolveImage(adapter, req.installPackages);
+    const image = resolved.image;
 
     // Lazily initialize the container pool
     const pool = this.ensurePool();
@@ -734,11 +740,11 @@ export class DockerIsol8 implements Isol8Engine {
       }
 
       // Install packages if requested
-      if (req.installPackages?.length) {
+      if (resolved.remainingPackages.length > 0) {
         await this.executionManager.installPackages(
           container,
           req.runtime,
-          req.installPackages,
+          resolved.remainingPackages,
           timeoutMs
         );
       }
@@ -847,7 +853,7 @@ export class DockerIsol8 implements Isol8Engine {
         // Return container to pool for reuse - fire-and-forget for performance
         pool.release(container, image).catch((err) => {
           logger.debug(`[Pool] release failed: ${err}`);
-          container.remove({ force: true }).catch(() => {});
+          container.remove({ force: true }).catch(() => { });
         });
       }
     }
@@ -860,9 +866,11 @@ export class DockerIsol8 implements Isol8Engine {
     const adapter = this.getAdapter(req.runtime);
     const timeoutMs = req.timeoutMs ?? this.defaultTimeoutMs;
 
+    let remainingPackages = req.installPackages ?? [];
+
     // Lazily create the persistent container
     if (!this.container) {
-      await this.startPersistentContainer(adapter);
+      remainingPackages = await this.startPersistentContainer(adapter, req.installPackages);
     } else if (this.persistentRuntime?.name !== adapter.name) {
       throw new Error(
         `Cannot switch runtime from "${this.persistentRuntime?.name}" to "${adapter.name}". Each persistent container supports a single runtime. Create a new Isol8 instance for a different runtime.`
@@ -886,11 +894,11 @@ export class DockerIsol8 implements Isol8Engine {
     const timeoutSec = Math.ceil(timeoutMs / 1000);
 
     // Install packages if requested
-    if (req.installPackages?.length) {
+    if (remainingPackages.length > 0) {
       await this.executionManager.installPackages(
         this.container!,
         req.runtime,
-        req.installPackages,
+        remainingPackages,
         timeoutMs
       );
     }
@@ -999,11 +1007,11 @@ export class DockerIsol8 implements Isol8Engine {
     return this.volumeManager.retrieveFiles(container, paths);
   }
 
-  private async startPersistentContainer(adapter: RuntimeAdapter): Promise<void> {
-    const image = await this.resolveImage(adapter);
+  private async startPersistentContainer(adapter: RuntimeAdapter, requestedPackages?: string[]): Promise<string[]> {
+    const resolved = await this.resolveImage(adapter, requestedPackages);
 
     this.container = await this.docker.createContainer({
-      Image: image,
+      Image: resolved.image,
       Cmd: ["sleep", "infinity"],
       WorkingDir: SANDBOX_WORKDIR,
       Env: this.executionManager.buildEnv(
@@ -1028,6 +1036,7 @@ export class DockerIsol8 implements Isol8Engine {
     await this.networkManager.setupIptables(this.container);
 
     this.persistentRuntime = adapter;
+    return resolved.remainingPackages;
   }
 
   private getAdapter(runtime: string): RuntimeAdapter {

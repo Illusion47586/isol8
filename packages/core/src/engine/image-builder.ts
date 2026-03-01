@@ -61,9 +61,11 @@ function resolveDockerDir(): string {
 const DOCKERFILE_DIR = resolveDockerDir();
 
 /** Label keys for image metadata */
-const LABELS = {
+export const LABELS = {
   dockerHash: "org.isol8.build.hash",
   depsHash: "org.isol8.deps.hash",
+  runtime: "org.isol8.runtime",
+  dependencies: "org.isol8.dependencies",
 } as const;
 
 /** Files in docker directory that affect the build */
@@ -115,17 +117,7 @@ export function normalizePackages(packages: string[]): string[] {
   return [...new Set(packages.map((pkg) => pkg.trim()).filter(Boolean))].sort();
 }
 
-/**
- * Returns deterministic custom image tag for a runtime + package set.
- * Uses a short deps hash suffix to avoid tag collisions across different
- * dependency sets for the same runtime.
- */
-export function getCustomImageTag(runtime: string, packages: string[]): string {
-  const normalizedPackages = normalizePackages(packages);
-  const depsHash = computeDepsHash(runtime, normalizedPackages);
-  const shortHash = depsHash.slice(0, 12);
-  return `isol8:${runtime}-custom-${shortHash}`;
-}
+
 
 /**
  * Gets the labels from an existing Docker image.
@@ -261,59 +253,16 @@ export async function buildBaseImages(
   }
 }
 
-/**
- * Builds custom images with user-specified dependencies layered on top of
- * the base images. Reads package lists from the config's `dependencies` field.
- *
- * Uses smart build logic: computes a hash of the dependency list and
- * skips builds if the image already exists with matching hash.
- * Cleans up dangling images after rebuilding.
- *
- * @param docker - Dockerode instance.
- * @param config - Resolved isol8 configuration.
- * @param onProgress - Optional callback for build progress updates.
- * @param force - If true, always rebuild even if image is up to date.
- */
-export async function buildCustomImages(
-  docker: Docker,
-  config: Isol8Config,
-  onProgress?: ProgressCallback,
-  force = false
-): Promise<void> {
-  const deps = config.dependencies;
-
-  const python = deps.python ? normalizePackages(deps.python) : [];
-  const node = deps.node ? normalizePackages(deps.node) : [];
-  const bun = deps.bun ? normalizePackages(deps.bun) : [];
-  const deno = deps.deno ? normalizePackages(deps.deno) : [];
-  const bash = deps.bash ? normalizePackages(deps.bash) : [];
-
-  if (python.length) {
-    await buildCustomImage(docker, "python", python, onProgress, force);
-  }
-  if (node.length) {
-    await buildCustomImage(docker, "node", node, onProgress, force);
-  }
-  if (bun.length) {
-    await buildCustomImage(docker, "bun", bun, onProgress, force);
-  }
-  if (deno.length) {
-    await buildCustomImage(docker, "deno", deno, onProgress, force);
-  }
-  if (bash.length) {
-    await buildCustomImage(docker, "bash", bash, onProgress, force);
-  }
-}
 
 export async function buildCustomImage(
   docker: Docker,
   runtime: import("../types").Runtime | string,
   packages: string[],
+  tag: string,
   onProgress?: ProgressCallback,
   force = false
 ): Promise<void> {
   const normalizedPackages = normalizePackages(packages);
-  const tag = getCustomImageTag(runtime, normalizedPackages);
   const depsHash = computeDepsHash(runtime, normalizedPackages);
   logger.debug(`[ImageBuilder] ${runtime} custom deps hash: ${depsHash.slice(0, 16)}...`);
 
@@ -348,7 +297,7 @@ export async function buildCustomImage(
   let installCmd: string;
   switch (runtime) {
     case "python":
-      installCmd = `RUN pip install --no-cache-dir ${normalizedPackages.join(" ")}`;
+      installCmd = `RUN pip install --break-system-packages --no-cache-dir ${normalizedPackages.join(" ")}`;
       break;
     case "node":
       installCmd = `RUN npm install -g ${normalizedPackages.join(" ")}`;
@@ -371,29 +320,42 @@ export async function buildCustomImage(
 
   // Build using dockerode with an inline tar containing just the Dockerfile
   const { createTarBuffer, validatePackageName } = await import("./utils");
-  const { Readable } = await import("node:stream");
 
   // Validate all packages before building
   normalizedPackages.forEach(validatePackageName);
 
   const tarBuffer = createTarBuffer("Dockerfile", dockerfileContent);
 
-  const stream = await docker.buildImage(Readable.from(tarBuffer), {
+  const stream = await docker.buildImage(tarBuffer as any, {
     t: tag,
     dockerfile: "Dockerfile",
     labels: {
       [LABELS.depsHash]: depsHash,
+      [LABELS.runtime]: runtime.toString(),
+      [LABELS.dependencies]: normalizedPackages.join(","),
     },
   });
 
   await new Promise<void>((resolve, reject) => {
-    docker.modem.followProgress(stream, (err) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve();
+    docker.modem.followProgress(
+      stream as any,
+      (err: any, res: any) => {
+        if (err) {
+          reject(err);
+        } else if (res && res.length > 0 && res[res.length - 1].error) {
+          reject(new Error(res[res.length - 1].error));
+        } else {
+          resolve();
+        }
+      },
+      (event: any) => {
+        if (event.stream) {
+          process.stdout.write(event.stream);
+        } else if (event.error) {
+          console.error(event.error);
+        }
       }
-    });
+    );
   });
 
   // Clean up the old image if it existed and was replaced

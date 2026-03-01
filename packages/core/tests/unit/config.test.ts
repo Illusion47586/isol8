@@ -87,25 +87,6 @@ describe("loadConfig", () => {
     rmSync(tmpDir, { recursive: true });
   });
 
-  test("merges dependencies from config", () => {
-    mkdirSync(tmpDir, { recursive: true });
-    writeFileSync(
-      join(tmpDir, "isol8.config.json"),
-      JSON.stringify({
-        dependencies: {
-          python: ["numpy", "pandas"],
-          node: ["lodash"],
-        },
-      })
-    );
-
-    const config = loadConfig(tmpDir);
-    expect(config.dependencies.python).toEqual(["numpy", "pandas"]);
-    expect(config.dependencies.node).toEqual(["lodash"]);
-
-    rmSync(tmpDir, { recursive: true });
-  });
-
   test("merges remoteCode policy from config", () => {
     mkdirSync(tmpDir, { recursive: true });
     writeFileSync(

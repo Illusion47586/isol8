@@ -17,10 +17,9 @@ export type { DockerIsol8Options } from "./engine/docker";
 // ─── Engine ───
 export { DockerIsol8 } from "./engine/docker";
 export {
+  LABELS,
   buildBaseImages,
   buildCustomImage,
-  buildCustomImages,
-  getCustomImageTag,
 } from "./engine/image-builder";
 // ─── Runtime ───
 export {

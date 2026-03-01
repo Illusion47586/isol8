@@ -36,7 +36,7 @@ const DEFAULT_CONFIG: Isol8Config = {
   },
   poolStrategy: "fast",
   poolSize: { clean: 1, dirty: 1 },
-  dependencies: {},
+
   security: {
     seccomp: "strict",
   },
@@ -140,10 +140,6 @@ function mergeConfig(defaults: Isol8Config, overrides: Partial<Isol8Config>): Is
     },
     poolStrategy: overrides.poolStrategy ?? defaults.poolStrategy,
     poolSize: overrides.poolSize ?? defaults.poolSize,
-    dependencies: {
-      ...defaults.dependencies,
-      ...overrides.dependencies,
-    },
     security: {
       seccomp: overrides.security?.seccomp ?? defaults.security.seccomp,
       customProfilePath:

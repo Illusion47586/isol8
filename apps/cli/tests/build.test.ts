@@ -14,7 +14,7 @@ import { promisify } from "node:util";
 
 const execAsync = promisify(exec);
 
-const ROOT = resolve(import.meta.dir, "../..");
+const ROOT = resolve(import.meta.dir, "../../..");
 const CLI_DIST = join(ROOT, "apps/cli/dist");
 const CORE_DIST = join(ROOT, "packages/core/dist");
 const SERVER_DIST = join(ROOT, "apps/server/dist");
@@ -90,7 +90,7 @@ describe("Core artifact integrity", () => {
 
   test("library bundle keeps externals as imports", () => {
     const content = readFileSync(join(CORE_DIST, "index.js"), "utf-8");
-    for (const pkg of ["dockerode", "hono"]) {
+    for (const pkg of ["dockerode"]) {
       expect(content).toContain(`"${pkg}"`);
     }
   });
@@ -227,9 +227,7 @@ describe("CLI help and version", () => {
 
   test("setup --help lists setup flags", async () => {
     const { stdout } = await runCLI("setup --help");
-    for (const flag of ["--python", "--node", "--bun", "--deno", "--bash"]) {
-      expect(stdout).toContain(flag);
-    }
+    expect(stdout).toContain("--force");
   });
 
   test("build --help lists build flags", async () => {
@@ -348,7 +346,7 @@ describe("CLI serve command", () => {
 
 describe("CLI run command", () => {
   if (!hasDocker) {
-    test.skip("Docker not available — skipping run command tests", () => {});
+    test.skip("Docker not available — skipping run command tests", () => { });
     return;
   }
 
