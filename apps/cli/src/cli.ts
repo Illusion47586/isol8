@@ -332,7 +332,7 @@ program
 
       // Print session ID so the user can reconnect later
       if (sessionId) {
-        console.error(`[INFO] Session ID: ${sessionId}`);
+        logger.info(`[Run] Session ID: ${sessionId}`);
       }
 
       spinner.text = "Running code...";
@@ -397,7 +397,7 @@ program
         // Write output to file if requested
         if (opts.out && result.stdout) {
           writeFileSync(opts.out, result.stdout, "utf-8");
-          console.error(`[INFO] Output written to ${opts.out}`);
+          logger.info(`[Run] Output written to ${opts.out}`);
         }
 
         if (result.exitCode !== 0) {
@@ -1192,8 +1192,8 @@ program
         spinner.fail(`Authentication failed: ${error}`);
 
         if (res.status === 400) {
-          console.error("[INFO] DB-backed auth may not be enabled on the server.");
-          console.error("       Start the server with --auth-db <path> to enable it.");
+          logger.warn("DB-backed auth may not be enabled on the server.");
+          logger.warn("Start the server with --auth-db <path> to enable it.");
         }
         process.exit(1);
       }
