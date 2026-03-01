@@ -1,5 +1,16 @@
 # @isol8/server
 
+## 0.18.0
+
+### Minor Changes
+
+- [#99](https://github.com/Illusion47586/isol8/pull/99) [`55bf47d`](https://github.com/Illusion47586/isol8/commit/55bf47d86062e2f9c376507c53d3f4f5e4223c9c) Thanks [@Illusion47586](https://github.com/Illusion47586)! - Add pre-execution setup step (`setupScript`) and sandbox working directory control (`workdir`) to `ExecutionRequest`. Support baking setup scripts into custom images via `prebuiltImages` config and `isol8 build --setup`.
+
+### Patch Changes
+
+- Updated dependencies [[`55bf47d`](https://github.com/Illusion47586/isol8/commit/55bf47d86062e2f9c376507c53d3f4f5e4223c9c)]:
+  - @isol8/core@0.18.0
+
 ## 0.17.0
 
 ### Patch Changes
