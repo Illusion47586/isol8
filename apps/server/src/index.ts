@@ -13,7 +13,7 @@ import type { ServerWebSocket } from "bun";
 import { Hono } from "hono";
 import { createBunWebSocket } from "hono/bun";
 import { authMiddleware, requireMasterKey } from "./auth.js";
-import { AuthDB } from "./db.js";
+import { type AuthStore, createAuthStore } from "./db/index.js";
 
 /** Configuration for the isol8 HTTP server. */
 export interface ServerOptions {
@@ -23,7 +23,7 @@ export interface ServerOptions {
   apiKey: string;
   /** Enable debug logging for internal server operations. */
   debug?: boolean;
-  /** Path to SQLite database for DB-backed API keys. When set, enables DB auth. */
+  /** Connection string for DB-backed API keys. File path for SQLite, URL for PostgreSQL/MySQL. */
   authDbPath?: string;
 }
 
@@ -77,17 +77,18 @@ export async function createServer(options: ServerOptions) {
   let pruneInterval: ReturnType<typeof setInterval> | undefined;
   let cleanupInFlight: Promise<CleanupResult> | null = null;
 
-  // Initialize AuthDB if enabled via flag or config
-  const authDbPath = options.authDbPath ?? (config.auth.enabled ? config.auth.dbPath : undefined);
-  let authDb: AuthDB | undefined;
-  if (authDbPath) {
-    authDb = new AuthDB(authDbPath);
-    logger.info(`[Server] DB-backed auth enabled: ${authDbPath}`);
+  // Initialize auth store if enabled via flag or config
+  const authConnectionString =
+    options.authDbPath ?? (config.auth.enabled ? config.auth.connectionString : undefined);
+  let authDb: AuthStore | undefined;
+  if (authConnectionString) {
+    authDb = await createAuthStore(authConnectionString);
+    logger.info(`[Server] DB-backed auth enabled: ${authConnectionString}`);
 
     // Periodic cleanup of expired keys
     const cleanupInterval = config.auth.cleanupIntervalMs;
-    setInterval(() => {
-      authDb?.cleanup();
+    setInterval(async () => {
+      await authDb?.cleanup();
     }, cleanupInterval);
   }
 
@@ -520,7 +521,7 @@ export async function createServer(options: ServerOptions) {
       return c.json({ error: "name is required" }, 400);
     }
 
-    const result = authDb.createKey({
+    const result = await authDb.createKey({
       name: body.name,
       tenantId: body.tenantId ?? "default",
       ttlMs: body.ttlMs ?? config.auth.defaultTtlMs,
@@ -538,7 +539,7 @@ export async function createServer(options: ServerOptions) {
     }
 
     const tenantId = c.req.query("tenantId");
-    const keys = authDb.listKeys(tenantId ?? undefined);
+    const keys = await authDb.listKeys(tenantId ?? undefined);
     return c.json({ keys });
   });
 
@@ -549,7 +550,7 @@ export async function createServer(options: ServerOptions) {
     }
 
     const id = c.req.param("id");
-    const revoked = authDb.revokeKey(id);
+    const revoked = await authDb.revokeKey(id);
 
     if (!revoked) {
       return c.json({ error: "Key not found" }, 404);
@@ -573,7 +574,7 @@ export async function createServer(options: ServerOptions) {
       }>()
       .catch(() => ({}) as { name?: string; tenantId?: string; ttlMs?: number });
 
-    const result = authDb.createKey({
+    const result = await authDb.createKey({
       name: body.name ?? `login-${new Date().toISOString()}`,
       tenantId: body.tenantId ?? "default",
       ttlMs: body.ttlMs ?? config.auth.defaultTtlMs,
@@ -621,7 +622,7 @@ export async function createServer(options: ServerOptions) {
       }
       await runCleanup(includeImages);
       if (authDb) {
-        authDb.close();
+        await authDb.close();
       }
     },
   };

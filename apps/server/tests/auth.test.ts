@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { authMiddleware, requireMasterKey } from "../src/auth.js";
-import { AuthDB } from "../src/db.js";
+import { type AuthStore, createAuthStore } from "../src/db/index.js";
 
 /** Helper: type-safe read of Hono context variables set by auth middleware. */
 const getVar = (c: Context, key: string): unknown => (c as any).get(key);
@@ -74,24 +74,24 @@ describe("authMiddleware", () => {
 
   // ─── DB-backed auth ───
 
-  describe("with AuthDB", () => {
-    let db: AuthDB;
+  describe("with AuthStore", () => {
+    let store: AuthStore;
     let tempDir: string;
 
     beforeEach(async () => {
       tempDir = await mkdtemp(join(tmpdir(), "isol8-auth-mw-test-"));
-      db = new AuthDB(join(tempDir, "test.db"));
+      store = await createAuthStore(join(tempDir, "test.db"));
     });
 
     afterEach(async () => {
-      db.close();
+      await store.close();
       await rm(tempDir, { recursive: true, force: true });
     });
 
     test("DB key sets authType to apikey and tenantId", async () => {
-      const created = db.createKey({ name: "test", tenantId: "org-1", ttlMs: 3_600_000 });
+      const created = await store.createKey({ name: "test", tenantId: "org-1", ttlMs: 3_600_000 });
 
-      const app = createTestApp(authMiddleware({ staticKey: STATIC_KEY, authDb: db }));
+      const app = createTestApp(authMiddleware({ staticKey: STATIC_KEY, authDb: store }));
       const res = await app.request("/test", {
         headers: { Authorization: `Bearer ${created.key}` },
       });
@@ -102,7 +102,7 @@ describe("authMiddleware", () => {
     });
 
     test("static key takes priority over DB key", async () => {
-      const app = createTestApp(authMiddleware({ staticKey: STATIC_KEY, authDb: db }));
+      const app = createTestApp(authMiddleware({ staticKey: STATIC_KEY, authDb: store }));
       const res = await app.request("/test", {
         headers: { Authorization: `Bearer ${STATIC_KEY}` },
       });
@@ -112,10 +112,14 @@ describe("authMiddleware", () => {
     });
 
     test("revoked DB key returns 403", async () => {
-      const created = db.createKey({ name: "revoked", tenantId: "t1", ttlMs: 3_600_000 });
-      db.revokeKey(created.id);
+      const created = await store.createKey({
+        name: "revoked",
+        tenantId: "t1",
+        ttlMs: 3_600_000,
+      });
+      await store.revokeKey(created.id);
 
-      const app = createTestApp(authMiddleware({ staticKey: STATIC_KEY, authDb: db }));
+      const app = createTestApp(authMiddleware({ staticKey: STATIC_KEY, authDb: store }));
       const res = await app.request("/test", {
         headers: { Authorization: `Bearer ${created.key}` },
       });
@@ -123,14 +127,14 @@ describe("authMiddleware", () => {
     });
 
     test("expired DB key returns 403", async () => {
-      const created = db.createKey({ name: "expired", tenantId: "t1", ttlMs: 1 });
+      const created = await store.createKey({ name: "expired", tenantId: "t1", ttlMs: 1 });
       // Wait for expiry
       const start = Date.now();
       while (Date.now() - start < 10) {
         // busy wait
       }
 
-      const app = createTestApp(authMiddleware({ staticKey: STATIC_KEY, authDb: db }));
+      const app = createTestApp(authMiddleware({ staticKey: STATIC_KEY, authDb: store }));
       const res = await app.request("/test", {
         headers: { Authorization: `Bearer ${created.key}` },
       });
@@ -154,12 +158,12 @@ describe("requireMasterKey", () => {
 
   test("blocks non-master auth with 403", async () => {
     const tempDir = await mkdtemp(join(tmpdir(), "isol8-req-master-test-"));
-    const db = new AuthDB(join(tempDir, "test.db"));
+    const store = await createAuthStore(join(tempDir, "test.db"));
 
     try {
-      const created = db.createKey({ name: "api", tenantId: "t1", ttlMs: 3_600_000 });
+      const created = await store.createKey({ name: "api", tenantId: "t1", ttlMs: 3_600_000 });
 
-      const app = createTestApp(authMiddleware({ staticKey: STATIC_KEY, authDb: db }));
+      const app = createTestApp(authMiddleware({ staticKey: STATIC_KEY, authDb: store }));
       const res = await app.request("/admin", {
         headers: { Authorization: `Bearer ${created.key}` },
       });
@@ -167,7 +171,7 @@ describe("requireMasterKey", () => {
       const body = (await res.json()) as { error: string };
       expect(body.error).toContain("Master key required");
     } finally {
-      db.close();
+      await store.close();
       await rm(tempDir, { recursive: true, force: true });
     }
   });

@@ -222,8 +222,9 @@ isol8 serve --key <api-key> [options]
   When `--auth-db` is also provided, this key becomes the **master key** with admin privileges.
 </ResponseField>
 
-<ResponseField name="--auth-db <path>" type="string">
-  Enable DB-backed API key management with a SQLite database at `<path>`.
+<ResponseField name="--auth-db <connection>" type="string">
+  Enable DB-backed API key management. Accepts a file path (SQLite), `postgres://` or `postgresql://` URL (PostgreSQL), or `mysql://` URL (MySQL).
+  The backend is auto-detected from the connection string format.
   When enabled, the `--key` value becomes the master key, and additional keys can be created
   via the `/auth/keys` endpoint or the `isol8 login` flow. See <a href="/server/overview">Server overview</a> for the full authentication model.
 </ResponseField>
@@ -244,6 +245,12 @@ isol8 serve --key my-secret-key --port 3000
 
 # DB-backed auth with SQLite
 isol8 serve --key my-master-key --auth-db ./isol8-auth.db --port 3000
+
+# DB-backed auth with PostgreSQL
+isol8 serve --key my-master-key --auth-db "postgres://user:pass@localhost:5432/isol8" --port 3000
+
+# DB-backed auth with MySQL
+isol8 serve --key my-master-key --auth-db "mysql://user:pass@localhost:3306/isol8" --port 3000
 ```
 
 <Info>
@@ -385,7 +392,7 @@ isol8 cleanup [options]
 </Accordion>
 
 <Accordion title="What is the difference between `--key` and `--auth-db`?">
-  `--key` sets a single static API key (or master key). `--auth-db` enables SQLite-backed key management where you can create, list, and revoke multiple keys via the `/auth/*` endpoints. Both can be used together — the `--key` becomes the master key when `--auth-db` is enabled.
+  `--key` sets a single static API key (or master key). `--auth-db` enables database-backed key management (SQLite, PostgreSQL, or MySQL) where you can create, list, and revoke multiple keys via the `/auth/*` endpoints. Both can be used together — the `--key` becomes the master key when `--auth-db` is enabled.
 </Accordion>
 
 <Accordion title="Do I need to run `isol8 login` to use remote execution?">

@@ -411,7 +411,10 @@ program
   .description("Start the isol8 remote server")
   .option("-p, --port <port>", "Port to listen on")
   .option("-k, --key <key>", "API key for authentication")
-  .option("--auth-db <path>", "Enable DB-backed auth with SQLite at <path>")
+  .option(
+    "--auth-db <conn>",
+    "Enable DB-backed auth (file path for SQLite, URL for PostgreSQL/MySQL)"
+  )
   .option("--update", "Force re-download the server binary")
   .option("--debug", "Enable debug logging")
   .action(async (opts) => {

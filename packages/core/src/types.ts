@@ -528,8 +528,8 @@ export interface SecurityConfig {
 export interface AuthConfig {
   /** Enable DB-backed auth. When false, only static key auth is used. @default false */
   enabled: boolean;
-  /** Path to SQLite database file. @default "~/.isol8/auth.db" */
-  dbPath: string;
+  /** Connection string or file path. File paths use SQLite, URLs use PostgreSQL/MySQL. @default "~/.isol8/auth.db" */
+  connectionString: string;
   /** Default token TTL in milliseconds. @default 86400000 (24h) */
   defaultTtlMs: number;
   /** Auto-cleanup interval for expired keys in milliseconds. @default 3600000 (1h) */

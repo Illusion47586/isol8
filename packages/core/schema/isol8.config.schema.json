@@ -108,9 +108,9 @@
               "description": "Auto-cleanup interval for expired keys in milliseconds.",
               "type": "number"
             },
-            "dbPath": {
+            "connectionString": {
               "default": "~/.isol8/auth.db",
-              "description": "Path to SQLite database file.",
+              "description": "Connection string or file path. File paths use SQLite, URLs use PostgreSQL/MySQL.",
               "type": "string"
             },
             "defaultTtlMs": {

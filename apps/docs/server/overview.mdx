@@ -16,14 +16,27 @@ The isol8 server exposes remote code execution over HTTP for centralized infrast
   </Tab>
   <Tab title="With DB-backed auth">
     ```bash
+    # SQLite (file path)
     isol8 serve --port 3000 --key "$ISOL8_API_KEY" --auth-db ./isol8-auth.db
+
+    # PostgreSQL
+    isol8 serve --port 3000 --key "$ISOL8_API_KEY" --auth-db "postgres://user:pass@localhost:5432/isol8"
+
+    # MySQL
+    isol8 serve --port 3000 --key "$ISOL8_API_KEY" --auth-db "mysql://user:pass@localhost:3306/isol8"
     ```
   </Tab>
 </Tabs>
 
 Port resolution order is `--port` > `ISOL8_PORT` > `PORT` > `3000`. If the selected port is already in use, startup prompts for a different port or can auto-select one.
 
-Pass `--auth-db <path>` to enable DB-backed API key management with SQLite. When enabled, the `--key` value becomes the master key with admin privileges, and additional keys can be managed via the `/auth/*` endpoints. See <a href="/server/routes">Server routes</a> for full endpoint reference.
+Pass `--auth-db <connection>` to enable DB-backed API key management. The backend is auto-detected from the connection string:
+
+- **File path** (e.g. `./isol8-auth.db`) → SQLite
+- **`postgres://` or `postgresql://`** → PostgreSQL
+- **`mysql://`** → MySQL
+
+When enabled, the `--key` value becomes the master key with admin privileges, and additional keys can be managed via the `/auth/*` endpoints. See <a href="/server/routes">Server routes</a> for full endpoint reference.
 
 ## What the server provides
 
@@ -50,7 +63,7 @@ Pass a single API key via `--key`. This key acts as the **master key** with full
 
 ### DB-backed keys (optional)
 
-Enable with `--auth-db <path>` to store API keys in SQLite. When enabled:
+Enable with `--auth-db <connection>` to store API keys in a database. Supported backends: SQLite (file path), PostgreSQL (`postgres://`), and MySQL (`mysql://`). When enabled:
 
 - The `--key` value becomes the **master key** with admin privileges
 - Additional keys are created via `POST /auth/keys` (master key required)

@@ -56,7 +56,9 @@ function parseArgs(argv: string[]): {
     console.log("Options:");
     console.log("  -p, --port <port>  Port to listen on (default: 3000, or ISOL8_PORT/PORT env)");
     console.log("  -k, --key <key>    API key for authentication (or ISOL8_API_KEY env)");
-    console.log("      --auth-db <path> Enable DB-backed auth with SQLite at <path>");
+    console.log(
+      "      --auth-db <conn> Enable DB-backed auth (file path for SQLite, URL for PostgreSQL/MySQL)"
+    );
     console.log("      --debug        Enable debug logging");
     console.log("  -V, --version      Print version and exit");
     console.log("  -h, --help         Show this help message");

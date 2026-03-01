@@ -4,20 +4,20 @@
  * Bearer token authentication middleware for the Hono server.
  * Supports two modes:
  * - **Static**: Single API key via `--key` flag (backward compatible)
- * - **DB-backed**: Validates tokens against an SQLite database with expiry
+ * - **DB-backed**: Validates tokens against a database (SQLite, PostgreSQL, or MySQL)
  *
  * Skips auth for the `/health` endpoint.
  */
 
 import type { Context, Next } from "hono";
-import type { AuthDB } from "./db.js";
+import type { AuthStore } from "./db/index.js";
 
 /** Options for configuring auth middleware. */
 export interface AuthMiddlewareOptions {
   /** Static API key (master key). Always checked first. */
   staticKey?: string;
   /** Database-backed auth. Checked when static key doesn't match. */
-  authDb?: AuthDB;
+  authDb?: AuthStore;
 }
 
 /**
@@ -57,7 +57,7 @@ export function authMiddleware(options: AuthMiddlewareOptions | string) {
 
     // Try DB key
     if (opts.authDb) {
-      const apiKey = opts.authDb.validateKey(token);
+      const apiKey = await opts.authDb.validateKey(token);
       if (apiKey) {
         c.set("authType", "apikey");
         c.set("tenantId", apiKey.tenantId);
