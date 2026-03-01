@@ -245,4 +245,113 @@ describe("Integration: CLI", () => {
     expect(stdout).toContain("1");
     expect(stdout).toContain("2");
   });
+
+  // ─── Setup Script ───
+
+  test("runs inline setup script before execution", async () => {
+    const { stdout } = await runCLI(
+      'run -e "with open(\'/sandbox/hello.txt\') as f: print(f.read().strip())" --runtime python --setup "echo hello > /sandbox/hello.txt"'
+    );
+    expect(stdout).toContain("hello");
+  }, 30_000);
+
+  test("runs multiple setup commands", async () => {
+    const { stdout } = await runCLI(
+      'run -e "import os; print(os.path.isdir(\'/sandbox/mydir\'))" --runtime python --setup "mkdir -p /sandbox/mydir" --setup "touch /sandbox/mydir/file.txt"'
+    );
+    expect(stdout).toContain("True");
+  }, 30_000);
+
+  test("runs setup script from file", async () => {
+    const setupPath = join(tmpdir(), `isol8-setup-${Date.now()}.sh`);
+    writeFileSync(setupPath, "echo setup-content > /sandbox/from-file.txt\n");
+    try {
+      const { stdout } = await runCLI(
+        `run -e "with open('/sandbox/from-file.txt') as f: print(f.read().strip())" --runtime python --setup ${setupPath}`
+      );
+      expect(stdout).toContain("setup-content");
+    } finally {
+      rmSync(setupPath, { force: true });
+    }
+  }, 30_000);
+
+  test("setup script failure causes execution to fail", async () => {
+    try {
+      await runCLI('run -e "print(1)" --runtime python --setup "exit 1"');
+      expect(true).toBe(false); // Should not reach here
+    } catch (err: any) {
+      expect(err.stderr || err.message).toContain("Setup script failed");
+    }
+  }, 30_000);
+
+  // ─── Workdir ───
+
+  test("uses --workdir for code execution", async () => {
+    const { stdout } = await runCLI(
+      'run -e "import os; print(os.getcwd())" --runtime python --setup "mkdir -p /sandbox/project" --workdir /sandbox/project'
+    );
+    expect(stdout).toContain("/sandbox/project");
+  }, 30_000);
+
+  test("rejects workdir escaping sandbox", async () => {
+    try {
+      await runCLI('run -e "print(1)" --runtime python --workdir /etc');
+      expect(true).toBe(false); // Should not reach here
+    } catch (err: any) {
+      expect(err.stderr || err.message).toContain("Working directory must be inside /sandbox");
+    }
+  }, 30_000);
+
+  // ─── Build with setup ───
+
+  test("build command accepts --setup flag", async () => {
+    const tag = `isol8-test-setup:${Date.now()}`;
+    const { stdout } = await runCLI(
+      `build --base python --install requests --setup "echo setup-ready" --tag ${tag} --force`
+    );
+    expect(stdout).toContain("Custom image build complete");
+    expect(stdout).toContain(tag);
+
+    // Clean up the test image
+    try {
+      await execAsync(`docker rmi ${tag}`);
+    } catch {
+      // ignore cleanup failures
+    }
+  }, 120_000);
+
+  test("build command allows --setup without --install", async () => {
+    const tag = `isol8-test-setup-only:${Date.now()}`;
+    const { stdout } = await runCLI(`build --base bash --setup "echo ready" --tag ${tag} --force`);
+    expect(stdout).toContain("Custom image build complete");
+    expect(stdout).toContain(tag);
+
+    // Clean up the test image
+    try {
+      await execAsync(`docker rmi ${tag}`);
+    } catch {
+      // ignore cleanup failures
+    }
+  }, 120_000);
+
+  test("image-level setup script runs automatically during execution", async () => {
+    const tag = `isol8-test-img-setup:${Date.now()}`;
+    // Build image with setup script that creates a marker file
+    await runCLI(
+      `build --base python --install requests --setup "echo img-marker > /sandbox/.marker" --tag ${tag} --force`
+    );
+
+    // Execute code using the custom image — the setup script should have run
+    const { stdout } = await runCLI(
+      `run -e "print(open('/sandbox/.marker').read().strip())" --runtime python --image ${tag} --net none`
+    );
+    expect(stdout).toContain("img-marker");
+
+    // Clean up the test image
+    try {
+      await execAsync(`docker rmi ${tag}`);
+    } catch {
+      // ignore cleanup failures
+    }
+  }, 120_000);
 });

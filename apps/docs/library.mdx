@@ -246,6 +246,15 @@ const isol8 = new RemoteIsol8(
   Runtime-specific packages to install pre-run.
 </ResponseField>
 
+<ResponseField name="setupScript" type="string">
+  Inline shell script executed before the main code. Runs as the `sandbox` user from `/sandbox`.
+  Useful for cloning repos, creating files, configuring tools, etc.
+</ResponseField>
+
+<ResponseField name="workdir" type="string" default="/sandbox">
+  Working directory for the main code execution. Must resolve to a path inside `/sandbox`.
+</ResponseField>
+
 <ResponseField name="metadata" type="Record<string, string>">
   Metadata to attach to audit records.
 </ResponseField>

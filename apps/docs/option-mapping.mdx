@@ -195,6 +195,28 @@ Use this reference when you need to answer: "where should I set this value?"
   **Library**: `execute({ installPackages })`.
 </ResponseField>
 
+<ResponseField name="setupScript" type="string">
+  **CLI run**: `--setup <command>` (repeatable; concatenated with newlines; reads file if path exists).
+
+  **CLI build**: `--setup <command>` (repeatable; baked into the custom image and runs before every execution).
+
+  **Config**: `prebuiltImages[].setupScript` (image-level setup, runs before request-level setup).
+
+  **API**: `request.setupScript`.
+
+  **Library**: `execute({ setupScript })`.
+
+  When both an image-level and request-level setup script exist, the image-level script runs first.
+</ResponseField>
+
+<ResponseField name="workdir" type="string" default="/sandbox">
+  **CLI**: `--workdir <path>`.
+
+  **API**: `request.workdir`.
+
+  **Library**: `execute({ workdir })`.
+</ResponseField>
+
 <ResponseField name="metadata" type="Record<string, string>">
   **CLI**: not exposed as a `run` flag.
 

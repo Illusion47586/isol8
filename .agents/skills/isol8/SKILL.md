@@ -17,7 +17,7 @@ Isol8 is a secure execution engine for running untrusted code inside Docker cont
 |:--------|:--------|:----------|
 | `isol8 run [file]` | Execute code in an isolated container | [CLI: run](https://bingo-ccc81346.mintlify.app/cli/run) |
 | `isol8 setup` | Build Docker images, optionally bake in packages | [CLI: setup](https://bingo-ccc81346.mintlify.app/cli/setup) |
-| `isol8 build --base <runtime> --install <pkg>` | Build a custom runtime image with pre-baked dependencies | [CLI: build](https://bingo-ccc81346.mintlify.app/cli/build) |
+| `isol8 build --base <runtime> --install <pkg>` | Build a custom runtime image with pre-baked dependencies and/or setup scripts | [CLI: build](https://bingo-ccc81346.mintlify.app/cli/build) |
 | `isol8 cleanup` | Remove orphaned isol8 containers | [CLI: cleanup](https://bingo-ccc81346.mintlify.app/cli/cleanup) |
 | `isol8 serve` | Start HTTP server for remote execution (downloads binary on first use) | [CLI: serve](https://bingo-ccc81346.mintlify.app/cli/serve) |
 | `isol8 config` | Display resolved configuration | [CLI: config](https://bingo-ccc81346.mintlify.app/cli/config) |
@@ -41,6 +41,8 @@ Isol8 is a secure execution engine for running untrusted code inside Docker cont
 | `--persist` | `false` | Keep container after execution for debugging |
 | `--debug` | `false` | Enable internal debug logging |
 | `--install <package>` | — | Install package before execution (repeatable) |
+| `--setup <command>` | — | Setup script/command run before execution (repeatable; reads file if path exists) |
+| `--workdir <path>` | `/sandbox` | Working directory for code execution (must be inside `/sandbox`) |
 | `--net <mode>` | `none` | Network: `none`, `host`, `filtered` |
 | `--timeout <ms>` | `30000` | Execution timeout |
 | `--memory <limit>` | `512m` | Memory limit |
@@ -101,6 +103,8 @@ const result = await isol8.execute({
   code: 'print("hello")',
   runtime: "python",
   installPackages: ["numpy"],  // optional
+  setupScript: "echo setup",   // optional — runs before main code
+  workdir: "/sandbox/project",  // optional — defaults to /sandbox
 });
 
 console.log(result.stdout);    // captured output

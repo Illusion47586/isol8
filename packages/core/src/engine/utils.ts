@@ -2,8 +2,11 @@
  * @module engine/utils
  *
  * Low-level utility functions used by the Docker engine: memory parsing,
- * output truncation, secret masking, and POSIX tar archive creation/extraction.
+ * output truncation, secret masking, POSIX tar archive creation/extraction,
+ * and sandbox path validation.
  */
+
+import path from "node:path";
 
 /**
  * Parses a human-readable memory limit string into bytes.
@@ -203,4 +206,30 @@ export function validatePackageName(name: string): string {
     );
   }
   return name;
+}
+
+/**
+ * Resolves and validates a working directory path to ensure it stays inside `/sandbox`.
+ *
+ * Accepts absolute paths under `/sandbox` or relative paths resolved from `/sandbox`.
+ * Rejects paths that resolve outside the sandbox boundary.
+ *
+ * @param workdir - The raw workdir value from the request (absolute or relative).
+ * @param sandboxRoot - The sandbox root path. @default "/sandbox"
+ * @returns The resolved absolute path inside `/sandbox`.
+ * @throws {Error} If the resolved path escapes `/sandbox`.
+ *
+ * @example
+ * ```typescript
+ * resolveWorkdir("subdir");         // "/sandbox/subdir"
+ * resolveWorkdir("/sandbox/a/b");   // "/sandbox/a/b"
+ * resolveWorkdir("../../etc");      // throws Error
+ * ```
+ */
+export function resolveWorkdir(workdir: string, sandboxRoot = "/sandbox"): string {
+  const resolved = path.posix.resolve(sandboxRoot, workdir);
+  if (resolved !== sandboxRoot && !resolved.startsWith(`${sandboxRoot}/`)) {
+    throw new Error("Working directory must be inside /sandbox");
+  }
+  return resolved;
 }

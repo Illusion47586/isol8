@@ -4,6 +4,7 @@ import {
   extractFromTar,
   maskSecrets,
   parseMemoryLimit,
+  resolveWorkdir,
   truncateOutput,
 } from "../../src/engine/utils";
 
@@ -87,5 +88,55 @@ describe("tar utilities", () => {
   test("throws if file not found in tar", () => {
     const tar = createTarBuffer("existing.txt", "data");
     expect(() => extractFromTar(tar, "missing.txt")).toThrow("not found in tar archive");
+  });
+});
+
+describe("resolveWorkdir", () => {
+  test("resolves relative path inside /sandbox", () => {
+    expect(resolveWorkdir("subdir")).toBe("/sandbox/subdir");
+  });
+
+  test("resolves nested relative path", () => {
+    expect(resolveWorkdir("a/b/c")).toBe("/sandbox/a/b/c");
+  });
+
+  test("accepts absolute path under /sandbox", () => {
+    expect(resolveWorkdir("/sandbox/project")).toBe("/sandbox/project");
+  });
+
+  test("returns /sandbox for '.' or empty-equivalent", () => {
+    expect(resolveWorkdir(".")).toBe("/sandbox");
+  });
+
+  test("resolves /sandbox itself", () => {
+    expect(resolveWorkdir("/sandbox")).toBe("/sandbox");
+  });
+
+  test("throws on path escaping sandbox via ..", () => {
+    expect(() => resolveWorkdir("../../etc")).toThrow("Working directory must be inside /sandbox");
+  });
+
+  test("throws on absolute path outside sandbox", () => {
+    expect(() => resolveWorkdir("/etc/passwd")).toThrow(
+      "Working directory must be inside /sandbox"
+    );
+  });
+
+  test("throws on root path", () => {
+    expect(() => resolveWorkdir("/")).toThrow("Working directory must be inside /sandbox");
+  });
+
+  test("normalizes path with redundant segments", () => {
+    expect(resolveWorkdir("/sandbox/a/../b")).toBe("/sandbox/b");
+  });
+
+  test("allows custom sandbox root", () => {
+    expect(resolveWorkdir("sub", "/workspace")).toBe("/workspace/sub");
+  });
+
+  test("throws when escaping custom sandbox root", () => {
+    expect(() => resolveWorkdir("../..", "/workspace")).toThrow(
+      "Working directory must be inside /sandbox"
+    );
   });
 });

@@ -117,4 +117,62 @@ describe("DockerIsol8 - resolveImage", () => {
     // The exact match should break the loop when found.
     expect(result.image).toBe("custom-python-exact:latest");
   });
+
+  test("returns imageSetupScript from matched custom image label", async () => {
+    mockListImages.mockResolvedValue([
+      {
+        RepoTags: ["custom-with-setup:latest"],
+        Labels: {
+          "org.isol8.runtime": "python",
+          "org.isol8.dependencies": "numpy",
+          "org.isol8.setup": "echo 'image-level setup'",
+        },
+      },
+    ]);
+
+    const result = await engine.testResolveImage(adapter, ["numpy"]);
+    expect(result.image).toBe("custom-with-setup:latest");
+    expect(result.imageSetupScript).toBe("echo 'image-level setup'");
+  });
+
+  test("returns undefined imageSetupScript when image has no setup label", async () => {
+    mockListImages.mockResolvedValue([
+      {
+        RepoTags: ["custom-no-setup:latest"],
+        Labels: {
+          "org.isol8.runtime": "python",
+          "org.isol8.dependencies": "numpy",
+        },
+      },
+    ]);
+
+    const result = await engine.testResolveImage(adapter, ["numpy"]);
+    expect(result.image).toBe("custom-no-setup:latest");
+    expect(result.imageSetupScript).toBeUndefined();
+  });
+
+  test("returns imageSetupScript from explicit override image", async () => {
+    const customEngine = new TestDockerIsol8({ mode: "ephemeral", image: "my-explicit-image" });
+    const mockGetImageWithSetup = mock().mockReturnValue({
+      inspect: () =>
+        Promise.resolve({
+          Config: {
+            Labels: {
+              "org.isol8.setup": "echo 'override setup'",
+            },
+          },
+        }),
+    });
+    (customEngine as any).docker = { getImage: mockGetImageWithSetup };
+
+    const result = await customEngine.testResolveImage(adapter, ["numpy"]);
+    expect(result.image).toBe("my-explicit-image");
+    expect(result.imageSetupScript).toBe("echo 'override setup'");
+  });
+
+  test("returns undefined imageSetupScript for base image (no packages)", async () => {
+    const result = await engine.testResolveImage(adapter, []);
+    expect(result.image).toBe("isol8:python");
+    expect(result.imageSetupScript).toBeUndefined();
+  });
 });

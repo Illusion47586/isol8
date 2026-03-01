@@ -95,8 +95,14 @@ export async function createServer(options: ServerOptions) {
       logger.info(
         `[Server] Building prebuilt image ${img.tag} (${img.runtime}: ${img.installPackages.join(", ")})`
       );
-      await buildCustomImage(docker, img.runtime, img.installPackages, img.tag, (progress) =>
-        logger.debug(`[Server] Build progress: ${JSON.stringify(progress)}`)
+      await buildCustomImage(
+        docker,
+        img.runtime,
+        img.installPackages,
+        img.tag,
+        (progress) => logger.debug(`[Server] Build progress: ${JSON.stringify(progress)}`),
+        false,
+        img.setupScript
       );
       logger.info(`[Server] Prebuilt image ${img.tag} ready`);
     }
