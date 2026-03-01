@@ -53,13 +53,9 @@ Use this as a complete reference template. In real configs, you can provide only
   },
   "poolStrategy": "fast",
   "poolSize": { "clean": 1, "dirty": 1 },
-  "dependencies": {
-    "python": [],
-    "node": [],
-    "bun": [],
-    "deno": [],
-    "bash": []
-  },
+  "prebuiltImages": [
+    { "tag": "my-python-ml", "runtime": "python", "installPackages": ["numpy", "pandas"] }
+  ],
   "remoteCode": {
     "enabled": false,
     "allowedSchemes": ["https"],
@@ -282,7 +278,7 @@ Audit logging configuration for execution provenance and compliance tracking.
 | `cleanup` | object | prune enabled | Server session lifecycle |
 | `poolStrategy` | string | `fast` | Serve-time pool default |
 | `poolSize` | number/object | `{ clean: 1, dirty: 1 }` | Serve-time pool capacity default |
-| `dependencies` | object | `{}` | Custom image setup inputs |
+| `prebuiltImages` | array | `[]` | Custom image definitions for auto-build |
 | `security` | object | strict seccomp | Syscall policy |
 | `audit` | object | disabled | Audit and telemetry logging |
 
@@ -365,29 +361,31 @@ Server-side pool defaults for engines created by `isol8 serve`.
   Default warm pool size used by server-created engines.
 </ResponseField>
 
-## `dependencies`
+## `prebuiltImages`
 
-Runtime-specific packages to bake into custom Docker images during `isol8 setup`.
+Custom Docker images to auto-build when the server starts or when running `isol8 setup`. Each entry defines a named image with a runtime and list of packages.
 
-<ResponseField name="python" type="string[]">
-  List of pip packages (e.g., `["numpy", "pandas"]`).
+<ResponseField name="prebuiltImages" type="array" default="[]">
+  List of prebuilt image configurations. Each entry has:
+  - `tag` (string, required): Docker image tag (e.g. `my-python-ml`).
+  - `runtime` (string, required): Base runtime (`python`, `node`, `bun`, `deno`, `bash`).
+  - `installPackages` (string[], required): Packages to bake into the image.
 </ResponseField>
 
-<ResponseField name="node" type="string[]">
-  List of global npm packages.
-</ResponseField>
+**Example:**
 
-<ResponseField name="bun" type="string[]">
-  List of global bun packages.
-</ResponseField>
+```json
+{
+  "prebuiltImages": [
+    { "tag": "my-python-ml", "runtime": "python", "installPackages": ["numpy", "pandas", "scikit-learn"] },
+    { "tag": "my-node-api", "runtime": "node", "installPackages": ["express", "lodash"] }
+  ]
+}
+```
 
-<ResponseField name="deno" type="string[]">
-  List of Deno module URLs to pre-cache.
-</ResponseField>
-
-<ResponseField name="bash" type="string[]">
-  List of Alpine packages to install via `apk`.
-</ResponseField>
+<Info>
+  On server startup, each image is checked locally. Missing images are built automatically before the server begins accepting requests. The CLI `isol8 setup` command also builds these images.
+</Info>
 
 ## `security`
 
@@ -510,8 +508,8 @@ Prints effective resolved config (human-readable or JSON), including defaults an
   Start with `defaults.network: "none"`, conservative `timeoutMs`/`memoryLimit`, and `audit.enabled: false` unless you need logging.
 </Accordion>
 
-<Accordion title="Where should I set package dependencies for setup images?">
-  Use the `dependencies` section in config (or equivalent flags on `isol8 setup`) for runtime-specific pre-baked packages.
+<Accordion title="Where should I define prebuilt images?">
+  Use the `prebuiltImages` array in config. Each entry specifies a `tag`, `runtime`, and `installPackages`. Run `isol8 setup` or start the server to auto-build them.
 </Accordion>
 
 ## Troubleshooting quick checks

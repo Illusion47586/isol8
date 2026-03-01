@@ -36,7 +36,7 @@ const DEFAULT_CONFIG: Isol8Config = {
   },
   poolStrategy: "fast",
   poolSize: { clean: 1, dirty: 1 },
-  dependencies: {},
+
   security: {
     seccomp: "strict",
   },
@@ -77,6 +77,7 @@ const DEFAULT_CONFIG: Isol8Config = {
     defaultTtlMs: 86_400_000, // 24 hours
     cleanupIntervalMs: 3_600_000, // 1 hour
   },
+  prebuiltImages: [],
   debug: false,
 };
 
@@ -140,10 +141,6 @@ function mergeConfig(defaults: Isol8Config, overrides: Partial<Isol8Config>): Is
     },
     poolStrategy: overrides.poolStrategy ?? defaults.poolStrategy,
     poolSize: overrides.poolSize ?? defaults.poolSize,
-    dependencies: {
-      ...defaults.dependencies,
-      ...overrides.dependencies,
-    },
     security: {
       seccomp: overrides.security?.seccomp ?? defaults.security.seccomp,
       customProfilePath:
@@ -164,6 +161,7 @@ function mergeConfig(defaults: Isol8Config, overrides: Partial<Isol8Config>): Is
       ...defaults.auth,
       ...overrides.auth,
     },
+    prebuiltImages: overrides.prebuiltImages ?? defaults.prebuiltImages,
     debug: overrides.debug ?? defaults.debug,
   };
 }

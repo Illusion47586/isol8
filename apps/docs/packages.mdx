@@ -73,49 +73,67 @@ Great for prototyping or when you need different packages for every run.
 
 ## Strategy 2: Custom Images (Recommended)
 
-Bake your dependencies into a custom Docker image (`isol8:python-custom-<hash>`, etc.). This eliminates installation time during execution.
+Bake your dependencies into a named custom Docker image. This eliminates installation time during execution.
 
 ### Creating Custom Images
 
-Run `isol8 setup` with package flags.
+Use `isol8 build` with an explicit `--tag` name:
 
 ```bash
-# Bake numpy and pandas into the Python image
-isol8 setup --python numpy,pandas
+# Bake numpy and pandas into a custom Python image
+isol8 build --base python --install numpy --install pandas --tag my-python-ml
 
-# Bake lodash into the Node.js image
-isol8 setup --node lodash
+# Bake lodash into a custom Node.js image
+isol8 build --base node --install lodash --tag my-node-utils
 ```
 
-This creates a deterministic hashed tag (for example `isol8:python-custom-a1b2c3d4e5f6`) that extends the base `isol8:python` image.
+This creates a named image (e.g. `my-python-ml`) that extends the base `isol8:python` image. Metadata labels (`org.isol8.runtime`, `org.isol8.dependencies`) are embedded in the image for automatic discovery.
 
 ### Using Custom Images
 
-Once built, isol8 automatically prefers the custom image. You don't need any special flags.
+Once built, isol8 **automatically discovers and uses** matching custom images. When you pass `--install` flags, the engine queries local Docker images for one that already satisfies the requested runtime and dependencies — if found, it skips the install step entirely.
 
 ```bash
-# Automatically uses the hashed custom image for your configured dependencies
+# Automatically uses the "my-python-ml" image (numpy + pandas are pre-baked)
 isol8 run \
   -e "import numpy; print(numpy.__version__)" \
-  --runtime python
+  --runtime python \
+  --install numpy
 ```
+
+You can also explicitly select a custom image:
+
+```bash
+isol8 run \
+  -e "import numpy; print(numpy.__version__)" \
+  --runtime python \
+  --image my-python-ml
+```
+
+### Listing Custom Images
+
+See what custom images are available locally:
+
+```bash
+isol8 list-custom
+```
+
+This shows all Docker images with `org.isol8.runtime` labels, their runtimes, and installed dependencies.
 
 ### Config File (`isol8.config.json`)
 
-Define dependencies in your config file to ensure consistent environments across your team.
+Define prebuilt images in your config file to ensure they exist before the server starts or when running `isol8 setup`.
 
 ```json
 {
-  "dependencies": {
-    "python": ["numpy", "pandas", "scikit-learn"],
-    "node": ["lodash", "express"],
-    "bun": ["zod"],
-    "bash": ["jq", "curl"]
-  }
+  "prebuiltImages": [
+    { "tag": "my-python-ml", "runtime": "python", "installPackages": ["numpy", "pandas", "scikit-learn"] },
+    { "tag": "my-node-utils", "runtime": "node", "installPackages": ["lodash", "express"] }
+  ]
 }
 ```
 
-Run `isol8 setup` to apply changes.
+Run `isol8 setup` to build any missing images. The server (`isol8 serve`) also auto-builds these images on startup.
 
 ## Image Architecture
 
@@ -137,46 +155,37 @@ flowchart TD
     Base["isol8:base (tini + proxy)"]
     Py["isol8:python"]
     Node["isol8:node"]
-    CustomPy["isol8:python-custom-<hash>"]
-    
+    CustomPy["my-python-ml"]
+
     Alpine --> Base
     Base --> Py
     Base --> Node
     Py --> CustomPy
-    
+
     style CustomPy stroke:#f66,stroke-width:2px,stroke-dasharray: 5 5
 ```
 
 ### Custom Images
 
-Custom images extend the base image. For example, a hashed Python custom image is built like this:
+Custom images extend the base image. For example, `my-python-ml` is built like this:
 
 ```dockerfile
 FROM isol8:python
-RUN pip install --no-cache-dir numpy pandas scikit-learn
+RUN pip install --no-cache-dir --break-system-packages numpy pandas scikit-learn
 ```
 
 This ensures your custom image inherits all security features (non-root user, proxy, etc.) from the base image.
 
-### Smart Rebuilds
+### Smart Discovery
 
-`isol8 setup` is intelligent. It avoids unnecessary work by tracking build state using Docker labels.
+When you request packages via `--install` or `installPackages`, the engine automatically:
 
-1.  **Change Detection**: It computes SHA256 hashes of your `docker/` directory (for base images) and your dependency lists (for custom images).
-2.  **Metadata**: These hashes are stored in the image labels `org.isol8.build.hash` and `org.isol8.deps.hash`.
-3.  **Fast Path**: If the hashes match the existing image, the build is skipped instantly.
-4.  **Auto-Cleanup**: When a rebuild is necessary, isol8 automatically removes the old image version to prevent "dangling images" from clogging your disk.
+1. Searches local Docker images with `org.isol8.runtime` and `org.isol8.dependencies` labels
+2. Prefers an **exact match** (same set of dependencies)
+3. Falls back to a **superset match** (image has all requested packages plus extras)
+4. If no match is found, uses the base runtime image and installs packages at runtime
 
-```bash
-# Up to date - skips build (0s)
-isol8 setup
-
-# Add a package - triggers rebuild & cleanup
-isol8 setup \
-  --python requests
-```
-
-Use `--force` to bypass this check and rebuild unconditionally.
+Use `--force` on `isol8 build` to bypass caching and rebuild unconditionally.
 
 ## FAQ
 
@@ -188,25 +197,25 @@ Use `--force` to bypass this check and rebuild unconditionally.
   Native modules often need executable mount points. isol8 installs runtime packages under `/sandbox` because `/tmp` is mounted with `noexec`.
 </Accordion>
 
-<Accordion title="Do setup flags and config dependencies combine?">
-  Yes. `isol8 setup` merges dependency flags (`--python`, `--node`, etc.) with configured `dependencies` before building custom images.
+<Accordion title="How does the server handle prebuiltImages?">
+  On startup, the server iterates `config.prebuiltImages`, checks if each image exists locally, and builds any missing ones before accepting connections. This ensures all declared environments are ready for execution.
 </Accordion>
 
 ## Troubleshooting quick checks
 
-- **Install step is too slow**: pre-bake dependencies with `isol8 setup` and `dependencies` config.
+- **Install step is too slow**: pre-bake dependencies with `isol8 build --tag <name>` or declare them in `prebuiltImages` config.
 - **Package import still fails after install**: verify runtime/package pairing (for example Python package in Python runtime).
-- **Custom image not updating**: rerun `isol8 setup --force`.
+- **Custom image not updating**: rerun `isol8 build --tag <name> --force`.
 - **Disk usage growing from images**: run `isol8 cleanup --images` to remove isol8 images.
 
 ## Reference
 
 <CardGroup cols={2}>
   <Card title="How to CLI" icon="terminal" href="/cli">
-    All `isol8 setup` options and flags.
+    All `isol8 setup` and `isol8 build` options and flags.
   </Card>
   <Card title="Configuration" icon="gear" href="/configuration">
-    Full schema for `dependencies` in `isol8.config.json`.
+    Full schema for `prebuiltImages` in `isol8.config.json`.
   </Card>
   <Card title="Execution guide" icon="square-terminal" href="/execution">
     See install behavior in the full execution lifecycle.

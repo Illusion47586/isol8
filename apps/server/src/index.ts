@@ -11,7 +11,15 @@ import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { ExecutionRequest, Isol8Options, WsClientMessage } from "@isol8/core";
-import { DockerIsol8, loadConfig, logger, Semaphore, VERSION } from "@isol8/core";
+import {
+  buildCustomImage,
+  DockerIsol8,
+  imageExists,
+  loadConfig,
+  logger,
+  Semaphore,
+  VERSION,
+} from "@isol8/core";
 import type { ServerWebSocket } from "bun";
 import { Hono } from "hono";
 import { createBunWebSocket } from "hono/bun";
@@ -73,6 +81,26 @@ export async function createServer(options: ServerOptions) {
   logger.debug("[Server] Config loaded");
   logger.debug(`[Server] Max concurrent: ${config.maxConcurrent}`);
   logger.debug(`[Server] Auto-prune: ${config.cleanup.autoPrune}`);
+
+  // ─── Auto-build prebuilt images ───
+  if (config.prebuiltImages.length > 0) {
+    const Docker = (await import("dockerode")).default;
+    const docker = new Docker();
+    for (const img of config.prebuiltImages) {
+      const exists = await imageExists(docker, img.tag);
+      if (exists) {
+        logger.info(`[Server] Prebuilt image ${img.tag} already exists, skipping build`);
+        continue;
+      }
+      logger.info(
+        `[Server] Building prebuilt image ${img.tag} (${img.runtime}: ${img.installPackages.join(", ")})`
+      );
+      await buildCustomImage(docker, img.runtime, img.installPackages, img.tag, (progress) =>
+        logger.debug(`[Server] Build progress: ${JSON.stringify(progress)}`)
+      );
+      logger.info(`[Server] Prebuilt image ${img.tag} ready`);
+    }
+  }
 
   const { upgradeWebSocket, websocket } = createBunWebSocket<ServerWebSocket>();
   const app = new Hono();
@@ -201,7 +229,6 @@ export async function createServer(options: ServerOptions) {
       tmpSize: config.defaults.tmpSize,
       poolStrategy: config.poolStrategy,
       poolSize: config.poolSize,
-      dependencies: config.dependencies,
       remoteCode: config.remoteCode,
       ...requestOptions,
       mode: body.sessionId ? "persistent" : "ephemeral",
@@ -289,7 +316,6 @@ export async function createServer(options: ServerOptions) {
       tmpSize: config.defaults.tmpSize,
       poolStrategy: config.poolStrategy,
       poolSize: config.poolSize,
-      dependencies: config.dependencies,
       remoteCode: config.remoteCode,
       ...requestOptions,
       mode: "ephemeral",
@@ -397,7 +423,6 @@ export async function createServer(options: ServerOptions) {
             tmpSize: config.defaults.tmpSize,
             poolStrategy: config.poolStrategy,
             poolSize: config.poolSize,
-            dependencies: config.dependencies,
             remoteCode: config.remoteCode,
             ...requestOptions,
             mode: "ephemeral",

@@ -374,13 +374,6 @@ export interface Isol8Options {
    * @default 1 (for fast mode: { clean: 1, dirty: 1 })
    */
   poolSize?: number | { clean: number; dirty: number };
-
-  /**
-   * Runtime-specific dependencies used to resolve hashed custom image tags.
-   * When provided, isol8 will prefer `isol8:<runtime>-custom-<hash>` images
-   * derived from these dependency sets.
-   */
-  dependencies?: Isol8Dependencies;
 }
 
 /**
@@ -508,23 +501,6 @@ export interface Isol8Cleanup {
 }
 
 /**
- * Runtime-specific packages to bake into custom Docker images.
- * Populated via `isol8.config.json` or CLI flags on `isol8 setup`.
- */
-export interface Isol8Dependencies {
-  /** Python packages to install via pip. */
-  python?: string[];
-  /** Node.js packages to install globally via npm. */
-  node?: string[];
-  /** Bun packages to install globally. */
-  bun?: string[];
-  /** Deno module URLs to pre-cache. */
-  deno?: string[];
-  /** Bash packages to install via apk (Alpine). */
-  bash?: string[];
-}
-
-/**
  * Security configuration for the execution environment.
  */
 export interface SecurityConfig {
@@ -608,9 +584,6 @@ export interface Isol8Config {
    */
   poolSize: number | { clean: number; dirty: number };
 
-  /** Runtime-specific packages to bake into custom Docker images. */
-  dependencies: Isol8Dependencies;
-
   /** Security settings. */
   security: SecurityConfig;
 
@@ -625,6 +598,26 @@ export interface Isol8Config {
 
   /** Enable debug logging. @default false */
   debug: boolean;
+
+  /**
+   * Prebuilt images ensuring that custom environments are built and ready
+   * when the server starts. The server will invoke `isol8 build` on these images
+   * automatically during boot if they are not already built locally.
+   * Only applicable in server-mode.
+   */
+  prebuiltImages: PrebuiltImageConfig[];
+}
+
+/**
+ * Configuration for a prebuilt image that the server ensures exists.
+ */
+export interface PrebuiltImageConfig {
+  /** The full docker tag of the custom image to build (e.g. `my-custom-python:latest`). */
+  tag: string;
+  /** The base runtime to extend (e.g. `python`, `node`). */
+  runtime: Runtime;
+  /** The runtime packages to install into the custom image (e.g. `["numpy", "pandas"]`). */
+  installPackages: string[];
 }
 
 /**
@@ -661,9 +654,6 @@ export interface Isol8UserConfig {
    * @default { clean: 1, dirty: 1 }
    */
   poolSize?: number | { clean: number; dirty: number };
-
-  /** Runtime-specific packages to bake into custom Docker images. */
-  dependencies?: Isol8Dependencies;
 
   /** Security settings. */
   security?: SecurityConfig;

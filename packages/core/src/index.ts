@@ -19,8 +19,8 @@ export { DockerIsol8 } from "./engine/docker";
 export {
   buildBaseImages,
   buildCustomImage,
-  buildCustomImages,
-  getCustomImageTag,
+  imageExists,
+  LABELS,
 } from "./engine/image-builder";
 // ─── Runtime ───
 export {
@@ -43,6 +43,7 @@ export type {
   Isol8Options,
   NetworkFilterConfig,
   NetworkMode,
+  PrebuiltImageConfig,
   RemoteCodePolicy,
   Runtime,
   SessionInfo,

@@ -21,9 +21,8 @@ import type {
 import {
   buildBaseImages,
   buildCustomImage,
-  buildCustomImages,
   DockerIsol8,
-  getCustomImageTag,
+  imageExists,
   loadConfig,
   logger,
   RemoteIsol8,
@@ -55,12 +54,7 @@ program
 
 program
   .command("setup")
-  .description("Check Docker and build isol8 images")
-  .option("--python <packages>", "Additional Python packages (comma-separated)")
-  .option("--node <packages>", "Additional Node.js packages (comma-separated)")
-  .option("--bun <packages>", "Additional Bun packages (comma-separated)")
-  .option("--deno <packages>", "Additional Deno packages (comma-separated)")
-  .option("--bash <packages>", "Additional Bash packages (comma-separated)")
+  .description("Check Docker and build isol8 base images")
   .option("--force", "Force rebuild even if images are up to date")
   .action(async (opts) => {
     const docker = new Docker();
@@ -109,66 +103,37 @@ program
       spinner.stop();
     }
 
-    // Build custom images from config or CLI flags
+    if (spinner.isSpinning) {
+      spinner.stop();
+    }
+
+    // Auto-build prebuilt images from config
     const config = loadConfig();
-    logger.debug("[Setup] Config loaded");
-
-    // Merge CLI flags into config dependencies
-    if (opts.python) {
-      logger.debug(`[Setup] Adding Python packages from CLI: ${opts.python}`);
-      config.dependencies.python = [
-        ...(config.dependencies.python ?? []),
-        ...opts.python.split(","),
-      ];
-    }
-    if (opts.node) {
-      logger.debug(`[Setup] Adding Node.js packages from CLI: ${opts.node}`);
-      config.dependencies.node = [...(config.dependencies.node ?? []), ...opts.node.split(",")];
-    }
-    if (opts.bun) {
-      logger.debug(`[Setup] Adding Bun packages from CLI: ${opts.bun}`);
-      config.dependencies.bun = [...(config.dependencies.bun ?? []), ...opts.bun.split(",")];
-    }
-    if (opts.deno) {
-      logger.debug(`[Setup] Adding Deno packages from CLI: ${opts.deno}`);
-      config.dependencies.deno = [...(config.dependencies.deno ?? []), ...opts.deno.split(",")];
-    }
-    if (opts.bash) {
-      logger.debug(`[Setup] Adding Bash packages from CLI: ${opts.bash}`);
-      config.dependencies.bash = [...(config.dependencies.bash ?? []), ...opts.bash.split(",")];
-    }
-
-    const hasDeps = Object.values(config.dependencies).some((pkgs) => pkgs && pkgs.length > 0);
-    if (hasDeps) {
-      logger.debug(
-        "[Setup] Building custom images with dependencies:",
-        JSON.stringify(config.dependencies)
-      );
-      spinner.start("Building custom images with dependencies...");
-      await buildCustomImages(
-        docker,
-        config,
-        (progress) => {
-          const status =
-            progress.status === "error" ? "[ERR]" : progress.status === "done" ? "[OK]" : "[..]";
-          if (progress.status === "building") {
-            spinner.text = `Building custom ${progress.runtime}...`;
-            logger.debug(`[Setup] Building custom image for ${progress.runtime}`);
-          } else if (progress.status === "done" || progress.status === "error") {
-            logger.debug(
-              `[Setup] Custom image ${progress.runtime}: ${progress.status}${progress.message ? ` (${progress.message})` : ""}`
-            );
-            spinner.stopAndPersist({
-              symbol: status,
-              text: `${progress.runtime}${progress.message ? ` (${progress.message})` : ""}`,
-            });
-            if (progress.status !== "error") {
-              spinner.start();
-            }
-          }
-        },
-        opts.force ?? false
-      );
+    if (config.prebuiltImages.length > 0) {
+      console.log("");
+      spinner.start("Checking prebuilt images from config...");
+      for (const img of config.prebuiltImages) {
+        const exists = await imageExists(docker, img.tag);
+        if (exists && !(opts.force ?? false)) {
+          spinner.stopAndPersist({ symbol: "[OK]", text: `${img.tag} (already exists)` });
+          spinner.start();
+          continue;
+        }
+        spinner.text = `Building ${img.tag}...`;
+        await buildCustomImage(
+          docker,
+          img.runtime,
+          img.installPackages,
+          img.tag,
+          undefined,
+          opts.force ?? false
+        );
+        spinner.stopAndPersist({
+          symbol: "[OK]",
+          text: `${img.tag} (${img.runtime}: ${img.installPackages.join(", ")})`,
+        });
+        spinner.start();
+      }
       if (spinner.isSpinning) {
         spinner.stop();
       }
@@ -189,7 +154,7 @@ program
     collect,
     []
   )
-  .option("--tag <name>", "Optional alias tag (e.g. my-registry/ml-image:latest)")
+  .requiredOption("--tag <name>", "Name/tag for the custom image (e.g. my-python-env:latest)")
   .option("--force", "Force rebuild even if image is up to date")
   .action(async (opts) => {
     const runtime = parseRuntimeName(opts.base);
@@ -215,25 +180,63 @@ program
     spinner.stopAndPersist({ symbol: "[OK]", text: `Base image ready: ${runtime}` });
 
     spinner.start(`Building custom ${runtime} image...`);
-    await buildCustomImage(docker, runtime, packages, undefined, opts.force ?? false);
-    const hashedTag = getCustomImageTag(runtime, packages);
-    spinner.stopAndPersist({ symbol: "[OK]", text: `Built image: ${hashedTag}` });
-
-    if (opts.tag) {
-      const target = parseImageTag(opts.tag);
-      await docker.getImage(hashedTag).tag(target);
-      spinner.stopAndPersist({
-        symbol: "[OK]",
-        text: `Tagged image: ${target.repo}:${target.tag}`,
-      });
-    }
+    await buildCustomImage(docker, runtime, packages, opts.tag, undefined, opts.force ?? false);
+    spinner.stopAndPersist({ symbol: "[OK]", text: `Built image: ${opts.tag}` });
 
     console.log("\n[DONE] Custom image build complete!");
     console.log(`       Runtime: ${runtime}`);
     console.log(`       Packages: ${packages.join(", ")}`);
-    console.log(`       Image: ${hashedTag}`);
-    if (opts.tag) {
-      console.log(`       Alias: ${opts.tag}`);
+    console.log(`       Image: ${opts.tag}`);
+  });
+
+// ─── list-custom ────────────────────────────────────────────────────────
+
+program
+  .command("list-custom")
+  .description("List available custom isol8 images and their labeled dependencies")
+  .action(async () => {
+    const Docker = (await import("dockerode")).default;
+    const { LABELS } = await import("@isol8/core");
+    const docker = new Docker();
+
+    // Check Docker connection
+    const spinner = ora("Checking Docker...").start();
+    try {
+      await docker.ping();
+      spinner.succeed("Docker is running");
+    } catch {
+      spinner.fail("Docker is not running or not installed.");
+      process.exit(1);
+    }
+
+    spinner.start("Finding isol8 custom images...");
+    const images = await docker.listImages({
+      filters: {
+        label: [`${LABELS.runtime}`],
+      },
+    });
+
+    const isol8Images = images.filter(
+      (img) => img.RepoTags && img.RepoTags.length > 0 && img.RepoTags[0].startsWith("isol8")
+    );
+
+    if (isol8Images.length === 0) {
+      spinner.info("No custom isol8 images found.");
+      return;
+    }
+
+    spinner.stop();
+    console.log("\n  ── Available Custom Images ──\n");
+
+    for (const img of isol8Images) {
+      const tag = img.RepoTags![0];
+      const runtime = img.Labels?.[LABELS.runtime] ?? "unknown";
+      const deps = img.Labels?.[LABELS.dependencies] ?? "(none)";
+
+      console.log(`  📦 ${tag}`);
+      console.log(`     Runtime:      ${runtime}`);
+      console.log(`     Dependencies: ${deps}`);
+      console.log("");
     }
   });
 
@@ -462,9 +465,16 @@ program
         apiKey,
         debug: opts.debug ?? false,
         authDbPath: opts.authDb,
-      });
+        // biome-ignore lint/suspicious/noExplicitAny: required for Bun/Hono interop
+      } as any);
       let shuttingDown = false;
-      const bunServer = Bun.serve({ fetch: server.app.fetch, port, websocket: server.websocket });
+      const bunServer = Bun.serve({
+        // biome-ignore lint/suspicious/noExplicitAny: required for Bun/Hono interop
+        fetch: server.app.fetch as any,
+        port,
+        // biome-ignore lint/suspicious/noExplicitAny: required for Bun/Hono interop
+        websocket: (server as any).websocket,
+      });
 
       const shutdown = async () => {
         if (shuttingDown) {
@@ -912,28 +922,6 @@ program
         ? String(config.poolSize)
         : `${config.poolSize.clean},${config.poolSize.dirty}`;
     console.log(`  Pool size:       ${poolSize}`);
-
-    // Dependencies
-    const deps = config.dependencies;
-    const hasDeps = Object.values(deps).some((pkgs) => pkgs && pkgs.length > 0);
-    console.log("");
-    console.log("  ── Dependencies ──");
-    if (hasDeps) {
-      if (deps.python?.length) {
-        console.log(`  Python:          ${deps.python.join(", ")}`);
-      }
-      if (deps.node?.length) {
-        console.log(`  Node:            ${deps.node.join(", ")}`);
-      }
-      if (deps.bun?.length) {
-        console.log(`  Bun:             ${deps.bun.join(", ")}`);
-      }
-      if (deps.deno?.length) {
-        console.log(`  Deno:            ${deps.deno.join(", ")}`);
-      }
-    } else {
-      console.log("  (none configured)");
-    }
 
     console.log("");
   });
@@ -1397,7 +1385,6 @@ async function resolveRunInput(file: string | undefined, opts: any) {
     debug: opts.debug ?? config.debug,
     persist: opts.persist ?? false,
     ...(opts.logNetwork ? { logNetwork: true } : {}),
-    dependencies: config.dependencies,
     remoteCode: config.remoteCode,
   };
 
@@ -1537,28 +1524,6 @@ function parsePackageOptions(values: string[]): string[] {
     .sort();
 }
 
-function parseImageTag(image: string): { repo: string; tag: string } {
-  const value = image.trim();
-  if (!value) {
-    console.error("[ERR] --tag must not be empty");
-    process.exit(1);
-  }
-
-  const lastColon = value.lastIndexOf(":");
-  const lastSlash = value.lastIndexOf("/");
-  if (lastColon > lastSlash) {
-    const repo = value.slice(0, lastColon);
-    const tag = value.slice(lastColon + 1);
-    if (!(repo && tag)) {
-      console.error(`[ERR] Invalid --tag value: ${image}`);
-      process.exit(1);
-    }
-    return { repo, tag };
-  }
-
-  return { repo: value, tag: "latest" };
-}
-
 function getDefaultRegistryAllowPatterns(runtime: Runtime): string[] {
   switch (runtime) {
     case "python":
@@ -1582,4 +1547,7 @@ if (!process.argv.slice(2).length) {
   program.outputHelp();
   process.exit(0);
 }
-program.parse();
+program.parseAsync().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

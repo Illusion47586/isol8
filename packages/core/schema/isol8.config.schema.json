@@ -2,48 +2,6 @@
   "$ref": "#/definitions/Isol8UserConfig",
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
-    "Isol8Dependencies": {
-      "additionalProperties": false,
-      "description": "Runtime-specific packages to bake into custom Docker images. Populated via `isol8.config.json` or CLI flags on `isol8 setup`.",
-      "properties": {
-        "bash": {
-          "description": "Bash packages to install via apk (Alpine).",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "bun": {
-          "description": "Bun packages to install globally.",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "deno": {
-          "description": "Deno module URLs to pre-cache.",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "node": {
-          "description": "Node.js packages to install globally via npm.",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "python": {
-          "description": "Python packages to install via pip.",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        }
-      },
-      "type": "object"
-    },
     "Isol8UserConfig": {
       "additionalProperties": false,
       "description": "User configuration file schema (partial/optional version of Isol8Config). Used for generating the JSON Schema.",
@@ -188,10 +146,6 @@
             }
           },
           "type": "object"
-        },
-        "dependencies": {
-          "$ref": "#/definitions/Isol8Dependencies",
-          "description": "Runtime-specific packages to bake into custom Docker images."
         },
         "maxConcurrent": {
           "default": 10,

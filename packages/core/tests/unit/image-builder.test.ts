@@ -1,12 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { createHash } from "node:crypto";
-import {
-  buildCustomImages,
-  getCustomImageTag,
-  imageExists,
-  normalizePackages,
-} from "../../src/engine/image-builder";
-import type { Isol8Config } from "../../src/types";
+import { buildCustomImage, imageExists, normalizePackages } from "../../src/engine/image-builder";
 
 // Mock Dockerode
 const mockBuildImage = mock(() => {
@@ -38,50 +32,30 @@ describe("image-builder", () => {
   });
 
   test("builds custom image with valid package names", async () => {
-    const config = {
-      dependencies: {
-        python: ["numpy", "pandas"],
-      },
-    } as Isol8Config;
-
-    await buildCustomImages(mockDocker, config);
+    await buildCustomImage(mockDocker, "python", ["numpy", "pandas"], "my-custom-python-tag");
 
     expect(mockBuildImage).toHaveBeenCalled();
     // Verify arguments to buildImage (harder with tar stream, but we can verify it was called)
   });
 
   test("throws error for malicious python package name", async () => {
-    const config = {
-      dependencies: {
-        python: ["numpy; rm -rf /"],
-      },
-    } as Isol8Config;
-
     // This should fail once validation is added
     // For now (before fix), checking that it DOES NOT throw would show the bug,
     // but we want to assert the DESIRED behavior (throwing error).
-    expect(buildCustomImages(mockDocker, config)).rejects.toThrow(/Invalid package name/);
+    expect(buildCustomImage(mockDocker, "python", ["numpy; rm -rf /"], "tag")).rejects.toThrow(
+      /Invalid package name/
+    );
   });
 
   test("throws error for malicious node package name", async () => {
-    const config = {
-      dependencies: {
-        node: ["lodash && echo 'pwnd'"],
-      },
-    } as Isol8Config;
-
-    expect(buildCustomImages(mockDocker, config)).rejects.toThrow(/Invalid package name/);
+    expect(buildCustomImage(mockDocker, "node", ["lodash && echo 'pwnd'"], "tag")).rejects.toThrow(
+      /Invalid package name/
+    );
   });
 
   test("allows valid version specifiers", async () => {
-    const config = {
-      dependencies: {
-        python: ["numpy==1.21.0"],
-        node: ["lodash@4.17.21"],
-      },
-    } as Isol8Config;
-
-    await buildCustomImages(mockDocker, config);
+    await buildCustomImage(mockDocker, "python", ["numpy==1.21.0"], "tag");
+    await buildCustomImage(mockDocker, "node", ["lodash@4.17.21"], "tag2");
     expect(mockBuildImage).toHaveBeenCalledTimes(2);
   });
 
@@ -106,22 +80,21 @@ describe("image-builder", () => {
         }),
       } as any;
 
-      // We can't easily mock the hash computation, but we can verify
-      // that buildImage is not called when we force a rebuild vs skip
-      const config = { dependencies: { python: ["numpy"] } } as Isol8Config;
-
       // Without force flag, if image exists with matching hash, build should be skipped
       // Since we can't mock the hash, we test that with force=true it does build
-      await buildCustomImages(mockDockerWithLabels, config, undefined, true);
+      await buildCustomImage(
+        mockDockerWithLabels,
+        "python",
+        ["numpy"],
+        existingImageId,
+        undefined,
+        true
+      );
       expect(mockBuildImage).toHaveBeenCalled();
     });
 
     test("builds when force flag is true", async () => {
-      const config = {
-        dependencies: { python: ["numpy"] },
-      } as Isol8Config;
-
-      await buildCustomImages(mockDocker, config, undefined, true);
+      await buildCustomImage(mockDocker, "python", ["numpy"], "tag", undefined, true);
       expect(mockBuildImage).toHaveBeenCalled();
     });
   });
@@ -151,11 +124,7 @@ describe("image-builder", () => {
         }),
       } as any;
 
-      const config = {
-        dependencies: { python: ["numpy"] },
-      } as Isol8Config;
-
-      await buildCustomImages(mockDockerWithCleanup, config, undefined, true);
+      await buildCustomImage(mockDockerWithCleanup, "python", ["numpy"], "tag", undefined, true);
 
       // The old image should be queued for removal after rebuild
       // Note: In the actual implementation, we get the old image ID before building
@@ -171,13 +140,6 @@ describe("hash functions", () => {
       "pandas",
       "scipy",
     ]);
-  });
-
-  test("getCustomImageTag is stable for equivalent dependency sets", () => {
-    const a = getCustomImageTag("python", ["numpy", "pandas"]);
-    const b = getCustomImageTag("python", [" pandas ", "numpy", "numpy"]);
-    expect(a).toBe(b);
-    expect(a).toMatch(/^isol8:python-custom-[a-f0-9]{12}$/);
   });
 
   test("computeDockerDirHash is consistent", () => {
