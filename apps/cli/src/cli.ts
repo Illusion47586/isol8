@@ -22,6 +22,7 @@ import {
   buildBaseImages,
   buildCustomImage,
   DockerIsol8,
+  imageExists,
   loadConfig,
   logger,
   RemoteIsol8,
@@ -105,6 +106,39 @@ program
     if (spinner.isSpinning) {
       spinner.stop();
     }
+
+    // Auto-build prebuilt images from config
+    const config = loadConfig();
+    if (config.prebuiltImages.length > 0) {
+      console.log("");
+      spinner.start("Checking prebuilt images from config...");
+      for (const img of config.prebuiltImages) {
+        const exists = await imageExists(docker, img.tag);
+        if (exists && !(opts.force ?? false)) {
+          spinner.stopAndPersist({ symbol: "[OK]", text: `${img.tag} (already exists)` });
+          spinner.start();
+          continue;
+        }
+        spinner.text = `Building ${img.tag}...`;
+        await buildCustomImage(
+          docker,
+          img.runtime,
+          img.installPackages,
+          img.tag,
+          undefined,
+          opts.force ?? false
+        );
+        spinner.stopAndPersist({
+          symbol: "[OK]",
+          text: `${img.tag} (${img.runtime}: ${img.installPackages.join(", ")})`,
+        });
+        spinner.start();
+      }
+      if (spinner.isSpinning) {
+        spinner.stop();
+      }
+    }
+
     console.log("\n[DONE] Setup complete!");
   });
 
