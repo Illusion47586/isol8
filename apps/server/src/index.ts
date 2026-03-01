@@ -485,6 +485,17 @@ export async function createServer(options: ServerOptions) {
     return c.json({ content: content.toString("base64") });
   });
 
+  // ─── List Sessions ───
+  app.get("/sessions", (c) => {
+    logger.debug("[Server] GET /sessions");
+    const list = Array.from(sessions.entries()).map(([id, session]) => ({
+      id,
+      isActive: session.isActive,
+      lastAccessedAt: new Date(session.lastAccessedAt).toISOString(),
+    }));
+    return c.json({ sessions: list });
+  });
+
   // ─── Session Cleanup ───
   app.delete("/session/:id", async (c) => {
     const id = c.req.param("id");

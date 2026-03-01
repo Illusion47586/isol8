@@ -11,6 +11,7 @@ import type {
   ExecutionResult,
   Isol8Engine,
   Isol8Options,
+  SessionInfo,
   StartOptions,
   StreamEvent,
   WsClientMessage,
@@ -324,6 +325,36 @@ export class RemoteIsol8 implements Isol8Engine {
 
     const body = (await res.json()) as { content: string };
     return Buffer.from(body.content, "base64");
+  }
+
+  /**
+   * List all active sessions on the remote server.
+   * Requires authentication but no session ID.
+   */
+  async listSessions(): Promise<SessionInfo[]> {
+    const res = await this.fetch("/sessions");
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(
+        `Failed to list sessions: ${(body as { error?: string }).error ?? res.statusText}`
+      );
+    }
+    const body = (await res.json()) as { sessions: SessionInfo[] };
+    return body.sessions;
+  }
+
+  /**
+   * Delete a specific session on the remote server by ID.
+   * The session's container is stopped and removed.
+   */
+  async deleteSession(sessionId: string): Promise<void> {
+    const res = await this.fetch(`/session/${sessionId}`, { method: "DELETE" });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(
+        `Failed to delete session: ${(body as { error?: string }).error ?? res.statusText}`
+      );
+    }
   }
 
   /** Internal fetch wrapper that attaches auth and content-type headers. */

@@ -99,6 +99,7 @@
               "server/get-execute-ws",
               "server/post-file",
               "server/get-file",
+              "server/get-sessions",
               "server/delete-session",
               "server/post-cleanup"
             ]
