@@ -68,7 +68,7 @@ By default, the CLI will still stop and clean up the container once the single c
 When `--persistent` is used (with or without `--session-id`), the CLI prints the session identifier to stderr:
 
 ```text
-[SESSION] cli-1718451234567
+[INFO] Session ID: cli-1718451234567
 ```
 
 This ID can be used to reconnect to the same session later via `--session-id`, or to manage the session with `isol8 session list` and `isol8 session stop`.
@@ -85,7 +85,7 @@ isol8 run \
   --session-id my-session \
   --host http://localhost:3000 \
   --key my-key
-# [SESSION] my-session
+# [INFO] Session ID: my-session
 
 # Reconnect later and read the variable
 isol8 run \
@@ -94,7 +94,7 @@ isol8 run \
   --session-id my-session \
   --host http://localhost:3000 \
   --key my-key
-# [SESSION] my-session
+# [INFO] Session ID: my-session
 # 42
 ```
 

@@ -332,7 +332,7 @@ program
 
       // Print session ID so the user can reconnect later
       if (sessionId) {
-        console.error(`[SESSION] ${sessionId}`);
+        console.error(`[INFO] Session ID: ${sessionId}`);
       }
 
       spinner.text = "Running code...";
