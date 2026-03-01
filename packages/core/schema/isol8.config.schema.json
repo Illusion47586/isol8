@@ -188,10 +188,7 @@
                   "type": "number"
                 }
               },
-              "required": [
-                "clean",
-                "dirty"
-              ],
+              "required": ["clean", "dirty"],
               "type": "object"
             }
           ],
@@ -204,10 +201,7 @@
         "poolStrategy": {
           "default": "fast",
           "description": "Default ephemeral pool strategy used by `isol8 serve`.",
-          "enum": [
-            "secure",
-            "fast"
-          ],
+          "enum": ["secure", "fast"],
           "type": "string"
         },
         "remoteCode": {
@@ -222,9 +216,7 @@
               "type": "array"
             },
             "allowedSchemes": {
-              "default": [
-                "https"
-              ],
+              "default": ["https"],
               "description": "Allowed URL schemes.",
               "items": {
                 "type": "string"
@@ -280,11 +272,7 @@
     },
     "NetworkMode": {
       "description": "Network access mode for isol8 containers.\n\n- `\"none\"` — All network access blocked (default, most secure).\n- `\"host\"` — Full host network access (use with caution).\n- `\"filtered\"` — HTTP/HTTPS traffic routed through a proxy that enforces   whitelist/blacklist regex rules on hostnames.",
-      "enum": [
-        "none",
-        "host",
-        "filtered"
-      ],
+      "enum": ["none", "host", "filtered"],
       "type": "string"
     },
     "SecurityConfig": {
@@ -297,11 +285,7 @@
         },
         "seccomp": {
           "description": "Seccomp profile mode.\n- \"strict\": Use the default strict profile (default).\n- \"unconfined\": Do not apply any seccomp profile.\n- \"custom\": Use the profile at `customProfilePath`.",
-          "enum": [
-            "strict",
-            "unconfined",
-            "custom"
-          ],
+          "enum": ["strict", "unconfined", "custom"],
           "type": "string"
         }
       },

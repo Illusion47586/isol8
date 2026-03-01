@@ -120,7 +120,7 @@ function sendRawWsMessage(
 
 describe("Integration: Server WebSocket Streaming", () => {
   if (!hasDocker) {
-    test.skip("Docker not available", () => { });
+    test.skip("Docker not available", () => {});
     return;
   }
 
@@ -225,7 +225,7 @@ describe("Integration: Server WebSocket Streaming", () => {
       runtime: "python",
     });
 
-    const stderr = events
+    const _stderr = events
       .filter((e) => e.type === "stderr")
       .map((e) => e.data)
       .join("");
@@ -241,7 +241,7 @@ describe("Integration: Server WebSocket Streaming", () => {
       runtime: "python",
     });
 
-    const stderr = events
+    const _stderr = events
       .filter((e) => e.type === "stderr")
       .map((e) => e.data)
       .join("");
@@ -431,7 +431,7 @@ describe("Integration: Server WebSocket Streaming", () => {
 
 describe("Integration: Server WebSocket Auth", () => {
   if (!hasDocker) {
-    test.skip("Docker not available", () => { });
+    test.skip("Docker not available", () => {});
     return;
   }
 

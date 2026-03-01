@@ -11,7 +11,6 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type Docker from "dockerode";
 import { RuntimeRegistry } from "../runtime";
-import type { Isol8Config } from "../types";
 import { logger } from "../utils/logger";
 
 /**
@@ -116,8 +115,6 @@ function computeDepsHash(runtime: string, packages: string[]): string {
 export function normalizePackages(packages: string[]): string[] {
   return [...new Set(packages.map((pkg) => pkg.trim()).filter(Boolean))].sort();
 }
-
-
 
 /**
  * Gets the labels from an existing Docker image.
@@ -253,7 +250,6 @@ export async function buildBaseImages(
   }
 }
 
-
 export async function buildCustomImage(
   docker: Docker,
   runtime: import("../types").Runtime | string,
@@ -326,6 +322,7 @@ export async function buildCustomImage(
 
   const tarBuffer = createTarBuffer("Dockerfile", dockerfileContent);
 
+  // biome-ignore lint/suspicious/noExplicitAny: Dockerode is missing raw Buffer support typings
   const stream = await docker.buildImage(tarBuffer as any, {
     t: tag,
     dockerfile: "Dockerfile",
@@ -338,16 +335,19 @@ export async function buildCustomImage(
 
   await new Promise<void>((resolve, reject) => {
     docker.modem.followProgress(
+      // biome-ignore lint/suspicious/noExplicitAny: Dockerode is missing raw Buffer support typings
       stream as any,
+      // biome-ignore lint/suspicious/noExplicitAny: Dockerode callback types are not exact for modem
       (err: any, res: any) => {
         if (err) {
           reject(err);
-        } else if (res && res.length > 0 && res[res.length - 1].error) {
-          reject(new Error(res[res.length - 1].error));
+        } else if (res && res.length > 0 && res.at(-1).error) {
+          reject(new Error(res.at(-1).error));
         } else {
           resolve();
         }
       },
+      // biome-ignore lint/suspicious/noExplicitAny: stream chunk type is ambiguous
       (event: any) => {
         if (event.stream) {
           process.stdout.write(event.stream);

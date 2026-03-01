@@ -14,9 +14,9 @@ import type { RuntimeAdapter } from "../runtime/adapter";
 import type {
   ExecutionRequest,
   ExecutionResult,
-  Isol8Options,
   Isol8Engine,
   Isol8Mode,
+  Isol8Options,
   NetworkFilterConfig,
   NetworkMode,
   RemoteCodePolicy,
@@ -29,7 +29,6 @@ import { AuditLogger } from "./audit";
 import { fetchRemoteCode } from "./code-fetcher";
 import { Semaphore } from "./concurrency";
 import { EMBEDDED_DEFAULT_SECCOMP_PROFILE } from "./default-seccomp-profile";
-import { normalizePackages } from "./image-builder";
 import { ExecutionManager, NetworkManager, VolumeManager } from "./managers";
 import { ContainerPool } from "./pool";
 import { type ContainerResourceUsage, calculateResourceDelta, getContainerStats } from "./stats";
@@ -616,15 +615,23 @@ export class DockerIsol8 implements Isol8Engine {
       });
 
       for (const img of images) {
-        if (!img.RepoTags || img.RepoTags.length === 0) continue;
+        if (!img.RepoTags || img.RepoTags.length === 0) {
+          continue;
+        }
 
         const depsLabel = img.Labels?.[LABELS.dependencies];
-        if (!depsLabel) continue;
+        if (!depsLabel) {
+          continue;
+        }
 
         const imgDeps = depsLabel.split(",");
 
         // Exact match
-        if (img.RepoTags[0] && normalizedReq.length === imgDeps.length && normalizedReq.every((p) => imgDeps.includes(p))) {
+        if (
+          img.RepoTags[0] &&
+          normalizedReq.length === imgDeps.length &&
+          normalizedReq.every((p) => imgDeps.includes(p))
+        ) {
           bestImage = img.RepoTags[0];
           remainingPackages = [];
           logger.debug(`[Docker] Found exact custom image match: ${bestImage}`);
@@ -853,7 +860,7 @@ export class DockerIsol8 implements Isol8Engine {
         // Return container to pool for reuse - fire-and-forget for performance
         pool.release(container, image).catch((err) => {
           logger.debug(`[Pool] release failed: ${err}`);
-          container.remove({ force: true }).catch(() => { });
+          container.remove({ force: true }).catch(() => {});
         });
       }
     }
@@ -1007,7 +1014,10 @@ export class DockerIsol8 implements Isol8Engine {
     return this.volumeManager.retrieveFiles(container, paths);
   }
 
-  private async startPersistentContainer(adapter: RuntimeAdapter, requestedPackages?: string[]): Promise<string[]> {
+  private async startPersistentContainer(
+    adapter: RuntimeAdapter,
+    requestedPackages?: string[]
+  ): Promise<string[]> {
     const resolved = await this.resolveImage(adapter, requestedPackages);
 
     this.container = await this.docker.createContainer({

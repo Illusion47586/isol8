@@ -1,17 +1,12 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { createHash } from "node:crypto";
-import {
-  buildCustomImage,
-  imageExists,
-  normalizePackages,
-} from "../../src/engine/image-builder";
-import type { Isol8Config } from "../../src/types";
+import { buildCustomImage, imageExists, normalizePackages } from "../../src/engine/image-builder";
 
 // Mock Dockerode
 const mockBuildImage = mock(() => {
   return Promise.resolve({
     // Mock stream
-    on: (event: string, cb: any) => { },
+    on: (event: string, cb: any) => {},
     pipe: (dest: any) => dest, // Helper for piping if needed
   });
 });
@@ -47,11 +42,15 @@ describe("image-builder", () => {
     // This should fail once validation is added
     // For now (before fix), checking that it DOES NOT throw would show the bug,
     // but we want to assert the DESIRED behavior (throwing error).
-    expect(buildCustomImage(mockDocker, "python", ["numpy; rm -rf /"], "tag")).rejects.toThrow(/Invalid package name/);
+    expect(buildCustomImage(mockDocker, "python", ["numpy; rm -rf /"], "tag")).rejects.toThrow(
+      /Invalid package name/
+    );
   });
 
   test("throws error for malicious node package name", async () => {
-    expect(buildCustomImage(mockDocker, "node", ["lodash && echo 'pwnd'"], "tag")).rejects.toThrow(/Invalid package name/);
+    expect(buildCustomImage(mockDocker, "node", ["lodash && echo 'pwnd'"], "tag")).rejects.toThrow(
+      /Invalid package name/
+    );
   });
 
   test("allows valid version specifiers", async () => {
@@ -83,7 +82,14 @@ describe("image-builder", () => {
 
       // Without force flag, if image exists with matching hash, build should be skipped
       // Since we can't mock the hash, we test that with force=true it does build
-      await buildCustomImage(mockDockerWithLabels, "python", ["numpy"], existingImageId, undefined, true);
+      await buildCustomImage(
+        mockDockerWithLabels,
+        "python",
+        ["numpy"],
+        existingImageId,
+        undefined,
+        true
+      );
       expect(mockBuildImage).toHaveBeenCalled();
     });
 
@@ -99,7 +105,7 @@ describe("image-builder", () => {
       const removedImages: string[] = [];
 
       const mockDockerWithCleanup = {
-        buildImage: mock(() => Promise.resolve({ on: () => { }, pipe: (d: any) => d })),
+        buildImage: mock(() => Promise.resolve({ on: () => {}, pipe: (d: any) => d })),
         modem: {
           followProgress: mock((stream: any, cb: (err?: any) => void) => {
             cb(null);

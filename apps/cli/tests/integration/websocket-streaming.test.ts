@@ -25,7 +25,7 @@ try {
 
 describe("Integration: RemoteIsol8 WebSocket Streaming", () => {
   if (!hasDocker) {
-    test.skip("Docker not available", () => { });
+    test.skip("Docker not available", () => {});
     return;
   }
 

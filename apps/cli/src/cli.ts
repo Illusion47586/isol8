@@ -21,9 +21,7 @@ import type {
 import {
   buildBaseImages,
   buildCustomImage,
-  buildCustomImages,
   DockerIsol8,
-  getCustomImageTag,
   loadConfig,
   logger,
   RemoteIsol8,
@@ -184,7 +182,9 @@ program
       },
     });
 
-    const isol8Images = images.filter((img) => img.RepoTags && img.RepoTags.length > 0 && img.RepoTags[0].startsWith("isol8"));
+    const isol8Images = images.filter(
+      (img) => img.RepoTags && img.RepoTags.length > 0 && img.RepoTags[0].startsWith("isol8")
+    );
 
     if (isol8Images.length === 0) {
       spinner.info("No custom isol8 images found.");
@@ -431,9 +431,16 @@ program
         apiKey,
         debug: opts.debug ?? false,
         authDbPath: opts.authDb,
+        // biome-ignore lint/suspicious/noExplicitAny: required for Bun/Hono interop
       } as any);
       let shuttingDown = false;
-      const bunServer = Bun.serve({ fetch: server.app.fetch as any, port, websocket: (server as any).websocket });
+      const bunServer = Bun.serve({
+        // biome-ignore lint/suspicious/noExplicitAny: required for Bun/Hono interop
+        fetch: server.app.fetch as any,
+        port,
+        // biome-ignore lint/suspicious/noExplicitAny: required for Bun/Hono interop
+        websocket: (server as any).websocket,
+      });
 
       const shutdown = async () => {
         if (shuttingDown) {
@@ -882,8 +889,6 @@ program
         : `${config.poolSize.clean},${config.poolSize.dirty}`;
     console.log(`  Pool size:       ${poolSize}`);
 
-
-
     console.log("");
   });
 
@@ -940,7 +945,7 @@ program
 
     spinner.succeed(
       `Found ${isol8Containers.length} isol8 container(s)` +
-      (opts.images ? ` and ${isol8Images.length} image(s)` : "")
+        (opts.images ? ` and ${isol8Images.length} image(s)` : "")
     );
 
     // Show container details
@@ -1483,28 +1488,6 @@ function parsePackageOptions(values: string[]): string[] {
   return [...new Set(values.flatMap((value) => value.split(",")).map((pkg) => pkg.trim()))]
     .filter(Boolean)
     .sort();
-}
-
-function parseImageTag(image: string): { repo: string; tag: string } {
-  const value = image.trim();
-  if (!value) {
-    console.error("[ERR] --tag must not be empty");
-    process.exit(1);
-  }
-
-  const lastColon = value.lastIndexOf(":");
-  const lastSlash = value.lastIndexOf("/");
-  if (lastColon > lastSlash) {
-    const repo = value.slice(0, lastColon);
-    const tag = value.slice(lastColon + 1);
-    if (!(repo && tag)) {
-      console.error(`[ERR] Invalid --tag value: ${image}`);
-      process.exit(1);
-    }
-    return { repo, tag };
-  }
-
-  return { repo: value, tag: "latest" };
 }
 
 function getDefaultRegistryAllowPatterns(runtime: Runtime): string[] {

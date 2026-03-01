@@ -374,8 +374,6 @@ export interface Isol8Options {
    * @default 1 (for fast mode: { clean: 1, dirty: 1 })
    */
   poolSize?: number | { clean: number; dirty: number };
-
-
 }
 
 /**
@@ -586,7 +584,6 @@ export interface Isol8Config {
    */
   poolSize: number | { clean: number; dirty: number };
 
-
   /** Security settings. */
   security: SecurityConfig;
 
@@ -637,7 +634,6 @@ export interface Isol8UserConfig {
    * @default { clean: 1, dirty: 1 }
    */
   poolSize?: number | { clean: number; dirty: number };
-
 
   /** Security settings. */
   security?: SecurityConfig;

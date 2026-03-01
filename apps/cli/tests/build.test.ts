@@ -346,7 +346,7 @@ describe("CLI serve command", () => {
 
 describe("CLI run command", () => {
   if (!hasDocker) {
-    test.skip("Docker not available — skipping run command tests", () => { });
+    test.skip("Docker not available — skipping run command tests", () => {});
     return;
   }
 
