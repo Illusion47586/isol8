@@ -99,6 +99,32 @@
           },
           "type": "object"
         },
+        "auth": {
+          "additionalProperties": false,
+          "description": "Database-backed API key authentication configuration.",
+          "properties": {
+            "cleanupIntervalMs": {
+              "default": "3600000 (1h)",
+              "description": "Auto-cleanup interval for expired keys in milliseconds.",
+              "type": "number"
+            },
+            "connectionString": {
+              "description": "Database connection string. Omit for the default SQLite database at `~/.isol8/auth.db`. Set to a `postgres://` or `postgresql://` URL for PostgreSQL, or `mysql://` for MySQL.",
+              "type": "string"
+            },
+            "defaultTtlMs": {
+              "default": "86400000 (24h)",
+              "description": "Default token TTL in milliseconds.",
+              "type": "number"
+            },
+            "enabled": {
+              "default": false,
+              "description": "Enable DB-backed auth. When false, only static key auth is used.",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
         "cleanup": {
           "additionalProperties": false,
           "description": "Container cleanup and lifecycle settings. (Partial override allowed).",

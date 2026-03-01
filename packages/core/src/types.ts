@@ -524,6 +524,21 @@ export interface SecurityConfig {
   customProfilePath?: string;
 }
 
+/** Configuration for database-backed API key authentication. */
+export interface AuthConfig {
+  /** Enable DB-backed auth. When false, only static key auth is used. @default false */
+  enabled: boolean;
+  /**
+   * Database connection string. Omit for the default SQLite database at `~/.isol8/auth.db`.
+   * Set to a `postgres://` or `postgresql://` URL for PostgreSQL, or `mysql://` for MySQL.
+   */
+  connectionString?: string;
+  /** Default token TTL in milliseconds. @default 86400000 (24h) */
+  defaultTtlMs: number;
+  /** Auto-cleanup interval for expired keys in milliseconds. @default 3600000 (1h) */
+  cleanupIntervalMs: number;
+}
+
 /** Configuration for audit logging. */
 export interface AuditConfig {
   /** Enable audit logging. @default false */
@@ -590,6 +605,9 @@ export interface Isol8Config {
   /** Audit logging configuration. */
   audit: AuditConfig;
 
+  /** Database-backed API key authentication configuration. */
+  auth: AuthConfig;
+
   /** Enable debug logging. @default false */
   debug: boolean;
 }
@@ -640,4 +658,7 @@ export interface Isol8UserConfig {
 
   /** Audit logging configuration. */
   audit?: Partial<AuditConfig>;
+
+  /** Database-backed API key authentication configuration. */
+  auth?: Partial<AuthConfig>;
 }

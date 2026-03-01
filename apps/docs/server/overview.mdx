@@ -8,11 +8,38 @@ The isol8 server exposes remote code execution over HTTP for centralized infrast
 
 ## Start server
 
-```bash
-isol8 serve --port 3000 --key "$ISOL8_API_KEY"
-```
+<Tabs>
+  <Tab title="Static key (default)">
+    ```bash
+    isol8 serve --port 3000 --key "$ISOL8_API_KEY"
+    ```
+  </Tab>
+  <Tab title="With DB-backed auth">
+    ```bash
+    # SQLite (default path ~/.isol8/auth.db)
+    isol8 serve --port 3000 --key "$ISOL8_API_KEY" --auth-db
+
+    # SQLite (custom path)
+    isol8 serve --port 3000 --key "$ISOL8_API_KEY" --auth-db ./isol8-auth.db
+
+    # PostgreSQL
+    isol8 serve --port 3000 --key "$ISOL8_API_KEY" --auth-db "postgres://user:pass@localhost:5432/isol8"
+
+    # MySQL
+    isol8 serve --port 3000 --key "$ISOL8_API_KEY" --auth-db "mysql://user:pass@localhost:3306/isol8"
+    ```
+  </Tab>
+</Tabs>
 
 Port resolution order is `--port` > `ISOL8_PORT` > `PORT` > `3000`. If the selected port is already in use, startup prompts for a different port or can auto-select one.
+
+Pass `--auth-db` to enable DB-backed API key management. Without a value, it defaults to a SQLite database at `~/.isol8/auth.db`. You can also pass a connection string — the backend is auto-detected:
+
+- **No value or file path** (e.g. `./isol8-auth.db`) → SQLite
+- **`postgres://` or `postgresql://`** → PostgreSQL
+- **`mysql://`** → MySQL
+
+When enabled, the `--key` value becomes the master key with admin privileges, and additional keys can be managed via the `/auth/*` endpoints. See <a href="/server/routes">Server routes</a> for full endpoint reference.
 
 ## What the server provides
 
@@ -26,10 +53,32 @@ Port resolution order is `--port` > `ISOL8_PORT` > `PORT` > `3000`. If the selec
 
 ## Authentication model
 
+isol8 supports two authentication modes that can work together:
+
+### Static key (default)
+
+Pass a single API key via `--key`. This key acts as the **master key** with full access to all endpoints including key management.
+
 - `GET /health` is public
 - all other routes require `Authorization: Bearer <api-key>`
 - missing header -> `401`
 - invalid token -> `403`
+
+### DB-backed keys (optional)
+
+Enable with `--auth-db <connection>` to store API keys in a database. Supported backends: SQLite (file path), PostgreSQL (`postgres://`), and MySQL (`mysql://`). When enabled:
+
+- The `--key` value becomes the **master key** with admin privileges
+- Additional keys are created via `POST /auth/keys` (master key required)
+- DB keys authenticate execution, file, and session endpoints
+- DB keys **cannot** access admin endpoints (`/auth/*`) — only the master key can
+- Keys have configurable TTL, tenant scoping, and can be revoked individually
+- `POST /auth/login` exchanges the master key for a short-lived token
+
+Authentication order per request:
+1. Check static master key — sets `authType = "master"`
+2. Check DB key (if enabled) — sets `authType = "apikey"` and `tenantId`
+3. Reject with `401` (missing header) or `403` (invalid token)
 
 ## Execution architecture
 

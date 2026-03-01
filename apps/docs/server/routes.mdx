@@ -1,6 +1,6 @@
 ---
 title: "Routes index"
-description: "Server route catalog for health, execute, streaming, file transfer, and session lifecycle endpoints."
+description: "Server route catalog for health, execute, streaming, file transfer, session lifecycle, and auth management endpoints."
 icon: "route"
 ---
 
@@ -35,10 +35,30 @@ Use these endpoint pages for complete contracts and interactive API playground u
   </Card>
 </CardGroup>
 
+## Auth & key management
+
+These endpoints require the **master key** and are only available when DB-backed auth is enabled (`--auth-db`).
+
+<CardGroup cols={2}>
+  <Card title="POST /auth/keys" icon="key" href="/server/post-auth-keys">
+    Create a new API key with optional tenant scoping and TTL.
+  </Card>
+  <Card title="GET /auth/keys" icon="list" href="/server/get-auth-keys">
+    List all API keys, optionally filtered by tenant.
+  </Card>
+  <Card title="DELETE /auth/keys/:id" icon="ban" href="/server/delete-auth-keys">
+    Revoke an API key by ID.
+  </Card>
+  <Card title="POST /auth/login" icon="right-to-bracket" href="/server/post-auth-login">
+    Exchange master key for a short-lived token.
+  </Card>
+</CardGroup>
+
 ## Auth rules
 
 - `GET /health` is public.
 - All other endpoints require `Authorization: Bearer <api-key>`.
+- Auth endpoints (`/auth/*`) additionally require the **master key**.
 
 ## Related pages
 

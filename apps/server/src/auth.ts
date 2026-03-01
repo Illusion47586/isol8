@@ -2,19 +2,40 @@
  * @module server/auth
  *
  * Bearer token authentication middleware for the Hono server.
+ * Supports two modes:
+ * - **Static**: Single API key via `--key` flag (backward compatible)
+ * - **DB-backed**: Validates tokens against a database (SQLite, PostgreSQL, or MySQL)
+ *
  * Skips auth for the `/health` endpoint.
  */
 
 import type { Context, Next } from "hono";
+import type { AuthStore } from "./db/index.js";
+
+/** Options for configuring auth middleware. */
+export interface AuthMiddlewareOptions {
+  /** Static API key (master key). Always checked first. */
+  staticKey?: string;
+  /** Database-backed auth. Checked when static key doesn't match. */
+  authDb?: AuthStore;
+}
 
 /**
  * Creates a Hono middleware that validates `Authorization: Bearer <token>` headers.
- * Returns 401 if the header is missing, 403 if the token is invalid.
- * The `/health` endpoint is excluded from auth checks.
  *
- * @param apiKey - The expected API key.
+ * Authentication order:
+ * 1. Skip `/health` endpoint
+ * 2. Check static key (if configured) — sets `authType = "master"`
+ * 3. Check DB key (if configured) — sets `authType = "apikey"` and `tenantId`
+ * 4. Reject with 401/403
+ *
+ * @param options - Auth configuration (static key and/or DB).
  */
-export function authMiddleware(apiKey: string) {
+export function authMiddleware(options: AuthMiddlewareOptions | string) {
+  // Backward compatibility: accept a plain string as static key
+  const opts: AuthMiddlewareOptions =
+    typeof options === "string" ? { staticKey: options } : options;
+
   return async (c: Context, next: Next) => {
     // Skip auth for health check
     if (c.req.path === "/health") {
@@ -27,10 +48,37 @@ export function authMiddleware(apiKey: string) {
     }
 
     const token = authHeader.replace(/^Bearer\s+/i, "");
-    if (token !== apiKey) {
-      return c.json({ error: "Invalid API key" }, 403);
+
+    // Try static key first (master key)
+    if (opts.staticKey && token === opts.staticKey) {
+      c.set("authType", "master");
+      return next();
     }
 
+    // Try DB key
+    if (opts.authDb) {
+      const apiKey = await opts.authDb.validateKey(token);
+      if (apiKey) {
+        c.set("authType", "apikey");
+        c.set("tenantId", apiKey.tenantId);
+        return next();
+      }
+    }
+
+    return c.json({ error: "Invalid API key" }, 403);
+  };
+}
+
+/**
+ * Creates middleware that restricts access to master key holders only.
+ * Used for admin endpoints like key management.
+ */
+export function requireMasterKey() {
+  return async (c: Context, next: Next) => {
+    const authType = c.get("authType");
+    if (authType !== "master") {
+      return c.json({ error: "Master key required for this operation" }, 403);
+    }
     return next();
   };
 }

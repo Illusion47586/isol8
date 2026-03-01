@@ -1,0 +1,42 @@
+---
+title: "Revoke API key"
+description: "Revoke a DB-backed API key by ID, permanently disabling it."
+api: "DELETE /auth/keys/{id}"
+icon: "ban"
+---
+
+Revokes an API key so it can no longer authenticate requests. Revocation is immediate and irreversible (revoked keys are eventually cleaned up by the background cleanup job).
+
+Requires the **master key**. DB-backed auth must be enabled.
+
+<ParamField path="id" type="string" required>
+  UUID of the API key to revoke.
+</ParamField>
+
+<ResponseField name="ok" type="boolean">
+  `true` when the key was successfully revoked.
+</ResponseField>
+
+<ResponseField name="id" type="string">
+  The ID of the revoked key.
+</ResponseField>
+
+<RequestExample>
+```bash
+curl -X DELETE http://localhost:3000/auth/keys/a1b2c3d4-e5f6-7890-abcd-ef1234567890 \
+  -H "Authorization: Bearer $ISOL8_MASTER_KEY"
+```
+</RequestExample>
+
+<ResponseExample>
+```json
+{
+  "ok": true,
+  "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+}
+```
+</ResponseExample>
+
+<Note>
+  Returns `404` if no key with the given ID exists.
+</Note>

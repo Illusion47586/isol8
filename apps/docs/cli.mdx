@@ -219,6 +219,15 @@ isol8 serve --key <api-key> [options]
 
 <ResponseField name="-k, --key <key>" type="string">
   API key for bearer auth. If omitted, `ISOL8_API_KEY` environment variable is used.
+  When `--auth-db` is also provided, this key becomes the **master key** with admin privileges.
+</ResponseField>
+
+<ResponseField name="--auth-db [connection]" type="string">
+  Enable DB-backed API key management. When provided without a value or with a file path, uses SQLite (defaults to `~/.isol8/auth.db`).
+  Pass a `postgres://` or `postgresql://` URL for PostgreSQL, or a `mysql://` URL for MySQL.
+  The backend is auto-detected from the connection string format.
+  When enabled, the `--key` value becomes the master key, and additional keys can be created
+  via the `/auth/keys` endpoint or the `isol8 login` flow. See <a href="/server/overview">Server overview</a> for the full authentication model.
 </ResponseField>
 
 <ResponseField name="--update" type="flag">
@@ -229,9 +238,100 @@ isol8 serve --key <api-key> [options]
   Enable debug logs for server internals.
 </ResponseField>
 
+### Examples
+
+```bash
+# Static key auth (default)
+isol8 serve --key my-secret-key --port 3000
+
+# DB-backed auth with SQLite (default path ~/.isol8/auth.db)
+isol8 serve --key my-master-key --auth-db --port 3000
+
+# DB-backed auth with SQLite (custom path)
+isol8 serve --key my-master-key --auth-db ./isol8-auth.db --port 3000
+
+# DB-backed auth with PostgreSQL
+isol8 serve --key my-master-key --auth-db "postgres://user:pass@localhost:5432/isol8" --port 3000
+
+# DB-backed auth with MySQL
+isol8 serve --key my-master-key --auth-db "mysql://user:pass@localhost:3306/isol8" --port 3000
+```
+
 <Info>
   For full server behavior and endpoints, see the Server docs tab: <a href="/server/overview">Server overview</a> and <a href="/server/routes">Server routes</a>.
 </Info>
+
+## `isol8 login`
+
+```bash
+isol8 login --host <url> --key <master-key> [options]
+```
+
+Authenticate with a remote isol8 server that has DB-backed auth enabled. This command exchanges the master key for a short-lived API token via `POST /auth/login` and stores the credentials locally.
+
+<ResponseField name="--host <url>" type="string" required>
+  Server URL to authenticate against (e.g. `http://localhost:3000`).
+</ResponseField>
+
+<ResponseField name="--key <key>" type="string" required>
+  Master API key for the server. This is the same key passed to `isol8 serve --key`.
+</ResponseField>
+
+<ResponseField name="--name <name>" type="string">
+  Optional human-readable name for the login token. Defaults to `cli-login-<timestamp>`.
+</ResponseField>
+
+<ResponseField name="--ttl <ms>" type="number">
+  Token time-to-live in milliseconds. Defaults to 24 hours (`86400000`).
+</ResponseField>
+
+Once authenticated, credentials are saved to `~/.isol8/credentials.json` (file permissions `0600`). Subsequent `isol8 run --host <url>` commands automatically use the stored token without needing `--key`.
+
+### Credential resolution priority
+
+When running remote commands (`isol8 run --host ...`), the CLI resolves the API key in this order:
+
+1. `--key` flag (explicit, always wins)
+2. `ISOL8_API_KEY` environment variable
+3. Stored credentials from `~/.isol8/credentials.json` (if host matches and token is not expired)
+
+### Examples
+
+```bash
+# Login to a local server
+isol8 login --host http://localhost:3000 --key my-master-key
+
+# Login with custom name and TTL
+isol8 login \
+  --host https://isol8.example.com \
+  --key my-master-key \
+  --name "dev-laptop" \
+  --ttl 3600000
+
+# After login, --key is no longer needed for this host
+isol8 run -e "print('hello')" \
+  --runtime python \
+  --host http://localhost:3000
+```
+
+<Warning>
+  The server must have `--auth-db` enabled. If DB-backed auth is not active, `isol8 login` will fail with a `400` error.
+</Warning>
+
+## `isol8 logout`
+
+```bash
+isol8 logout
+```
+
+Remove stored credentials from `~/.isol8/credentials.json`. This does not revoke the token on the server — it only deletes the local credential file.
+
+### Examples
+
+```bash
+isol8 logout
+# [OK] Credentials removed from ~/.isol8/credentials.json
+```
 
 ## `isol8 build`
 
@@ -295,6 +395,14 @@ isol8 cleanup [options]
   No. `isol8 serve` accepts `--key`, but it can also read the API key from `ISOL8_API_KEY`.
 </Accordion>
 
+<Accordion title="What is the difference between `--key` and `--auth-db`?">
+  `--key` sets a single static API key (or master key). `--auth-db` enables database-backed key management (SQLite, PostgreSQL, or MySQL) where you can create, list, and revoke multiple keys via the `/auth/*` endpoints. Both can be used together — the `--key` becomes the master key when `--auth-db` is enabled.
+</Accordion>
+
+<Accordion title="Do I need to run `isol8 login` to use remote execution?">
+  No. You can always pass `--key` explicitly or set `ISOL8_API_KEY`. `isol8 login` is a convenience that stores credentials locally so you don't have to provide the key on every command.
+</Accordion>
+
 <Accordion title="Why does `isol8 run` print output in real time?">
   Streaming is the default behavior. Use `--no-stream` if you want buffered output only after the run completes.
 </Accordion>
@@ -302,6 +410,8 @@ isol8 cleanup [options]
 ## Troubleshooting quick checks
 
 - **`[ERR] API key required` on `serve` or remote `run`**: pass `--key` or set `ISOL8_API_KEY`.
+- **`isol8 login` fails with 400**: the server does not have `--auth-db` enabled. Restart the server with `--auth-db <path>`.
+- **Stored credentials expired**: run `isol8 login` again to re-authenticate.
 - **Runtime not detected from file extension**: pass `--runtime <name>` explicitly.
 - **No output appears while command runs**: check if `--no-stream` is enabled.
 - **Filtered mode still blocks host**: verify `--allow` regex matches hostname exactly.

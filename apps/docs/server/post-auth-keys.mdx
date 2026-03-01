@@ -1,0 +1,72 @@
+---
+title: "Create API key"
+description: "Create a new DB-backed API key with optional tenant scoping and TTL."
+api: "POST /auth/keys"
+icon: "key"
+---
+
+Creates a new API key in the SQLite-backed key store. The plaintext key is returned **only once** in the response — store it securely.
+
+Requires the **master key** (the `--key` flag value). DB-backed auth must be enabled via `--auth-db` or config.
+
+<ParamField body="name" type="string" required>
+  Human-readable label for this key.
+</ParamField>
+
+<ParamField body="tenantId" type="string">
+  Tenant identifier for multi-tenant isolation. Defaults to `"default"`.
+</ParamField>
+
+<ParamField body="ttlMs" type="number">
+  Key lifetime in milliseconds. Defaults to `auth.defaultTtlMs` from server config.
+</ParamField>
+
+<ResponseField name="id" type="string">
+  Unique key identifier (UUID). Use this for revocation.
+</ResponseField>
+
+<ResponseField name="key" type="string">
+  Plaintext API key prefixed with `isol8_`. **Shown only once.**
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  The label provided at creation.
+</ResponseField>
+
+<ResponseField name="keyPrefix" type="string">
+  First 10 characters of the key followed by `...` for display purposes.
+</ResponseField>
+
+<ResponseField name="tenantId" type="string">
+  Tenant this key belongs to.
+</ResponseField>
+
+<ResponseField name="expiresAt" type="string">
+  ISO 8601 expiration timestamp.
+</ResponseField>
+
+<RequestExample>
+```bash
+curl -X POST http://localhost:3000/auth/keys \
+  -H "Authorization: Bearer $ISOL8_MASTER_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "name": "ci-runner", "tenantId": "team-infra", "ttlMs": 86400000 }'
+```
+</RequestExample>
+
+<ResponseExample>
+```json
+{
+  "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "key": "isol8_4f3c8a1b...",
+  "name": "ci-runner",
+  "keyPrefix": "isol8_4f3c...",
+  "tenantId": "team-infra",
+  "expiresAt": "2026-03-02T12:00:00.000Z"
+}
+```
+</ResponseExample>
+
+<Warning>
+  The plaintext `key` is returned only at creation time. It cannot be retrieved later — only the `keyPrefix` is stored for display.
+</Warning>

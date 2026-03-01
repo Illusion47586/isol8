@@ -55,6 +55,10 @@ Use `isol8 serve --update` to force binary re-download.
 
 ## Authentication contract
 
+isol8 supports two authentication modes that can work together.
+
+### Static key (default)
+
 - `GET /health`: no auth required.
 - all other endpoints: require `Authorization: Bearer <api-key>`.
 
@@ -62,6 +66,67 @@ Use `isol8 serve --update` to force binary re-download.
 |:--|:--|
 | `401` | `Authorization` header missing |
 | `403` | token provided but invalid |
+
+### DB-backed keys (optional)
+
+When the server is started with `--auth-db`, API keys are stored in a database. Without a value, it defaults to SQLite at `~/.isol8/auth.db`. You can also pass a `postgres://` or `mysql://` connection string for PostgreSQL or MySQL. The `--key` value becomes the **master key** with admin privileges:
+
+- Additional keys are created via `POST /auth/keys` (master key required)
+- DB keys authenticate execution, file, and session endpoints
+- DB keys **cannot** access admin routes (`/auth/*`) — only the master key can
+- Keys support configurable TTL, tenant scoping, and individual revocation
+- `POST /auth/login` exchanges the master key for a short-lived token
+
+### Login flow and credential storage
+
+The CLI provides `isol8 login` to exchange the master key for a short-lived token:
+
+```bash
+isol8 login --host http://localhost:3000 --key my-master-key
+```
+
+This calls `POST /auth/login`, receives a token, and saves it to `~/.isol8/credentials.json` (permissions `0600`). After login, `isol8 run --host <url>` uses the stored token automatically.
+
+**Key resolution priority** (for `isol8 run --host` and `RemoteIsol8`):
+
+1. `--key` flag (explicit, always wins)
+2. `ISOL8_API_KEY` environment variable
+3. Stored credentials from `~/.isol8/credentials.json` (host-matched, non-expired)
+
+Use `isol8 logout` to remove stored credentials locally.
+
+### Library usage with DB-backed auth
+
+When using `RemoteIsol8` programmatically, pass the API key (master or DB-generated) directly:
+
+```typescript
+import { RemoteIsol8 } from "@isol8/core";
+
+const engine = new RemoteIsol8({
+  host: "http://localhost:3000",
+  apiKey: "isk_...",  // master key or DB-generated key
+});
+```
+
+For server-side key management, use the `createServer` function with `authDbPath`. Pass a file path for SQLite, or a `postgres://` / `mysql://` URL for other backends:
+
+```typescript
+import { createServer } from "@isol8/server";
+
+// SQLite
+const server = await createServer({
+  port: 3000,
+  apiKey: "my-master-key",
+  authDbPath: "./isol8-auth.db",
+});
+
+// PostgreSQL
+const server = await createServer({
+  port: 3000,
+  apiKey: "my-master-key",
+  authDbPath: "postgres://user:pass@localhost:5432/isol8",
+});
+```
 
 ## Where remote values are set
 

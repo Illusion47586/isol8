@@ -30,7 +30,12 @@ function parsePort(raw: string, source: string): number {
   return parsed;
 }
 
-function parseArgs(argv: string[]): { port: number; apiKey: string; debug: boolean } {
+function parseArgs(argv: string[]): {
+  port: number;
+  apiKey: string;
+  debug: boolean;
+  authDbPath?: string;
+} {
   const args = argv.slice(2); // skip binary path + script path
 
   // Handle --version
@@ -51,6 +56,9 @@ function parseArgs(argv: string[]): { port: number; apiKey: string; debug: boole
     console.log("Options:");
     console.log("  -p, --port <port>  Port to listen on (default: 3000, or ISOL8_PORT/PORT env)");
     console.log("  -k, --key <key>    API key for authentication (or ISOL8_API_KEY env)");
+    console.log(
+      "      --auth-db <conn> Enable DB-backed auth (file path for SQLite, URL for PostgreSQL/MySQL)"
+    );
     console.log("      --debug        Enable debug logging");
     console.log("  -V, --version      Print version and exit");
     console.log("  -h, --help         Show this help message");
@@ -61,6 +69,7 @@ function parseArgs(argv: string[]): { port: number; apiKey: string; debug: boole
   let port = 3000;
   let apiKey: string | undefined;
   let debug = false;
+  let authDbPath: string | undefined;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -71,6 +80,9 @@ function parseArgs(argv: string[]): { port: number; apiKey: string; debug: boole
       i++;
     } else if ((arg === "--key" || arg === "-k") && next) {
       apiKey = next;
+      i++;
+    } else if (arg === "--auth-db" && next) {
+      authDbPath = next;
       i++;
     } else if (arg === "--debug") {
       debug = true;
@@ -95,7 +107,7 @@ function parseArgs(argv: string[]): { port: number; apiKey: string; debug: boole
     }
   }
 
-  return { port, apiKey, debug };
+  return { port, apiKey, debug, authDbPath };
 }
 
 async function promptText(question: string): Promise<string> {
@@ -210,13 +222,13 @@ function isAddrInUseError(err: unknown): boolean {
 
 // ─── Main ────────────────────────────────────────────────────────────
 
-const { port: requestedPort, apiKey, debug } = parseArgs(process.argv);
+const { port: requestedPort, apiKey, debug, authDbPath } = parseArgs(process.argv);
 let port = await resolveAvailablePort(requestedPort);
 
 // Lazy-import server code AFTER arg parsing to avoid eagerly loading
 // dockerode's transitive dependency chain which crashes on Linux.
 const { createServer } = await import("./index");
-const server = await createServer({ port, apiKey, debug });
+const server = await createServer({ port, apiKey, debug, authDbPath });
 let bunServer: ReturnType<typeof Bun.serve> | null = null;
 let shuttingDown = false;
 
@@ -262,6 +274,9 @@ while (true) {
     });
     console.log(`[INFO] isol8 server v${VERSION} listening on http://localhost:${port}`);
     console.log("       Auth: Bearer token required");
+    if (authDbPath) {
+      console.log(`       Auth DB: ${authDbPath}`);
+    }
     break;
   } catch (err) {
     if (!isAddrInUseError(err)) {
