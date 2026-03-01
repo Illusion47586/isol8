@@ -94,6 +94,7 @@
             "group": "Endpoints",
             "pages": [
               "server/get-health",
+              "server/get-queue-status",
               "server/post-execute",
               "server/post-execute-stream",
               "server/get-execute-ws",

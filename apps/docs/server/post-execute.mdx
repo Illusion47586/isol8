@@ -55,6 +55,34 @@ Runs one execution request and returns complete `stdout`/`stderr` and metadata.
   ISO timestamp for execution completion.
 </ResponseField>
 
+## Error responses
+
+### 429 Too Many Requests
+
+Returned when the server's connection queue is full. All execution slots are occupied and the queue has reached its `queue.maxSize` limit.
+
+```json
+{
+  "error": "Too many requests — queue is full",
+  "queue": { "current": 10, "max": 10, "available": 0, "pending": 50 }
+}
+```
+
+### 408 Request Timeout
+
+Returned when a queued request exceeds `queue.timeoutMs` waiting for an execution slot.
+
+```json
+{
+  "error": "Request timed out waiting in queue after 30012ms",
+  "queue": { "current": 10, "max": 10, "available": 0, "pending": 4 }
+}
+```
+
+<Tip>
+  If you see frequent 429 or 408 responses, increase `maxConcurrent`, `queue.maxSize`, or `queue.timeoutMs` in your [configuration](/configuration).
+</Tip>
+
 <RequestExample>
 ```bash
 curl -X POST http://localhost:3000/execute \

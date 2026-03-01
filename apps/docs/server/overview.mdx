@@ -48,6 +48,9 @@ When enabled, the `--key` value becomes the master key with admin privileges, an
 - optional persistent sessions via `sessionId`
 - file upload/download for active sessions
 - global concurrency control via semaphore (`maxConcurrent`)
+- connection queueing with configurable size limits and timeouts (`queue.maxSize`, `queue.timeoutMs`)
+- backpressure: `429` when queue is full, `408` when queued request times out
+- queue monitoring via `GET /queue/status`
 - idle session cleanup (`cleanup.autoPrune` + `cleanup.maxContainerAgeMs`)
 - graceful shutdown cleanup (sessions, containers, and images)
 
@@ -86,9 +89,11 @@ Authentication order per request:
 flowchart TD
   A["Client"] --> B["Hono server"]
   B --> C["Auth middleware"]
-  C --> D["Global semaphore"]
+  C --> D["Global semaphore + queue"]
   D --> E["DockerIsol8 engine"]
   E --> F["Sandbox container(s)"]
+  D -- "queue full" --> G["429 Too Many Requests"]
+  D -- "queue timeout" --> H["408 Request Timeout"]
 
   style A fill:#f9f,stroke:#333
   A -- "HTTP" --> B

@@ -35,6 +35,10 @@ Use this as a complete reference template. In real configs, you can provide only
   "$schema": "./schema/isol8.config.schema.json",
   "debug": false,
   "maxConcurrent": 10,
+  "queue": {
+    "maxSize": 0,
+    "timeoutMs": 30000
+  },
   "defaults": {
     "timeoutMs": 30000,
     "memoryLimit": "512m",
@@ -94,6 +98,18 @@ Use this as a complete reference template. In real configs, you can provide only
 
 <ResponseField name="maxConcurrent" type="number" default="10">
   Maximum number of concurrent container executions. Enforced by a global semaphore in the server.
+</ResponseField>
+
+### queue
+
+Connection queue settings for the server. Controls backpressure when all execution slots are busy.
+
+<ResponseField name="queue.maxSize" type="number" default="0">
+  Maximum number of requests that can wait in the queue. When the queue is full, new requests are rejected immediately with HTTP `429`. `0` means unlimited (no cap on queue size).
+</ResponseField>
+
+<ResponseField name="queue.timeoutMs" type="number" default="30000">
+  Maximum time in milliseconds a request can wait in the queue before timing out. When exceeded, the request is rejected with HTTP `408`. `0` means unlimited (no timeout).
 </ResponseField>
 
 ### defaults
@@ -277,6 +293,7 @@ Audit logging configuration for execution provenance and compliance tracking.
 |:--|:--|:--|:--|
 | `debug` | boolean | `false` | CLI/server/engine internal logs |
 | `maxConcurrent` | number | `10` | Global server concurrency cap |
+| `queue` | object | `{ maxSize: 0, timeoutMs: 30000 }` | Server connection queue / backpressure |
 | `defaults` | object | safe baseline | Engine defaults for runs |
 | `network` | object | empty lists | Filter lists for filtered mode |
 | `cleanup` | object | prune enabled | Server session lifecycle |
@@ -465,6 +482,10 @@ Telemetry and audit logging configuration.
 {
   "$schema": "./schema/isol8.config.schema.json",
   "maxConcurrent": 25,
+  "queue": {
+    "maxSize": 50,
+    "timeoutMs": 15000
+  },
   "defaults": {
     "network": "filtered",
     "timeoutMs": 45000,
@@ -520,6 +541,8 @@ Prints effective resolved config (human-readable or JSON), including defaults an
 - **Filtered mode not behaving as expected**: validate `network.whitelist`/`network.blacklist` regex patterns.
 - **Persistent sessions not being cleaned up**: check `cleanup.autoPrune` and `cleanup.maxContainerAgeMs` on the server.
 - **Missing audit files**: verify `audit.enabled`, `audit.destination`, and `audit.logDir` settings.
+- **Requests rejected with 429**: queue is full — increase `queue.maxSize` or `maxConcurrent`.
+- **Requests rejected with 408**: requests timing out in queue — increase `queue.timeoutMs` or `maxConcurrent`.
 
 ## See also
 

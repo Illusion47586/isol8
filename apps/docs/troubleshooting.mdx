@@ -357,6 +357,36 @@ curl -sS http://localhost:3000/health
 - verify endpoint availability and proxy behavior
 - test with non-streaming `/execute` first to isolate issue
 
+### 429 Queue Full errors
+
+**Symptom**
+- `POST /execute` or `POST /execute/stream` returns **429 Too Many Requests**
+- Response body includes `queue` stats (`waiting`, `active`, `maxConcurrency`, `maxQueueSize`)
+
+**Meaning**
+- The server's concurrency semaphore has reached its `maxQueueSize` limit — both all execution slots and all queue slots are occupied.
+
+**Fix**
+- increase `queue.maxSize` in `isol8.config.json` to allow more requests to wait
+- increase `concurrency` to allow more simultaneous executions
+- add client-side retry logic with exponential backoff
+- if the spike is temporary, increase `queue.timeoutMs` so requests wait longer before being rejected
+
+### 408 Queue Timeout errors
+
+**Symptom**
+- `POST /execute` or `POST /execute/stream` returns **408 Request Timeout**
+- Message: `Queue timeout: request waited too long for an execution slot`
+
+**Meaning**
+- The request entered the queue but no execution slot became available within `queue.timeoutMs` milliseconds.
+
+**Fix**
+- increase `queue.timeoutMs` (default 30 000 ms) to allow longer waits
+- reduce per-execution `timeoutMs` so slots free up faster
+- increase `concurrency` to process the queue faster
+- monitor `GET /queue/status` to understand queue depth vs throughput
+
 ### Remote file operations fail in client
 
 **Symptom**

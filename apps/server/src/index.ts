@@ -11,7 +11,15 @@ import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { ExecutionRequest, Isol8Options, WsClientMessage } from "@isol8/core";
-import { DockerIsol8, loadConfig, logger, Semaphore, VERSION } from "@isol8/core";
+import {
+  DockerIsol8,
+  loadConfig,
+  logger,
+  QueueFullError,
+  QueueTimeoutError,
+  Semaphore,
+  VERSION,
+} from "@isol8/core";
 import type { ServerWebSocket } from "bun";
 import { Hono } from "hono";
 import { createBunWebSocket } from "hono/bun";
@@ -72,11 +80,17 @@ export async function createServer(options: ServerOptions) {
   const config = loadConfig();
   logger.debug("[Server] Config loaded");
   logger.debug(`[Server] Max concurrent: ${config.maxConcurrent}`);
+  logger.debug(
+    `[Server] Queue: maxSize=${config.queue.maxSize} timeoutMs=${config.queue.timeoutMs}`
+  );
   logger.debug(`[Server] Auto-prune: ${config.cleanup.autoPrune}`);
 
   const { upgradeWebSocket, websocket } = createBunWebSocket<ServerWebSocket>();
   const app = new Hono();
-  const globalSemaphore = new Semaphore(config.maxConcurrent);
+  const globalSemaphore = new Semaphore(config.maxConcurrent, {
+    maxSize: config.queue.maxSize,
+    timeoutMs: config.queue.timeoutMs,
+  });
   let pruneInterval: ReturnType<typeof setInterval> | undefined;
   let cleanupInFlight: Promise<CleanupResult> | null = null;
 
@@ -171,6 +185,17 @@ export async function createServer(options: ServerOptions) {
   // ─── Health ───
   app.get("/health", (c) => c.json({ status: "ok", version: VERSION }));
 
+  // ─── Queue Status ───
+  app.get("/queue/status", (c) =>
+    c.json({
+      ...globalSemaphore.stats,
+      queue: {
+        maxSize: config.queue.maxSize,
+        timeoutMs: config.queue.timeoutMs,
+      },
+    })
+  );
+
   // ─── Execute ───
   app.post("/execute", async (c) => {
     const body = await c.req.json<{
@@ -243,6 +268,26 @@ export async function createServer(options: ServerOptions) {
         globalSemaphore.release();
       }
     } catch (err) {
+      if (err instanceof QueueFullError) {
+        logger.debug(`[Server] Queue full: ${err.message}`);
+        return c.json(
+          {
+            error: "Too many requests — queue is full",
+            queue: globalSemaphore.stats,
+          },
+          429
+        );
+      }
+      if (err instanceof QueueTimeoutError) {
+        logger.debug(`[Server] Queue timeout: ${err.message}`);
+        return c.json(
+          {
+            error: `Request timed out waiting in queue after ${err.waitedMs}ms`,
+            queue: globalSemaphore.stats,
+          },
+          408
+        );
+      }
       const message = err instanceof Error ? err.message : String(err);
       logger.debug(`[Server] Execution error: ${message}`);
       return c.json({ error: message }, 500);
@@ -298,12 +343,40 @@ export async function createServer(options: ServerOptions) {
     const engine = new DockerIsol8(engineOptions, config.maxConcurrent);
     await engine.start();
 
+    // Acquire semaphore before starting the stream so we can return
+    // proper HTTP error codes for queue-full / queue-timeout.
+    try {
+      logger.debug("[Server] Acquiring semaphore for /execute/stream");
+      await globalSemaphore.acquire();
+    } catch (err) {
+      await engine.stop();
+      if (err instanceof QueueFullError) {
+        logger.debug(`[Server] Stream queue full: ${err.message}`);
+        return c.json(
+          {
+            error: "Too many requests — queue is full",
+            queue: globalSemaphore.stats,
+          },
+          429
+        );
+      }
+      if (err instanceof QueueTimeoutError) {
+        logger.debug(`[Server] Stream queue timeout: ${err.message}`);
+        return c.json(
+          {
+            error: `Request timed out waiting in queue after ${err.waitedMs}ms`,
+            queue: globalSemaphore.stats,
+          },
+          408
+        );
+      }
+      throw err;
+    }
+
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          logger.debug("[Server] Acquiring semaphore for /execute/stream");
-          await globalSemaphore.acquire();
           try {
             for await (const event of engine.executeStream(body.request)) {
               const line = `data: ${JSON.stringify(event)}\n\n`;
