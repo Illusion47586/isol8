@@ -459,7 +459,9 @@ program
       }
     } catch (err) {
       spinner.stop();
-      throw err;
+      exitCode = 1;
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[ERR] ${message}`);
     } finally {
       // Skip cleanup for named sessions — the session stays alive on the server
       if (hasExplicitSessionId) {
