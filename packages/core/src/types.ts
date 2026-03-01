@@ -103,6 +103,21 @@ export interface ExecutionRequest {
    * Passed through to audit logs when audit logging is enabled.
    */
   metadata?: Record<string, string>;
+
+  /**
+   * Inline shell script executed before the main code execution.
+   * Runs as the `sandbox` user with working directory `/sandbox`.
+   * Useful for cloning repos, creating files, configuring tools, etc.
+   */
+  setupScript?: string;
+
+  /**
+   * Working directory for the main code execution.
+   * Accepts an absolute path under `/sandbox` or a relative path resolved from `/sandbox`.
+   * Must resolve to a path inside `/sandbox` — paths that escape are rejected.
+   * @default "/sandbox"
+   */
+  workdir?: string;
 }
 
 /**

@@ -195,6 +195,22 @@ Use this reference when you need to answer: "where should I set this value?"
   **Library**: `execute({ installPackages })`.
 </ResponseField>
 
+<ResponseField name="setupScript" type="string">
+  **CLI**: `--setup <command>` (repeatable; concatenated with newlines; reads file if path exists).
+
+  **API**: `request.setupScript`.
+
+  **Library**: `execute({ setupScript })`.
+</ResponseField>
+
+<ResponseField name="workdir" type="string" default="/sandbox">
+  **CLI**: `--workdir <path>`.
+
+  **API**: `request.workdir`.
+
+  **Library**: `execute({ workdir })`.
+</ResponseField>
+
 <ResponseField name="metadata" type="Record<string, string>">
   **CLI**: not exposed as a `run` flag.
 

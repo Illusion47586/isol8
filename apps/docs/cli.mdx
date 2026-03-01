@@ -45,6 +45,11 @@ isol8 run [file] [options]
   Explicit stdin payload for the execution process.
 </ResponseField>
 
+<ResponseField name="--workdir <path>" type="string" default="/sandbox">
+  Working directory for the main code execution. Accepts an absolute path under `/sandbox` or a
+  relative path resolved from `/sandbox`. Paths that escape the sandbox boundary are rejected.
+</ResponseField>
+
 ### Security and resource flags
 
 <ResponseField name="--net <mode>" type="none | host | filtered" default="none">
@@ -115,6 +120,13 @@ isol8 run [file] [options]
 
   In `filtered` mode, CLI automatically merges default runtime package registry hosts into the allowlist.
   Explicit `--net` is never overridden.
+</ResponseField>
+
+<ResponseField name="--setup <command>" type="repeatable">
+  Inline shell command or path to a script file to run before the main code execution. Runs as the
+  `sandbox` user from `/sandbox`. If the value is an existing file path, its contents are read and
+  used as the script. Multiple `--setup` flags are concatenated with newlines. Useful for cloning
+  repos, creating directories, configuring tools, etc.
 </ResponseField>
 
 <ResponseField name="--secret <KEY=VALUE>" type="repeatable">

@@ -32,7 +32,7 @@ import { EMBEDDED_DEFAULT_SECCOMP_PROFILE } from "./default-seccomp-profile";
 import { ExecutionManager, NetworkManager, VolumeManager } from "./managers";
 import { ContainerPool } from "./pool";
 import { type ContainerResourceUsage, calculateResourceDelta, getContainerStats } from "./stats";
-import { parseMemoryLimit } from "./utils";
+import { parseMemoryLimit, resolveWorkdir } from "./utils";
 
 const SANDBOX_WORKDIR = "/sandbox";
 const MAX_OUTPUT_BYTES = 1024 * 1024; // 1MB default
@@ -489,6 +489,7 @@ export class DockerIsol8 implements Isol8Engine {
       const timeoutMs = request.timeoutMs ?? this.defaultTimeoutMs;
       const resolved = await this.resolveImage(adapter, request.installPackages);
       const image = resolved.image;
+      const execWorkdir = request.workdir ? resolveWorkdir(request.workdir) : SANDBOX_WORKDIR;
 
       // Create container (always ephemeral-style for streaming)
       const container: Docker.Container = await this.docker.createContainer({
@@ -527,6 +528,16 @@ export class DockerIsol8 implements Isol8Engine {
           );
         }
 
+        // Run setup script if provided
+        if (request.setupScript) {
+          await this.executionManager.runSetupScript(
+            container,
+            request.setupScript,
+            timeoutMs,
+            this.volumeManager
+          );
+        }
+
         // Inject input files
         if (request.files) {
           for (const [fPath, fContent] of Object.entries(request.files)) {
@@ -560,7 +571,7 @@ export class DockerIsol8 implements Isol8Engine {
           ),
           AttachStdout: true,
           AttachStderr: true,
-          WorkingDir: SANDBOX_WORKDIR,
+          WorkingDir: execWorkdir,
           User: "sandbox",
         });
 
@@ -700,6 +711,7 @@ export class DockerIsol8 implements Isol8Engine {
     const timeoutMs = req.timeoutMs ?? this.defaultTimeoutMs;
     const resolved = await this.resolveImage(adapter, req.installPackages);
     const image = resolved.image;
+    const execWorkdir = req.workdir ? resolveWorkdir(req.workdir) : SANDBOX_WORKDIR;
 
     // Lazily initialize the container pool
     const pool = this.ensurePool();
@@ -756,6 +768,16 @@ export class DockerIsol8 implements Isol8Engine {
         );
       }
 
+      // Run setup script if provided
+      if (req.setupScript) {
+        await this.executionManager.runSetupScript(
+          container,
+          req.setupScript,
+          timeoutMs,
+          this.volumeManager
+        );
+      }
+
       // Execute the actual command, wrapped with timeout to ensure kill on expiry
       const timeoutSec = Math.ceil(timeoutMs / 1000);
 
@@ -790,7 +812,7 @@ export class DockerIsol8 implements Isol8Engine {
         ),
         AttachStdout: true,
         AttachStderr: true,
-        WorkingDir: SANDBOX_WORKDIR,
+        WorkingDir: execWorkdir,
         User: "sandbox",
       });
 
@@ -872,6 +894,7 @@ export class DockerIsol8 implements Isol8Engine {
   ): Promise<ExecutionResult> {
     const adapter = this.getAdapter(req.runtime);
     const timeoutMs = req.timeoutMs ?? this.defaultTimeoutMs;
+    const execWorkdir = req.workdir ? resolveWorkdir(req.workdir) : SANDBOX_WORKDIR;
 
     let remainingPackages = req.installPackages ?? [];
 
@@ -910,6 +933,16 @@ export class DockerIsol8 implements Isol8Engine {
       );
     }
 
+    // Run setup script if provided
+    if (req.setupScript) {
+      await this.executionManager.runSetupScript(
+        this.container!,
+        req.setupScript,
+        timeoutMs,
+        this.volumeManager
+      );
+    }
+
     // Handle stdin
     let cmd: string[];
     if (req.stdin) {
@@ -936,7 +969,7 @@ export class DockerIsol8 implements Isol8Engine {
       Env: execEnv,
       AttachStdout: true,
       AttachStderr: true,
-      WorkingDir: SANDBOX_WORKDIR,
+      WorkingDir: execWorkdir,
       User: "sandbox",
     });
 

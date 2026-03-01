@@ -3,6 +3,7 @@ import type Docker from "dockerode";
 import type { NetworkFilterConfig, Runtime, StreamEvent } from "../../types";
 import { logger } from "../../utils/logger";
 import { maskSecrets, truncateOutput } from "../utils";
+import type { VolumeManager } from "./volume-manager";
 
 export interface ExecutionManagerOptions {
   secrets: Record<string, string>;
@@ -118,6 +119,81 @@ export class ExecutionManager {
           const info = await exec.inspect();
           if (info.ExitCode !== 0) {
             reject(new Error(`Package install failed (exit code ${info.ExitCode}): ${stderr}`));
+          } else {
+            resolve();
+          }
+        } catch (err) {
+          reject(err);
+        }
+      });
+
+      stream.on("error", reject);
+    });
+  }
+
+  async runSetupScript(
+    container: Docker.Container,
+    script: string,
+    timeoutMs: number,
+    volumeManager: VolumeManager
+  ): Promise<void> {
+    const scriptPath = "/sandbox/.isol8-setup.sh";
+    await volumeManager.writeFileViaExec(container, scriptPath, script);
+
+    // chmod +x via exec
+    const chmodExec = await container.exec({
+      Cmd: ["chmod", "+x", scriptPath],
+      User: "sandbox",
+    });
+    await chmodExec.start({ Detach: true });
+    let chmodInfo = await chmodExec.inspect();
+    while (chmodInfo.Running) {
+      await new Promise((r) => setTimeout(r, 5));
+      chmodInfo = await chmodExec.inspect();
+    }
+
+    const timeoutSec = Math.max(1, Math.ceil(timeoutMs / 1000));
+    const cmd = this.wrapWithTimeout(["bash", scriptPath], timeoutSec);
+    logger.debug(`Running setup script: ${JSON.stringify(cmd)}`);
+
+    const env: string[] = [
+      "PATH=/sandbox/.local/bin:/sandbox/.npm-global/bin:/sandbox/.bun-global/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin",
+    ];
+
+    const exec = await container.exec({
+      Cmd: cmd,
+      AttachStdout: true,
+      AttachStderr: true,
+      Env: env,
+      WorkingDir: "/sandbox",
+      User: "sandbox",
+    });
+
+    const stream = await exec.start({ Detach: false, Tty: false });
+
+    return new Promise<void>((resolve, reject) => {
+      let stderr = "";
+      const stdoutStream = new PassThrough();
+      const stderrStream = new PassThrough();
+
+      container.modem.demuxStream(stream, stdoutStream, stderrStream);
+
+      stderrStream.on("data", (chunk) => {
+        const text = chunk.toString();
+        stderr += text;
+        logger.debug(`[setup:stderr] ${text.trimEnd()}`);
+      });
+
+      stdoutStream.on("data", (chunk) => {
+        const text = chunk.toString();
+        logger.debug(`[setup:stdout] ${text.trimEnd()}`);
+      });
+
+      stream.on("end", async () => {
+        try {
+          const info = await exec.inspect();
+          if (info.ExitCode !== 0) {
+            reject(new Error(`Setup script failed (exit code ${info.ExitCode}): ${stderr}`));
           } else {
             resolve();
           }

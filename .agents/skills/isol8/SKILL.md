@@ -41,6 +41,8 @@ Isol8 is a secure execution engine for running untrusted code inside Docker cont
 | `--persist` | `false` | Keep container after execution for debugging |
 | `--debug` | `false` | Enable internal debug logging |
 | `--install <package>` | — | Install package before execution (repeatable) |
+| `--setup <command>` | — | Setup script/command run before execution (repeatable; reads file if path exists) |
+| `--workdir <path>` | `/sandbox` | Working directory for code execution (must be inside `/sandbox`) |
 | `--net <mode>` | `none` | Network: `none`, `host`, `filtered` |
 | `--timeout <ms>` | `30000` | Execution timeout |
 | `--memory <limit>` | `512m` | Memory limit |
@@ -101,6 +103,8 @@ const result = await isol8.execute({
   code: 'print("hello")',
   runtime: "python",
   installPackages: ["numpy"],  // optional
+  setupScript: "echo setup",   // optional — runs before main code
+  workdir: "/sandbox/project",  // optional — defaults to /sandbox
 });
 
 console.log(result.stdout);    // captured output

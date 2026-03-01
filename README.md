@@ -133,6 +133,8 @@ isol8 run script.py --host http://server:3000 --key my-api-key
 | `--tmp-size <size>` | Tmp tmpfs size (e.g. `256m`, `512m`) | `256m` |
 | `--stdin <data>` | Data to pipe to stdin | — |
 | `--install <pkg>` | Install package for runtime (repeatable) | — (auto-adds default runtime registry allowlist in `filtered` mode) |
+| `--setup <command>` | Setup script/command to run before execution (repeatable; reads file if path exists) | — |
+| `--workdir <path>` | Working directory for code execution (must be inside `/sandbox`) | `/sandbox` |
 | `--url <url>` | Fetch code from URL (requires `remoteCode.enabled=true`) | — |
 | `--github <owner/repo/ref/path>` | GitHub shorthand for raw source | — |
 | `--gist <gistId/file.ext>` | Gist shorthand for raw source | — |

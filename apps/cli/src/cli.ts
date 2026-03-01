@@ -268,6 +268,13 @@ program
   .option("--tmp-size <size>", "Tmp tmpfs size (e.g. 256m, 512m)")
   .option("--stdin <data>", "Data to pipe to stdin")
   .option("--install <package>", "Install package for runtime (repeatable)", collect, [])
+  .option(
+    "--setup <command>",
+    "Setup script/command to run before execution (repeatable)",
+    collect,
+    []
+  )
+  .option("--workdir <path>", "Working directory for code execution (inside /sandbox)")
   .option("--url <url>", "Fetch code from URL")
   .option("--github <path>", "GitHub shorthand: owner/repo/ref/path/to/file")
   .option("--gist <path>", "Gist shorthand: gistId/file.ext")
@@ -349,6 +356,14 @@ program
         ...(allowInsecureCodeUrl ? { allowInsecureCodeUrl } : {}),
         ...(stdinData ? { stdin: stdinData } : {}),
         ...(opts.install.length > 0 ? { installPackages: opts.install } : {}),
+        ...(opts.setup.length > 0
+          ? {
+              setupScript: opts.setup
+                .map((s: string) => (existsSync(s) ? readFileSync(s, "utf-8") : s))
+                .join("\n"),
+            }
+          : {}),
+        ...(opts.workdir ? { workdir: opts.workdir } : {}),
         fileExtension,
       };
 
