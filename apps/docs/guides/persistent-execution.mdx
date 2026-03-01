@@ -61,20 +61,73 @@ Persistent containers are runtime-bound because `isol8` provisions a specific im
 
 The CLI is generally designed for single, synchronous executions. However, you can use the `--persistent` flag to tell `isol8 run` to operate over a persistent container.
 
-By default, the CLI will still stop and clean up the container once the single command completes, as the `isol8` process itself terminates. 
+By default, the CLI will still stop and clean up the container once the single command completes, as the `isol8` process itself terminates.
+
+### Session ID output
+
+When `--persistent` is used (with or without `--session-id`), the CLI prints the session identifier to stderr:
+
+```text
+[INFO] Session ID: cli-1718451234567
+```
+
+This ID can be used to reconnect to the same session later via `--session-id`, or to manage the session with `isol8 session list` and `isol8 session stop`.
+
+### Named sessions (`--session-id`)
+
+When executing against a remote server, you can assign a stable name to your session with `--session-id`. The session survives after the CLI exits, and you can reconnect to it later by passing the same ID.
+
+```bash
+# Create a named session and set a variable
+isol8 run \
+  -e "x = 42" \
+  --runtime python \
+  --session-id my-session \
+  --host http://localhost:3000 \
+  --key my-key
+# [INFO] Session ID: my-session
+
+# Reconnect later and read the variable
+isol8 run \
+  -e "print(x)" \
+  --runtime python \
+  --session-id my-session \
+  --host http://localhost:3000 \
+  --key my-key
+# [INFO] Session ID: my-session
+# 42
+```
+
+<Note>
+`--session-id` implies `--persistent` and requires `--host`. Session IDs are a server-side concept — they have no effect when running locally.
+</Note>
+
+### Managing sessions
+
+List all active sessions on a remote server:
+
+```bash
+isol8 session list --host http://localhost:3000 --key my-key
+```
+
+Destroy a specific session:
+
+```bash
+isol8 session stop my-session --host http://localhost:3000 --key my-key
+```
 
 ### Leaving a container running (`--persist` vs `--persistent`)
 
 If you want to spin up a container and manually inspect it later or connect to it with `docker exec`, you can use the `--persist` flag.
 
-- **`--persistent`**: Sets the execution engine mode to "persistent" (reusing the same filesystem/packages during runs, but the container still stops when the CLI exits).
+- **`--persistent`**: Sets the execution engine mode to "persistent" (reusing the same filesystem/packages during runs, but the container still stops when the CLI exits unless `--session-id` is used).
 - **`--persist`**: Tells `isol8` *not* to stop the container when the execution finishes.
 
 ```bash
 isol8 run --persistent --persist -e "x = 42" --runtime python
 ```
 
-The CLI will print the container ID upon start and heavily rely on `isol8 cleanup` to remove it later, or you can attach to it via bash. But keeping a container alive continuously to receive *subsequent* CLI commands is not supported unless passing through the **Server API**.
+The CLI will print the container ID upon start and heavily rely on `isol8 cleanup` to remove it later, or you can attach to it via bash. But keeping a container alive continuously to receive *subsequent* CLI commands is not supported unless passing through the **Server API** or using `--session-id` with a remote host.
 
 ## Server API
 
@@ -114,7 +167,18 @@ curl -X POST http://localhost:3000/execute \
   }'
 ```
 
-### 3. Cleanup the Session
+### 3. List Active Sessions
+
+You can list all active sessions to see what is currently running.
+
+```bash
+curl http://localhost:3000/sessions \
+  -H "Authorization: Bearer $ISOL8_API_KEY"
+```
+
+The response contains each session's ID, active status, and last-accessed timestamp.
+
+### 4. Cleanup the Session
 
 Persistent sessions consume system resources (RAM, tmpfs mounts, Docker daemon capabilities). You must explicitly clean up the session using the `DELETE` endpoint once you are done.
 

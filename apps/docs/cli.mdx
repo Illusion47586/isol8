@@ -143,6 +143,13 @@ isol8 run [file] [options]
   API key for remote execution (`ISOL8_API_KEY` fallback).
 </ResponseField>
 
+<ResponseField name="--session-id <id>" type="string">
+  Use a named persistent session on the remote server. The session survives after the CLI exits and can be resumed by passing the same ID again.
+
+  Implies `--persistent` — you do not need to pass both.
+  Requires `--host` — session IDs are a server-side concept.
+</ResponseField>
+
 ### Examples
 
 ```bash
@@ -166,6 +173,22 @@ isol8 run \
 # Remote execution
 isol8 run \
   script.py \
+  --host http://localhost:3000 \
+  --key my-key
+
+# Named session — survives after CLI exits
+isol8 run \
+  -e "x = 42" \
+  --runtime python \
+  --session-id my-session \
+  --host http://localhost:3000 \
+  --key my-key
+
+# Resume the same session later
+isol8 run \
+  -e "print(x)" \
+  --runtime python \
+  --session-id my-session \
   --host http://localhost:3000 \
   --key my-key
 ```
@@ -333,6 +356,67 @@ isol8 logout
 # [OK] Credentials removed from ~/.isol8/credentials.json
 ```
 
+## `isol8 session`
+
+Manage persistent sessions on a remote server.
+
+### `isol8 session list`
+
+```bash
+isol8 session list --host <url> [--key <key>] [--json]
+```
+
+Lists all active persistent sessions on the remote server.
+
+<ResponseField name="--host <url>" type="string" required>
+  Remote server URL.
+</ResponseField>
+
+<ResponseField name="--key <key>" type="string">
+  API key (`ISOL8_API_KEY` fallback, or stored credentials from `isol8 login`).
+</ResponseField>
+
+<ResponseField name="--json" type="flag">
+  Print raw JSON array instead of the formatted table.
+</ResponseField>
+
+#### Examples
+
+```bash
+# Table output
+isol8 session list --host http://localhost:3000 --key my-key
+
+# JSON output
+isol8 session list --host http://localhost:3000 --key my-key --json
+```
+
+### `isol8 session stop`
+
+```bash
+isol8 session stop <id> --host <url> [--key <key>]
+```
+
+Destroys a specific persistent session on the remote server and releases its resources.
+
+<ResponseField name="<id>" type="argument" required>
+  Session ID to destroy.
+</ResponseField>
+
+<ResponseField name="--host <url>" type="string" required>
+  Remote server URL.
+</ResponseField>
+
+<ResponseField name="--key <key>" type="string">
+  API key (`ISOL8_API_KEY` fallback, or stored credentials from `isol8 login`).
+</ResponseField>
+
+#### Examples
+
+```bash
+# Stop a named session
+isol8 session stop my-session --host http://localhost:3000 --key my-key
+```
+
 ## `isol8 build`
 
 ```bash
@@ -391,6 +475,10 @@ isol8 cleanup [options]
   `--persistent` sets execution mode to persistent (reuses container state across runs). `--persist` keeps the container alive after a run for inspection/debugging.
 </Accordion>
 
+<Accordion title="What is the difference between `--persistent` and `--session-id`?">
+  `--persistent` creates a persistent session with an auto-generated ID that is destroyed when the CLI exits. `--session-id` assigns a user-chosen name and keeps the session alive on the server after the CLI exits, so you can reconnect later with the same ID.
+</Accordion>
+
 <Accordion title="Do I need `--key` for `isol8 serve` every time?">
   No. `isol8 serve` accepts `--key`, but it can also read the API key from `ISOL8_API_KEY`.
 </Accordion>
@@ -409,6 +497,7 @@ isol8 cleanup [options]
 
 ## Troubleshooting quick checks
 
+- **`[ERR] --session-id requires --host`**: `--session-id` is a server feature; add `--host <url>`.
 - **`[ERR] API key required` on `serve` or remote `run`**: pass `--key` or set `ISOL8_API_KEY`.
 - **`isol8 login` fails with 400**: the server does not have `--auth-db` enabled. Restart the server with `--auth-db <path>`.
 - **Stored credentials expired**: run `isol8 login` again to re-authenticate.

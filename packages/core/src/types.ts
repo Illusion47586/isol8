@@ -261,6 +261,21 @@ export interface ExecutionAudit {
   metadata?: Record<string, string>;
 }
 
+// ─── Sessions ───
+
+/**
+ * Information about a persistent session on a remote isol8 server.
+ * Returned by the `GET /sessions` endpoint.
+ */
+export interface SessionInfo {
+  /** The session identifier. */
+  id: string;
+  /** Whether the session is currently executing a request. */
+  isActive: boolean;
+  /** ISO 8601 timestamp of when the session was last accessed. */
+  lastAccessedAt: string;
+}
+
 // ─── Isol8 ───
 
 /**

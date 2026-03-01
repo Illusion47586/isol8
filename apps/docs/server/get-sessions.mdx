@@ -1,0 +1,56 @@
+---
+title: "List sessions"
+description: "Return all active persistent sessions with their status and last-accessed timestamp."
+api: "GET /sessions"
+icon: "list"
+---
+
+Returns an array of every persistent session currently tracked by the server.
+
+<ResponseField name="sessions" type="SessionInfo[]">
+  Array of session objects.
+
+  <Expandable title="SessionInfo">
+    <ResponseField name="id" type="string">
+      Session identifier (user-provided or auto-generated).
+    </ResponseField>
+
+    <ResponseField name="isActive" type="boolean">
+      Whether the session's engine is currently started.
+    </ResponseField>
+
+    <ResponseField name="lastAccessedAt" type="string">
+      ISO 8601 timestamp of the last execution or file operation.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<RequestExample>
+```bash
+curl http://localhost:3000/sessions \
+  -H "Authorization: Bearer $ISOL8_API_KEY"
+```
+</RequestExample>
+
+<ResponseExample>
+```json
+{
+  "sessions": [
+    {
+      "id": "my-session",
+      "isActive": true,
+      "lastAccessedAt": "2025-06-15T12:34:56.789Z"
+    },
+    {
+      "id": "cli-1718451234567",
+      "isActive": true,
+      "lastAccessedAt": "2025-06-15T12:30:00.000Z"
+    }
+  ]
+}
+```
+</ResponseExample>
+
+<Note>
+  Sessions that were destroyed via `DELETE /session/:id` no longer appear in this list.
+</Note>

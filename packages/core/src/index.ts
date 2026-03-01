@@ -45,6 +45,7 @@ export type {
   NetworkMode,
   RemoteCodePolicy,
   Runtime,
+  SessionInfo,
   StreamEvent,
   WsClientMessage,
   WsServerMessage,

@@ -250,6 +250,10 @@ program
   .option("--deny <regex>", "Blacklist regex for filtered mode (repeatable)", collect, [])
   .option("--out <file>", "Write output to file")
   .option("--persistent", "Use persistent container")
+  .option(
+    "--session-id <id>",
+    "Named session ID for persistent remote sessions (implies --persistent, requires --host)"
+  )
   .option("--timeout <ms>", "Execution timeout in milliseconds")
   .option("--memory <limit>", "Memory limit (e.g. 512m, 1g)")
   .option("--cpu <limit>", "CPU limit as fraction (e.g. 0.5, 2.0)")
@@ -283,6 +287,8 @@ program
       engine,
       stdinData,
       fileExtension,
+      sessionId,
+      hasExplicitSessionId,
     } = await resolveRunInput(file, opts);
 
     logger.debug(`[Run] Runtime: ${runtime}, mode: ${engineOptions.mode}`);
@@ -301,13 +307,18 @@ program
     if (opts.host) {
       logger.debug(`[Run] Remote execution on ${opts.host}`);
     }
+    if (hasExplicitSessionId) {
+      logger.debug(`[Run] Named session: ${opts.sessionId} (will persist after exit)`);
+    }
     if (engineOptions.persist) {
       logger.debug("[Run] Persist mode enabled");
     }
 
-    // cleanup on exit
+    // cleanup on exit — skip destroying named sessions so they persist on the server
     const cleanup = async () => {
-      await engine.stop();
+      if (!hasExplicitSessionId) {
+        await engine.stop();
+      }
       process.exit(0);
     };
     process.on("SIGINT", cleanup);
@@ -318,6 +329,12 @@ program
     try {
       await engine.start();
       logger.debug("[Run] Engine started");
+
+      // Print session ID so the user can reconnect later
+      if (sessionId) {
+        logger.info(`[Run] Session ID: ${sessionId}`);
+      }
+
       spinner.text = "Running code...";
 
       const req: ExecutionRequest = {
@@ -380,7 +397,7 @@ program
         // Write output to file if requested
         if (opts.out && result.stdout) {
           writeFileSync(opts.out, result.stdout, "utf-8");
-          console.error(`[INFO] Output written to ${opts.out}`);
+          logger.info(`[Run] Output written to ${opts.out}`);
         }
 
         if (result.exitCode !== 0) {
@@ -391,12 +408,16 @@ program
       spinner.stop();
       throw err;
     } finally {
-      // Ensure cleanup happens, but don't hang forever
-      logger.debug("[Run] Stopping engine");
-      const cleanupPromise = engine.stop();
-      const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 5000));
-
-      await Promise.race([cleanupPromise, timeoutPromise]);
+      // Skip cleanup for named sessions — the session stays alive on the server
+      if (hasExplicitSessionId) {
+        logger.debug("[Run] Named session — skipping engine.stop() to keep session alive");
+      } else {
+        // Ensure cleanup happens, but don't hang forever
+        logger.debug("[Run] Stopping engine");
+        const cleanupPromise = engine.stop();
+        const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 5000));
+        await Promise.race([cleanupPromise, timeoutPromise]);
+      }
 
       process.off("SIGINT", cleanup);
       process.off("SIGTERM", cleanup);
@@ -1171,8 +1192,8 @@ program
         spinner.fail(`Authentication failed: ${error}`);
 
         if (res.status === 400) {
-          console.error("[INFO] DB-backed auth may not be enabled on the server.");
-          console.error("       Start the server with --auth-db <path> to enable it.");
+          logger.warn("DB-backed auth may not be enabled on the server.");
+          logger.warn("Start the server with --auth-db <path> to enable it.");
         }
         process.exit(1);
       }
@@ -1213,6 +1234,76 @@ program
       console.log("[OK] Credentials removed from ~/.isol8/credentials.json");
     } else {
       console.log("[INFO] No stored credentials found.");
+    }
+  });
+
+// ─── session ──────────────────────────────────────────────────────────
+
+const sessionCmd = program
+  .command("session")
+  .description("Manage persistent sessions on a remote isol8 server");
+
+sessionCmd
+  .command("list")
+  .description("List active sessions on a remote server")
+  .requiredOption("--host <url>", "Remote server URL")
+  .option("--key <key>", "API key for remote server")
+  .option("--json", "Output as raw JSON")
+  .action(async (opts) => {
+    const apiKey = resolveApiKey({ key: opts.key, host: opts.host });
+    if (!apiKey) {
+      console.error("[ERR] API key required. Use --key, ISOL8_API_KEY env var, or `isol8 login`.");
+      process.exit(1);
+    }
+
+    const client = new RemoteIsol8({ host: opts.host, apiKey });
+    try {
+      const sessions = await client.listSessions();
+
+      if (opts.json) {
+        console.log(JSON.stringify(sessions, null, 2));
+        return;
+      }
+
+      if (sessions.length === 0) {
+        console.log("[INFO] No active sessions.");
+        return;
+      }
+
+      console.log(`\n  ${sessions.length} active session(s):\n`);
+      for (const s of sessions) {
+        const status = s.isActive ? "running" : "idle";
+        const lastAccess = new Date(s.lastAccessedAt).toLocaleString();
+        console.log(`  ${s.id}  [${status}]  last accessed: ${lastAccess}`);
+      }
+      console.log("");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[ERR] ${message}`);
+      process.exit(1);
+    }
+  });
+
+sessionCmd
+  .command("stop <id>")
+  .description("Destroy a persistent session on a remote server")
+  .requiredOption("--host <url>", "Remote server URL")
+  .option("--key <key>", "API key for remote server")
+  .action(async (id: string, opts) => {
+    const apiKey = resolveApiKey({ key: opts.key, host: opts.host });
+    if (!apiKey) {
+      console.error("[ERR] API key required. Use --key, ISOL8_API_KEY env var, or `isol8 login`.");
+      process.exit(1);
+    }
+
+    const client = new RemoteIsol8({ host: opts.host, apiKey });
+    try {
+      await client.deleteSession(id);
+      console.log(`[OK] Session "${id}" destroyed.`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[ERR] ${message}`);
+      process.exit(1);
     }
   });
 
@@ -1276,6 +1367,17 @@ async function resolveRunInput(file: string | undefined, opts: any) {
     }
     code = Buffer.concat(chunks).toString("utf-8");
     runtime = (opts.runtime ?? "python") as Runtime;
+  }
+
+  // --session-id implies --persistent and requires --host
+  if (opts.sessionId) {
+    if (!opts.host) {
+      console.error(
+        "[ERR] --session-id requires --host (remote server). Session IDs are managed by the server."
+      );
+      process.exit(1);
+    }
+    opts.persistent = true;
   }
 
   const engineOptions: Isol8Options = {
@@ -1352,6 +1454,10 @@ async function resolveRunInput(file: string | undefined, opts: any) {
   // Resolve stdin data
   const stdinData = opts.stdin ?? undefined;
 
+  // Resolve the session ID: explicit --session-id > auto-generated for --persistent > undefined
+  const sessionId = opts.sessionId ?? (opts.persistent ? `cli-${Date.now()}` : undefined);
+  const hasExplicitSessionId = !!opts.sessionId;
+
   let engine: Isol8Engine;
   if (opts.host) {
     logger.debug(`[Run] Using remote engine: ${opts.host}`);
@@ -1360,10 +1466,7 @@ async function resolveRunInput(file: string | undefined, opts: any) {
       console.error("[ERR] API key required. Use --key, ISOL8_API_KEY env var, or `isol8 login`.");
       process.exit(1);
     }
-    engine = new RemoteIsol8(
-      { host: opts.host, apiKey, sessionId: opts.persistent ? `cli-${Date.now()}` : undefined },
-      engineOptions
-    );
+    engine = new RemoteIsol8({ host: opts.host, apiKey, sessionId }, engineOptions);
   } else {
     logger.debug("[Run] Using local Docker engine");
     engine = new DockerIsol8(engineOptions, config.maxConcurrent);
@@ -1379,6 +1482,8 @@ async function resolveRunInput(file: string | undefined, opts: any) {
     engine,
     stdinData,
     fileExtension,
+    sessionId,
+    hasExplicitSessionId,
   };
 }
 
