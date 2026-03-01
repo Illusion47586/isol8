@@ -205,29 +205,15 @@ isol8 setup [options]
 @isol8/cli setup [options]
 ```
 
-<ResponseField name="--python <a,b,c>" type="string">
-  Comma-separated Python dependencies for custom image.
-</ResponseField>
-
-<ResponseField name="--node <a,b,c>" type="string">
-  Comma-separated Node dependencies for custom image.
-</ResponseField>
-
-<ResponseField name="--bun <a,b,c>" type="string">
-  Comma-separated Bun dependencies for custom image.
-</ResponseField>
-
-<ResponseField name="--deno <a,b,c>" type="string">
-  Comma-separated Deno modules to pre-cache.
-</ResponseField>
-
-<ResponseField name="--bash <a,b,c>" type="string">
-  Comma-separated apk packages for bash runtime.
-</ResponseField>
+Builds base isol8 Docker images and any `prebuiltImages` declared in `isol8.config.json`.
 
 <ResponseField name="--force" type="flag">
-  Force rebuild even when hashes indicate cache hit.
+  Force rebuild even when images are up to date.
 </ResponseField>
+
+<Info>
+  If your config defines `prebuiltImages`, `isol8 setup` will also check each one and build any that don't already exist locally.
+</Info>
 
 ## `isol8 serve`
 
@@ -419,11 +405,13 @@ isol8 session stop my-session --host http://localhost:3000 --key my-key
 
 ## `isol8 build`
 
+Build a custom runtime image with pre-baked dependencies.
+
 ```bash
-isol8 build --base <runtime> --install <package> [options]
+isol8 build --base <runtime> --install <package> --tag <name> [options]
 ```
 
-<ResponseField name="--base <runtime>" type="python | node | bun | deno | bash">
+<ResponseField name="--base <runtime>" type="python | node | bun | deno | bash" required>
   Runtime base image to extend.
 </ResponseField>
 
@@ -431,13 +419,36 @@ isol8 build --base <runtime> --install <package> [options]
   Package to bake into the image. Supports repeated flags and comma-separated values.
 </ResponseField>
 
-<ResponseField name="--tag <name>" type="string">
-  Optional alias tag (for example `my-registry/ml-image:latest`) applied to the built hashed image.
+<ResponseField name="--tag <name>" type="string" required>
+  Name/tag for the custom image (e.g. `my-python-ml:latest`). Metadata labels are embedded automatically.
 </ResponseField>
 
 <ResponseField name="--force" type="flag">
   Force rebuild even if current inputs resolve to an existing up-to-date image.
 </ResponseField>
+
+### Examples
+
+```bash
+# Build a custom Python image with ML packages
+isol8 build --base python --install numpy --install pandas --tag my-python-ml
+
+# Build a custom Node.js image
+isol8 build --base node --install express,lodash --tag my-node-api
+
+# Force rebuild
+isol8 build --base python --install numpy --tag my-python-ml --force
+```
+
+## `isol8 list-custom`
+
+List all locally available custom isol8 images.
+
+```bash
+isol8 list-custom
+```
+
+Displays each custom image's tag, runtime, and pre-installed dependencies based on embedded Docker labels.
 
 ## `isol8 config`
 
