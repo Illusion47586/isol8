@@ -126,7 +126,8 @@ program
           img.installPackages,
           img.tag,
           undefined,
-          opts.force ?? false
+          opts.force ?? false,
+          img.setupScript
         );
         spinner.stopAndPersist({
           symbol: "[OK]",
@@ -154,16 +155,30 @@ program
     collect,
     []
   )
+  .option(
+    "--setup <command>",
+    "Setup script baked into image, runs before every execution (repeatable)",
+    collect,
+    []
+  )
   .requiredOption("--tag <name>", "Name/tag for the custom image (e.g. my-python-env:latest)")
   .option("--force", "Force rebuild even if image is up to date")
   .action(async (opts) => {
     const runtime = parseRuntimeName(opts.base);
     const packages = parsePackageOptions(opts.install);
 
-    if (packages.length === 0) {
-      console.error("[ERR] No packages specified. Use --install <package>.");
+    if (packages.length === 0 && opts.setup.length === 0) {
+      console.error(
+        "[ERR] No packages or setup script specified. Use --install <package> or --setup <command>."
+      );
       process.exit(1);
     }
+
+    // Resolve setup: if a value points to an existing file, read its content
+    const setupScript =
+      opts.setup.length > 0
+        ? opts.setup.map((s: string) => (existsSync(s) ? readFileSync(s, "utf-8") : s)).join("\n")
+        : undefined;
 
     const docker = new Docker();
     const spinner = ora("Checking Docker...").start();
@@ -180,12 +195,27 @@ program
     spinner.stopAndPersist({ symbol: "[OK]", text: `Base image ready: ${runtime}` });
 
     spinner.start(`Building custom ${runtime} image...`);
-    await buildCustomImage(docker, runtime, packages, opts.tag, undefined, opts.force ?? false);
+    await buildCustomImage(
+      docker,
+      runtime,
+      packages,
+      opts.tag,
+      undefined,
+      opts.force ?? false,
+      setupScript
+    );
     spinner.stopAndPersist({ symbol: "[OK]", text: `Built image: ${opts.tag}` });
 
     console.log("\n[DONE] Custom image build complete!");
     console.log(`       Runtime: ${runtime}`);
-    console.log(`       Packages: ${packages.join(", ")}`);
+    if (packages.length > 0) {
+      console.log(`       Packages: ${packages.join(", ")}`);
+    }
+    if (setupScript) {
+      console.log(
+        `       Setup: ${setupScript.split("\n")[0]}${setupScript.includes("\n") ? " ..." : ""}`
+      );
+    }
     console.log(`       Image: ${opts.tag}`);
   });
 
@@ -236,6 +266,11 @@ program
       console.log(`  📦 ${tag}`);
       console.log(`     Runtime:      ${runtime}`);
       console.log(`     Dependencies: ${deps}`);
+      const setup = img.Labels?.[LABELS.setupScript];
+      if (setup) {
+        const preview = setup.split("\n")[0];
+        console.log(`     Setup:        ${preview}${setup.includes("\n") ? " ..." : ""}`);
+      }
       console.log("");
     }
   });

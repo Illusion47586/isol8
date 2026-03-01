@@ -528,7 +528,17 @@ export class DockerIsol8 implements Isol8Engine {
           );
         }
 
-        // Run setup script if provided
+        // Run image-level setup script if the resolved image carries one
+        if (resolved.imageSetupScript) {
+          await this.executionManager.runSetupScript(
+            container,
+            resolved.imageSetupScript,
+            timeoutMs,
+            this.volumeManager
+          );
+        }
+
+        // Run request-level setup script if provided
         if (request.setupScript) {
           await this.executionManager.runSetupScript(
             container,
@@ -599,20 +609,45 @@ export class DockerIsol8 implements Isol8Engine {
   private async resolveImage(
     adapter: RuntimeAdapter,
     requestedPackages?: string[]
-  ): Promise<{ image: string; remainingPackages: string[] }> {
+  ): Promise<{ image: string; remainingPackages: string[]; imageSetupScript?: string }> {
     if (this.overrideImage) {
-      return { image: this.overrideImage, remainingPackages: requestedPackages ?? [] };
+      // Check if the override image carries a baked-in setup script label
+      let imageSetupScript: string | undefined;
+      try {
+        const { LABELS } = await import("./image-builder");
+        const inspect = await this.docker.getImage(this.overrideImage).inspect();
+        const labels = (inspect.Config?.Labels as Record<string, string>) ?? {};
+        imageSetupScript = labels[LABELS.setupScript] || undefined;
+      } catch {
+        // Image not found locally or inspect failed — skip label lookup
+      }
+      return {
+        image: this.overrideImage,
+        remainingPackages: requestedPackages ?? [],
+        imageSetupScript,
+      };
     }
 
     const cacheKey = `${adapter.name}:${(requestedPackages ?? []).join(",")}`;
     const cached = this.imageCache.get(cacheKey);
     if (cached) {
-      return { image: cached, remainingPackages: [] }; // Assume cached means fully satisfied
+      // For cached images, inspect the label for setup script
+      let imageSetupScript: string | undefined;
+      try {
+        const { LABELS } = await import("./image-builder");
+        const inspect = await this.docker.getImage(cached).inspect();
+        const labels = (inspect.Config?.Labels as Record<string, string>) ?? {};
+        imageSetupScript = labels[LABELS.setupScript] || undefined;
+      } catch {
+        // Inspect failed — skip
+      }
+      return { image: cached, remainingPackages: [], imageSetupScript };
     }
 
     const baseImage = adapter.image;
     let bestImage = baseImage;
     let remainingPackages = requestedPackages ?? [];
+    let imageSetupScript: string | undefined;
 
     if (requestedPackages && requestedPackages.length > 0) {
       const { LABELS, normalizePackages } = await import("./image-builder");
@@ -645,6 +680,7 @@ export class DockerIsol8 implements Isol8Engine {
         ) {
           bestImage = img.RepoTags[0];
           remainingPackages = [];
+          imageSetupScript = img.Labels?.[LABELS.setupScript] || undefined;
           logger.debug(`[Docker] Found exact custom image match: ${bestImage}`);
           break;
         }
@@ -653,9 +689,22 @@ export class DockerIsol8 implements Isol8Engine {
         if (img.RepoTags[0] && normalizedReq.every((p) => imgDeps.includes(p))) {
           bestImage = img.RepoTags[0];
           remainingPackages = [];
+          imageSetupScript = img.Labels?.[LABELS.setupScript] || undefined;
           logger.debug(`[Docker] Found superset custom image match: ${bestImage}`);
           // Don't break here, we might find an exact match later
         }
+      }
+    }
+
+    // If we picked a non-base image but haven't resolved setup yet, inspect it
+    if (bestImage !== baseImage && imageSetupScript === undefined) {
+      try {
+        const { LABELS } = await import("./image-builder");
+        const inspect = await this.docker.getImage(bestImage).inspect();
+        const labels = (inspect.Config?.Labels as Record<string, string>) ?? {};
+        imageSetupScript = labels[LABELS.setupScript] || undefined;
+      } catch {
+        // Inspect failed — skip
       }
     }
 
@@ -673,7 +722,7 @@ export class DockerIsol8 implements Isol8Engine {
     if (remainingPackages.length === 0) {
       this.imageCache.set(cacheKey, bestImage);
     }
-    return { image: bestImage, remainingPackages };
+    return { image: bestImage, remainingPackages, imageSetupScript };
   }
 
   private ensurePool(): ContainerPool {
@@ -768,7 +817,17 @@ export class DockerIsol8 implements Isol8Engine {
         );
       }
 
-      // Run setup script if provided
+      // Run image-level setup script if the resolved image carries one
+      if (resolved.imageSetupScript) {
+        await this.executionManager.runSetupScript(
+          container,
+          resolved.imageSetupScript,
+          timeoutMs,
+          this.volumeManager
+        );
+      }
+
+      // Run request-level setup script if provided
       if (req.setupScript) {
         await this.executionManager.runSetupScript(
           container,
@@ -897,10 +956,13 @@ export class DockerIsol8 implements Isol8Engine {
     const execWorkdir = req.workdir ? resolveWorkdir(req.workdir) : SANDBOX_WORKDIR;
 
     let remainingPackages = req.installPackages ?? [];
+    let imageSetupScript: string | undefined;
 
     // Lazily create the persistent container
     if (!this.container) {
-      remainingPackages = await this.startPersistentContainer(adapter, req.installPackages);
+      const started = await this.startPersistentContainer(adapter, req.installPackages);
+      remainingPackages = started.remainingPackages;
+      imageSetupScript = started.imageSetupScript;
     } else if (this.persistentRuntime?.name !== adapter.name) {
       throw new Error(
         `Cannot switch runtime from "${this.persistentRuntime?.name}" to "${adapter.name}". Each persistent container supports a single runtime. Create a new Isol8 instance for a different runtime.`
@@ -933,7 +995,17 @@ export class DockerIsol8 implements Isol8Engine {
       );
     }
 
-    // Run setup script if provided
+    // Run image-level setup script if the resolved image carries one
+    if (imageSetupScript) {
+      await this.executionManager.runSetupScript(
+        this.container!,
+        imageSetupScript,
+        timeoutMs,
+        this.volumeManager
+      );
+    }
+
+    // Run request-level setup script if provided
     if (req.setupScript) {
       await this.executionManager.runSetupScript(
         this.container!,
@@ -1050,7 +1122,7 @@ export class DockerIsol8 implements Isol8Engine {
   private async startPersistentContainer(
     adapter: RuntimeAdapter,
     requestedPackages?: string[]
-  ): Promise<string[]> {
+  ): Promise<{ remainingPackages: string[]; imageSetupScript?: string }> {
     const resolved = await this.resolveImage(adapter, requestedPackages);
 
     this.container = await this.docker.createContainer({
@@ -1079,7 +1151,10 @@ export class DockerIsol8 implements Isol8Engine {
     await this.networkManager.setupIptables(this.container);
 
     this.persistentRuntime = adapter;
-    return resolved.remainingPackages;
+    return {
+      remainingPackages: resolved.remainingPackages,
+      imageSetupScript: resolved.imageSetupScript,
+    };
   }
 
   private getAdapter(runtime: string): RuntimeAdapter {

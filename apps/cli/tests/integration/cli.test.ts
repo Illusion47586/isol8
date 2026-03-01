@@ -301,4 +301,57 @@ describe("Integration: CLI", () => {
       expect(err.stderr || err.message).toContain("Working directory must be inside /sandbox");
     }
   }, 30_000);
+
+  // ─── Build with setup ───
+
+  test("build command accepts --setup flag", async () => {
+    const tag = `isol8-test-setup:${Date.now()}`;
+    const { stdout } = await runCLI(
+      `build --base python --install requests --setup "echo setup-ready" --tag ${tag} --force`
+    );
+    expect(stdout).toContain("Custom image build complete");
+    expect(stdout).toContain(tag);
+
+    // Clean up the test image
+    try {
+      await execAsync(`docker rmi ${tag}`);
+    } catch {
+      // ignore cleanup failures
+    }
+  }, 120_000);
+
+  test("build command allows --setup without --install", async () => {
+    const tag = `isol8-test-setup-only:${Date.now()}`;
+    const { stdout } = await runCLI(`build --base bash --setup "echo ready" --tag ${tag} --force`);
+    expect(stdout).toContain("Custom image build complete");
+    expect(stdout).toContain(tag);
+
+    // Clean up the test image
+    try {
+      await execAsync(`docker rmi ${tag}`);
+    } catch {
+      // ignore cleanup failures
+    }
+  }, 120_000);
+
+  test("image-level setup script runs automatically during execution", async () => {
+    const tag = `isol8-test-img-setup:${Date.now()}`;
+    // Build image with setup script that creates a marker file
+    await runCLI(
+      `build --base python --install requests --setup "echo img-marker > /sandbox/.marker" --tag ${tag} --force`
+    );
+
+    // Execute code using the custom image — the setup script should have run
+    const { stdout } = await runCLI(
+      `run -e "print(open('/sandbox/.marker').read().strip())" --runtime python --image ${tag} --net none`
+    );
+    expect(stdout).toContain("img-marker");
+
+    // Clean up the test image
+    try {
+      await execAsync(`docker rmi ${tag}`);
+    } catch {
+      // ignore cleanup failures
+    }
+  }, 120_000);
 });

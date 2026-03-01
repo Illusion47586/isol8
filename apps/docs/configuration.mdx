@@ -363,13 +363,14 @@ Server-side pool defaults for engines created by `isol8 serve`.
 
 ## `prebuiltImages`
 
-Custom Docker images to auto-build when the server starts or when running `isol8 setup`. Each entry defines a named image with a runtime and list of packages.
+Custom Docker images to auto-build when the server starts or when running `isol8 setup`. Each entry defines a named image with a runtime, list of packages, and an optional setup script.
 
 <ResponseField name="prebuiltImages" type="array" default="[]">
   List of prebuilt image configurations. Each entry has:
   - `tag` (string, required): Docker image tag (e.g. `my-python-ml`).
   - `runtime` (string, required): Base runtime (`python`, `node`, `bun`, `deno`, `bash`).
   - `installPackages` (string[], required): Packages to bake into the image.
+  - `setupScript` (string, optional): Shell script that runs automatically before every execution using this image. When a request also provides its own `setupScript`, the image-level script runs first.
 </ResponseField>
 
 **Example:**
@@ -378,7 +379,13 @@ Custom Docker images to auto-build when the server starts or when running `isol8
 {
   "prebuiltImages": [
     { "tag": "my-python-ml", "runtime": "python", "installPackages": ["numpy", "pandas", "scikit-learn"] },
-    { "tag": "my-node-api", "runtime": "node", "installPackages": ["express", "lodash"] }
+    { "tag": "my-node-api", "runtime": "node", "installPackages": ["express", "lodash"] },
+    {
+      "tag": "my-python-dev",
+      "runtime": "python",
+      "installPackages": ["pytest"],
+      "setupScript": "pip install -e /sandbox/mylib"
+    }
   ]
 }
 ```

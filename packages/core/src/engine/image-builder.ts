@@ -65,6 +65,8 @@ export const LABELS = {
   depsHash: "org.isol8.deps.hash",
   runtime: "org.isol8.runtime",
   dependencies: "org.isol8.dependencies",
+  /** Shell script that runs before every execution when using this image. */
+  setupScript: "org.isol8.setup",
 } as const;
 
 /** Files in docker directory that affect the build */
@@ -93,14 +95,19 @@ function computeDockerDirHash(): string {
 }
 
 /**
- * Computes a SHA256 hash of the dependency list for a specific runtime.
+ * Computes a SHA256 hash of the dependency list (and optional setup script)
+ * for a specific runtime.
  */
-function computeDepsHash(runtime: string, packages: string[]): string {
+function computeDepsHash(runtime: string, packages: string[], setupScript?: string): string {
   const hash = createHash("sha256");
   hash.update(runtime);
   // Sort packages for consistent hashing
   for (const pkg of [...packages].sort()) {
     hash.update(pkg);
+  }
+  if (setupScript) {
+    hash.update("setup:");
+    hash.update(setupScript);
   }
   return hash.digest("hex");
 }
@@ -256,10 +263,11 @@ export async function buildCustomImage(
   packages: string[],
   tag: string,
   onProgress?: ProgressCallback,
-  force = false
+  force = false,
+  setupScript?: string
 ): Promise<void> {
   const normalizedPackages = normalizePackages(packages);
-  const depsHash = computeDepsHash(runtime, normalizedPackages);
+  const depsHash = computeDepsHash(runtime, normalizedPackages, setupScript);
   logger.debug(`[ImageBuilder] ${runtime} custom deps hash: ${depsHash.slice(0, 16)}...`);
 
   // Check if we can skip the build
@@ -312,7 +320,18 @@ export async function buildCustomImage(
       throw new Error(`Unknown runtime: ${runtime}`);
   }
 
-  const dockerfileContent = `FROM isol8:${runtime}\n${installCmd}\n`;
+  // Optionally bake a setup script into the image so it runs before every execution
+  let setupLines = "";
+  if (setupScript) {
+    // Escape the script content for use in a heredoc-style RUN command
+    const escaped = setupScript.replace(/\\/g, "\\\\").replace(/'/g, "'\\''");
+    setupLines = [
+      `RUN printf '%s\\n' '${escaped}' > /sandbox/.isol8-setup.sh`,
+      "RUN chmod +x /sandbox/.isol8-setup.sh",
+    ].join("\n");
+  }
+
+  const dockerfileContent = `FROM isol8:${runtime}\n${installCmd}\n${setupLines}\n`;
 
   // Build using dockerode with an inline tar containing just the Dockerfile
   const { createTarBuffer, validatePackageName } = await import("./utils");
@@ -322,15 +341,20 @@ export async function buildCustomImage(
 
   const tarBuffer = createTarBuffer("Dockerfile", dockerfileContent);
 
+  const imageLabels: Record<string, string> = {
+    [LABELS.depsHash]: depsHash,
+    [LABELS.runtime]: runtime.toString(),
+    [LABELS.dependencies]: normalizedPackages.join(","),
+  };
+  if (setupScript) {
+    imageLabels[LABELS.setupScript] = setupScript;
+  }
+
   // biome-ignore lint/suspicious/noExplicitAny: Dockerode is missing raw Buffer support typings
   const stream = await docker.buildImage(tarBuffer as any, {
     t: tag,
     dockerfile: "Dockerfile",
-    labels: {
-      [LABELS.depsHash]: depsHash,
-      [LABELS.runtime]: runtime.toString(),
-      [LABELS.dependencies]: normalizedPackages.join(","),
-    },
+    labels: imageLabels,
   });
 
   await new Promise<void>((resolve, reject) => {

@@ -201,3 +201,98 @@ describe("imageExists", () => {
     expect(exists).toBe(false);
   });
 });
+
+describe("buildCustomImage with setupScript", () => {
+  const mockBuildImageForSetup = mock((_tarBuffer: any, opts: any) => {
+    return Promise.resolve({
+      on: () => {},
+      pipe: (d: any) => d,
+    });
+  });
+
+  const mockFollowProgressForSetup = mock((stream: any, cb: (err?: any, res?: any) => void) => {
+    cb(null, []);
+  });
+
+  const mockDockerSetup = {
+    buildImage: mockBuildImageForSetup,
+    modem: {
+      followProgress: mockFollowProgressForSetup,
+    },
+    getImage: () => ({
+      inspect: async () => ({}),
+    }),
+  } as any;
+
+  beforeEach(() => {
+    mockBuildImageForSetup.mockClear();
+    mockFollowProgressForSetup.mockClear();
+  });
+
+  test("includes setupScript label when provided", async () => {
+    const script = "echo 'hello setup'";
+    await buildCustomImage(
+      mockDockerSetup,
+      "python",
+      ["numpy"],
+      "my-setup-tag",
+      undefined,
+      true,
+      script
+    );
+
+    expect(mockBuildImageForSetup).toHaveBeenCalled();
+    const callArgs = mockBuildImageForSetup.mock.calls[0];
+    const opts = callArgs[1];
+    expect(opts.labels["org.isol8.setup"]).toBe(script);
+  });
+
+  test("does not include setupScript label when not provided", async () => {
+    await buildCustomImage(mockDockerSetup, "python", ["numpy"], "no-setup-tag", undefined, true);
+
+    expect(mockBuildImageForSetup).toHaveBeenCalled();
+    const callArgs = mockBuildImageForSetup.mock.calls[0];
+    const opts = callArgs[1];
+    expect(opts.labels["org.isol8.setup"]).toBeUndefined();
+  });
+
+  test("setup script changes deps hash (invalidates cache)", async () => {
+    // Build once without setup
+    await buildCustomImage(mockDockerSetup, "python", ["numpy"], "tag-no-setup", undefined, true);
+    const hash1 = mockBuildImageForSetup.mock.calls[0][1].labels["org.isol8.deps.hash"];
+
+    mockBuildImageForSetup.mockClear();
+
+    // Build again with setup
+    await buildCustomImage(
+      mockDockerSetup,
+      "python",
+      ["numpy"],
+      "tag-with-setup",
+      undefined,
+      true,
+      "pip install extra"
+    );
+    const hash2 = mockBuildImageForSetup.mock.calls[0][1].labels["org.isol8.deps.hash"];
+
+    expect(hash1).not.toBe(hash2);
+  });
+
+  test("allows building with setup script and no packages", async () => {
+    const script = "apt-get update";
+    await buildCustomImage(
+      mockDockerSetup,
+      "python",
+      [],
+      "setup-only-tag",
+      undefined,
+      true,
+      script
+    );
+
+    expect(mockBuildImageForSetup).toHaveBeenCalled();
+    const callArgs = mockBuildImageForSetup.mock.calls[0];
+    const opts = callArgs[1];
+    expect(opts.labels["org.isol8.setup"]).toBe(script);
+  });
+});

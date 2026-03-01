@@ -145,7 +145,7 @@ isol8 run script.py --host http://server:3000 --key my-api-key
 
 ### `isol8 build`
 
-Build a custom runtime image with pre-baked dependencies.
+Build a custom runtime image with pre-baked dependencies and/or setup scripts.
 
 ```bash
 # Build a hashed custom Python image
@@ -153,12 +153,16 @@ isol8 build --base python --install numpy --install pandas
 
 # Build and tag an alias for easier reuse
 isol8 build --base python --install numpy,pandas,torch --tag my-registry/ml-image:latest
+
+# Build with a setup script baked in (runs before every execution)
+isol8 build --base python --setup "mkdir -p /sandbox/data && echo 'ready' > /sandbox/data/.init"
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--base <runtime>` | Runtime base image: `python`, `node`, `bun`, `deno`, `bash` |
 | `--install <pkg>` | Package to install (repeatable or comma-separated) |
+| `--setup <command>` | Setup script/command baked into the image (repeatable; reads file if path exists) |
 | `--tag <name>` | Optional alias tag for the built image |
 | `--force` | Force rebuild even when image is up to date |
 

@@ -411,10 +411,10 @@ isol8 session stop my-session --host http://localhost:3000 --key my-key
 
 ## `isol8 build`
 
-Build a custom runtime image with pre-baked dependencies.
+Build a custom runtime image with pre-baked dependencies and/or a setup script.
 
 ```bash
-isol8 build --base <runtime> --install <package> --tag <name> [options]
+isol8 build --base <runtime> [--install <package>] [--setup <command>] --tag <name> [options]
 ```
 
 <ResponseField name="--base <runtime>" type="python | node | bun | deno | bash" required>
@@ -423,6 +423,14 @@ isol8 build --base <runtime> --install <package> --tag <name> [options]
 
 <ResponseField name="--install <package>" type="repeatable">
   Package to bake into the image. Supports repeated flags and comma-separated values.
+</ResponseField>
+
+<ResponseField name="--setup <command>" type="repeatable">
+  Shell command or file path baked into the image. Runs automatically before every
+  execution that uses this image.  When an execution request also carries its own
+  `--setup`, the image-level script runs first followed by the request-level script.
+  If the value points to an existing file, its content is read; otherwise the value
+  is treated as a literal shell command.
 </ResponseField>
 
 <ResponseField name="--tag <name>" type="string" required>
@@ -442,6 +450,12 @@ isol8 build --base python --install numpy --install pandas --tag my-python-ml
 # Build a custom Node.js image
 isol8 build --base node --install express,lodash --tag my-node-api
 
+# Build with a setup script that runs before every execution
+isol8 build --base python --install numpy --setup "pip install -e /sandbox/mylib" --tag my-python-dev
+
+# Build with setup only (no packages)
+isol8 build --base bash --setup "echo ready" --tag my-bash-env
+
 # Force rebuild
 isol8 build --base python --install numpy --tag my-python-ml --force
 ```
@@ -454,7 +468,7 @@ List all locally available custom isol8 images.
 isol8 list-custom
 ```
 
-Displays each custom image's tag, runtime, and pre-installed dependencies based on embedded Docker labels.
+Displays each custom image's tag, runtime, pre-installed dependencies, and setup script (if any) based on embedded Docker labels.
 
 ## `isol8 config`
 

@@ -633,6 +633,14 @@ export interface PrebuiltImageConfig {
   runtime: Runtime;
   /** The runtime packages to install into the custom image (e.g. `["numpy", "pandas"]`). */
   installPackages: string[];
+  /**
+   * Shell script baked into the image that runs automatically before every
+   * execution. Runs as `sandbox` user from `/sandbox` after package
+   * installation but before the main code.  When an execution request also
+   * carries its own `setupScript`, the image-level script runs first followed
+   * by the request-level script.
+   */
+  setupScript?: string;
 }
 
 /**
