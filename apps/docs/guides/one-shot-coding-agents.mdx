@@ -83,7 +83,13 @@ Define `prebuiltImages` in `isol8.config.json` so images are built automatically
     "network": "filtered"
   },
   "network": {
-    "whitelist": ["^github\\.com$", "^api\\.github\\.com$", "^registry\\.npmjs\\.org$", "^pypi\\.org$"],
+    "whitelist": [
+      "^api\\.anthropic\\.com$",
+      "^github\\.com$",
+      "^api\\.github\\.com$",
+      "^registry\\.npmjs\\.org$",
+      "^pypi\\.org$"
+    ],
     "blacklist": ["^169\\.254\\."]
   },
   "cleanup": {
@@ -118,14 +124,20 @@ const engine = new DockerIsol8({
   image: "my-org/python-devbox:latest",
   network: "filtered",
   networkFilter: {
-    // Allow LLM API access + package registries
-    whitelist: ["^api\\.anthropic\\.com$", "^github\\.com$", "^api\\.github\\.com$", "^pypi\\.org$"],
+    // LLM API access + VCS + package registries
+    whitelist: [
+      "^api\\.anthropic\\.com$",
+      "^github\\.com$",
+      "^api\\.github\\.com$",
+      "^pypi\\.org$",
+    ],
     blacklist: ["^169\\.254\\."],
   },
   timeoutMs: 300_000, // 5 minutes per step
   memoryLimit: "2g",
-  pidsLimit: 200,     // agent runtime spawns subprocesses
+  pidsLimit: 200,     // agent runtime spawns subprocesses; isol8 defaults this to 200 automatically
   secrets: {
+    // Passed as environment variables; values are automatically masked in stdout/stderr
     GITHUB_TOKEN: process.env.GITHUB_TOKEN!,
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY!,
   },
@@ -136,6 +148,10 @@ await engine.start();
 
 <Note>
   `mode: "persistent"` reuses a single container across all `execute()` calls, preserving filesystem state — just like Stripe's devboxes persist across agent steps.
+</Note>
+
+<Note>
+  The agent runtime **requires** `network: "filtered"` with at least one whitelist entry. Passing `network: "none"` or an empty whitelist throws immediately. Pass your LLM provider's domain (e.g. `^api\\.anthropic\\.com$`) in the whitelist.
 </Note>
 
 ## Step 3: Hydrate context (clone repo, inject rules)
@@ -157,9 +173,17 @@ const cloneResult = await engine.execute({
 if (cloneResult.exitCode !== 0) {
   throw new Error(`Clone failed: ${cloneResult.stderr}`);
 }
+```
 
-// Inject agent rules and task context as files
-await engine.putFile("/sandbox/repo/AGENT_CONTEXT.md", `
+Inject rule files and task context. pi automatically loads `AGENTS.md` (and `CLAUDE.md`) from the working directory at startup — injecting your rules there is the recommended pattern:
+
+```typescript
+// Inject project-specific agent rules — pi auto-loads AGENTS.md from cwd
+const rulesContent = await fs.readFile("./agent-rules/python-rules.md", "utf-8");
+await engine.putFile("/sandbox/repo/AGENTS.md", rulesContent);
+
+// Inject a task-specific context file referenced in the prompt
+await engine.putFile("/sandbox/repo/TASK.md", `
 # Task
 Fix the type error in src/utils/parser.ts described in issue #42.
 
@@ -171,21 +195,13 @@ Fix the type error in src/utils/parser.ts described in issue #42.
 `);
 ```
 
-You can also inject rule files, `.cursorrules`, `AGENTS.md`, or any context documents your agent needs:
-
-```typescript
-// Inject project-specific agent rules from your repo
-const rulesContent = await fs.readFile("./agent-rules/python-rules.md", "utf-8");
-await engine.putFile("/sandbox/repo/AGENTS.md", rulesContent);
-```
-
-<Note>
-  pi automatically loads `AGENTS.md` (and `CLAUDE.md`) from the working directory at startup. Injecting your rules as `/sandbox/repo/AGENTS.md` is the recommended way to supply project context.
-</Note>
+<Tip>
+  When using the CLI instead of the library, use `--files <dir>` to inject an entire local directory into `/sandbox` in one shot. All files are mounted at their relative paths under `/sandbox`, skipping `.git`, `node_modules`, and `__pycache__`.
+</Tip>
 
 ## Step 4: Run the agent step
 
-This is the agentic step — use `runtime: "agent"` to run the pi coding agent inside the sandbox. The `code` field is the prompt; pi handles the LLM loop, tool calls, and file edits autonomously.
+Use `runtime: "agent"` to run the pi coding agent inside the sandbox. The `code` field is the natural-language prompt — pi handles the full LLM loop, tool calls (`read`, `write`, `edit`, `bash`), and file edits autonomously inside the container.
 
 ```typescript
 async function agentImplement(task: string): Promise<ExecutionResult> {
@@ -194,30 +210,32 @@ async function agentImplement(task: string): Promise<ExecutionResult> {
     code: task,
     agentFlags: "--model anthropic/claude-sonnet-4-5 --thinking low",
     timeoutMs: 300_000,
-    env: {
-      // pi reads the LLM API key from the environment
-      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY!,
-    },
+    // Do NOT pass ANTHROPIC_API_KEY here — it is already available
+    // via `secrets` in the engine config, and secrets are masked in output.
+    // Using per-request env bypasses masking.
   });
 }
 ```
 
 <Tip>
-  The agent runtime automatically appends a system prompt informing pi that it is running inside an isol8 sandbox with restricted network access and an ephemeral filesystem. You do not need to add this yourself.
+  Always pass LLM API keys via `secrets` in the engine config, not in per-request `env`. Keys in `secrets` are automatically redacted from stdout/stderr; keys in `env` are not.
 </Tip>
 
-The `agentFlags` field passes arguments directly to the `pi` CLI before `-p`. Useful flags:
+isol8 automatically appends a sandbox-awareness system prompt to pi's default prompt via `--append-system-prompt`. You do not need to tell pi it is in a container.
+
+The `agentFlags` field passes extra arguments to the `pi` CLI before `-p`. Useful flags:
 
 | Flag | Description |
 |:---|:---|
 | `--model <provider/id>` | LLM to use (e.g. `anthropic/claude-sonnet-4-5`, `openai/gpt-4o`) |
 | `--thinking <level>` | Thinking budget: `off`, `minimal`, `low`, `medium`, `high`, `xhigh` |
+| `--tools <list>` | Limit built-in tools (default: `read,bash,edit,write`) |
+| `--no-tools` | Disable all built-in tools (prompt-only mode) |
 | `--no-skills` | Disable auto-loading of skill files |
 | `--no-extensions` | Disable auto-loading of extensions |
-| `--tools <list>` | Limit built-in tools (default: `read,bash,edit,write`) |
 
 <Warning>
-  The agent runtime enforces `network: "filtered"` — it will throw if you pass `network: "none"` or `network: "host"`. The whitelist must include at least one LLM API endpoint (e.g. `^api\\.anthropic\\.com$`).
+  The agent runtime enforces `network: "filtered"` at both `execute()` and `executeStream()` call sites. Passing `network: "none"` or `network: "host"` — or an empty whitelist — throws before any container work begins.
 </Warning>
 
 ## Step 5: Deterministic lint and test steps
@@ -336,7 +354,7 @@ async function runMinion(task: string) {
 }
 
 // Run it
-runMinion("Fix the type error in src/utils/parser.ts described in issue #42");
+runMinion("Fix the type error in src/utils/parser.ts described in issue #42. Context is in /sandbox/repo/TASK.md.");
 ```
 
 ## Scaling with the remote server
@@ -365,6 +383,7 @@ async function spawnAgent(task: string) {
       sessionId,
     },
     {
+      mode: "persistent",
       image: "my-org/python-devbox:latest",
       network: "filtered",
       networkFilter: {
@@ -430,7 +449,7 @@ for await (const event of engine.executeStream({
 | MCP tools (Toolshed) | `network: "filtered"` allowing agent to call external APIs |
 | Local lint loop (pre-push hooks) | Deterministic lint step with `runtime: "bash"` before push |
 | CI feedback loop (at most 2 rounds) | Test step looped with `MAX_CI_ROUNDS` + agent fix step |
-| Secret isolation (no prod credentials) | `secrets` option with automatic output masking |
+| Secret isolation (no prod credentials) | `secrets` option — values are automatically masked in output |
 | Parallelization (many devboxes) | Multiple `RemoteIsol8` sessions via centralized server |
 
 ## Security considerations
@@ -440,11 +459,11 @@ Stripe isolates their devboxes from production. isol8 provides equivalent guardr
 - **Read-only root filesystem** — agents can only write to `/sandbox` and `/tmp`
 - **Non-root execution** — all code runs as `sandbox` user (uid 100)
 - **Network filtering** — allowlist only the hosts your agent needs (LLM APIs, GitHub, package registries)
-- **Secret masking** — credentials passed via `secrets` are automatically redacted from stdout/stderr
+- **Secret masking** — credentials in `secrets` are automatically redacted from stdout/stderr
 - **Resource limits** — CPU, memory, PIDs, and output size caps prevent runaway agents
-- **Seccomp profiles** — strict syscall filtering by default
+- **Seccomp profiles** — strict syscall filtering applied by default
 - **Session isolation** — each agent session is a separate container with no shared state
-- **Sandbox-aware system prompt** — isol8 automatically injects a system prompt informing pi of the sandbox constraints, so the agent doesn't attempt operations that will fail
+- **Sandbox-aware system prompt** — isol8 appends a prompt informing pi of sandbox constraints, so the agent doesn't attempt operations that will fail
 
 ```typescript
 const engine = new DockerIsol8({
@@ -452,7 +471,11 @@ const engine = new DockerIsol8({
   image: "my-org/node-devbox:latest",
   network: "filtered",
   networkFilter: {
-    whitelist: ["^api\\.anthropic\\.com$", "^github\\.com$", "^registry\\.npmjs\\.org$"],
+    whitelist: [
+      "^api\\.anthropic\\.com$",
+      "^github\\.com$",
+      "^registry\\.npmjs\\.org$",
+    ],
     blacklist: ["^169\\.254\\.", "^10\\.", "^172\\.(1[6-9]|2[0-9]|3[01])\\."],
   },
   secrets: {
@@ -473,7 +496,7 @@ const engine = new DockerIsol8({
 3. **Bake dependencies into images** — don't waste agent time installing packages. Use `prebuiltImages` to pre-install everything.
 4. **Scope context tightly** — inject only relevant rule files and documentation as `AGENTS.md`. Don't dump your entire codebase.
 5. **Deterministic where possible** — lint, format, test, commit, and push are deterministic steps. Don't let the LLM do what a shell script can do better.
-6. **Isolate by default** — the agent runtime requires `network: "filtered"`. Whitelist only what the agent genuinely needs.
+6. **Use `secrets` for API keys** — never pass LLM credentials via per-request `env`; use `secrets` so they are masked in output.
 7. **Use setup scripts** — bake recurring setup (git config, SSH, tool configuration) into the custom image's `setupScript` so it runs automatically before the agent starts.
 
 ## Related pages
