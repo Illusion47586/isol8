@@ -1,0 +1,518 @@
+---
+title: "One-shot coding agents"
+description: "Build unattended, one-shot coding agents — like Stripe's Minions — using isol8 custom images as isolated developer environments."
+icon: "wand-magic-sparkles"
+---
+
+Stripe's [Minions](https://stripe.dev/blog/minions-stripes-one-shot-end-to-end-coding-agents) are unattended coding agents that one-shot tasks end to end: a developer kicks one off, and it produces a complete pull request with no human code — only human review. Over 1,300 PRs merge at Stripe each week this way.
+
+The architecture behind Minions has three pillars:
+
+1. **Isolated, pre-warmed developer environments** — each agent run gets its own sandbox with tools, repos, and dependencies ready to go.
+2. **A blueprint-driven agent loop** — deterministic steps (lint, test, push) interleaved with agentic LLM steps (implement, fix failures).
+3. **Context hydration** — rule files, MCP tools, and documentation injected before the agent starts.
+
+isol8 gives you pillar 1 out of the box, and the building blocks to wire up pillars 2 and 3. This guide walks through the full setup using **custom images** as your pre-warmed devboxes.
+
+## Architecture overview
+
+{/* prettier-ignore */}
+```mermaid
+flowchart TD
+  A["Task input (Slack, ticket, CLI)"] --> B["Orchestrator"]
+  B --> C["Build / select custom image"]
+  C --> D["isol8 persistent session"]
+  D --> E["Setup: clone repo, hydrate context"]
+  E --> F["Agent loop: implement task"]
+  F --> G{{"Lint locally"}}
+  G -->|Fail| F
+  G -->|Pass| H["Push + run CI"]
+  H --> I{{"CI passes?"}}
+  I -->|Fail round 1| J["Agent loop: fix CI failures"]
+  J --> H
+  I -->|Pass or round 2| K["Create PR for human review"]
+```
+
+## Step 1: Build a custom devbox image
+
+Stripe pre-warms EC2 "devboxes" with repos, caches, and tools. With isol8, **custom images** serve the same purpose — a Docker image with your project's dependencies baked in so every agent run starts instantly.
+
+### CLI approach
+
+```bash
+# Build a Python data-science devbox
+isol8 build \
+  --base python \
+  --install numpy pandas scikit-learn pytest black ruff \
+  --setup "git config --global user.name 'agent' && git config --global user.email 'agent@ci'" \
+  --tag my-org/python-devbox:latest
+
+# Build a Node.js fullstack devbox
+isol8 build \
+  --base node \
+  --install typescript eslint prettier jest \
+  --tag my-org/node-devbox:latest
+```
+
+The `--setup` flag bakes a shell script into the image that runs before every execution — use it for git config, SSH keys, tool setup, or anything your agent needs before it starts coding.
+
+### Config approach (recommended for servers)
+
+Define `prebuiltImages` in `isol8.config.json` so images are built automatically when the server starts or when you run `isol8 setup`:
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/Illusion47586/isol8/main/packages/core/schema/isol8.config.schema.json",
+  "maxConcurrent": 20,
+  "prebuiltImages": [
+    {
+      "tag": "my-org/python-devbox:latest",
+      "runtime": "python",
+      "installPackages": ["numpy", "pandas", "scikit-learn", "pytest", "black", "ruff"],
+      "setupScript": "git config --global user.name 'agent' && git config --global user.email 'agent@ci'"
+    },
+    {
+      "tag": "my-org/node-devbox:latest",
+      "runtime": "node",
+      "installPackages": ["typescript", "eslint", "prettier", "jest"]
+    }
+  ],
+  "defaults": {
+    "timeoutMs": 300000,
+    "memoryLimit": "2g",
+    "network": "filtered"
+  },
+  "network": {
+    "whitelist": ["^github\\.com$", "^api\\.github\\.com$", "^registry\\.npmjs\\.org$", "^pypi\\.org$"],
+    "blacklist": ["^169\\.254\\."]
+  },
+  "cleanup": {
+    "autoPrune": true,
+    "maxContainerAgeMs": 7200000
+  },
+  "poolStrategy": "fast",
+  "poolSize": { "clean": 5, "dirty": 5 }
+}
+```
+
+Then build everything:
+
+```bash
+isol8 setup
+```
+
+<Tip>
+  isol8 uses content-addressed hashing for custom images. If the packages and setup script haven't changed, `isol8 setup` skips the build entirely — making it safe to call on every deploy.
+</Tip>
+
+## Step 2: Create the orchestrator
+
+The orchestrator is the "blueprint" — a TypeScript program that sequences deterministic steps and agentic LLM steps. Use `DockerIsol8` in persistent mode with your custom image.
+
+```typescript
+import { DockerIsol8 } from "@isol8/core";
+import type { ExecutionResult } from "@isol8/core";
+
+const engine = new DockerIsol8({
+  mode: "persistent",
+  image: "my-org/python-devbox:latest",
+  network: "filtered",
+  networkFilter: {
+    whitelist: ["^github\\.com$", "^api\\.github\\.com$", "^pypi\\.org$"],
+    blacklist: ["^169\\.254\\."],
+  },
+  timeoutMs: 300_000, // 5 minutes per step
+  memoryLimit: "2g",
+  secrets: {
+    GITHUB_TOKEN: process.env.GITHUB_TOKEN!,
+  },
+});
+
+await engine.start();
+```
+
+<Note>
+  `mode: "persistent"` reuses a single container across all `execute()` calls, preserving filesystem state — just like Stripe's devboxes persist across agent steps.
+</Note>
+
+## Step 3: Hydrate context (clone repo, inject rules)
+
+Before the agent starts coding, set up the workspace. This is the equivalent of Stripe's devbox warm-up and their deterministic "context gathering" nodes.
+
+```typescript
+// Clone the repository into the persistent container
+const cloneResult = await engine.execute({
+  runtime: "bash",
+  code: `
+    cd /sandbox
+    git clone https://$GITHUB_TOKEN@github.com/my-org/my-repo.git repo
+    cd repo
+    git checkout -b agent/fix-issue-42 origin/main
+  `,
+});
+
+if (cloneResult.exitCode !== 0) {
+  throw new Error(`Clone failed: ${cloneResult.stderr}`);
+}
+
+// Inject agent rules and task context as files
+await engine.putFile("/sandbox/repo/AGENT_CONTEXT.md", `
+# Task
+Fix the type error in src/utils/parser.ts described in issue #42.
+
+# Rules
+- Follow existing code style (prettier + eslint enforced)
+- Write tests for any new functions
+- Do not modify the public API surface
+- Commit messages should reference the issue number
+`);
+```
+
+You can also inject rule files, `.cursorrules`, `CLAUDE.md`, or any context documents your agent needs:
+
+```typescript
+// Inject project-specific agent rules from your repo
+const rulesContent = await fs.readFile("./agent-rules/python-rules.md", "utf-8");
+await engine.putFile("/sandbox/repo/.agent-rules.md", rulesContent);
+```
+
+## Step 4: Implement the agent loop
+
+This is the agentic step — call your LLM to generate code, then execute it inside isol8. The LLM writes code; isol8 runs it in isolation.
+
+```typescript
+import Anthropic from "@anthropic-ai/sdk";
+
+const anthropic = new Anthropic();
+
+async function agentImplement(task: string): Promise<void> {
+  const MAX_ITERATIONS = 10;
+
+  // Read the current repo state
+  const repoState = await engine.execute({
+    runtime: "bash",
+    code: "cd /sandbox/repo && find src -name '*.ts' | head -50 && echo '---' && cat src/utils/parser.ts",
+  });
+
+  let messages: Anthropic.MessageParam[] = [
+    {
+      role: "user",
+      content: `You are a coding agent working in /sandbox/repo. Here is the current state:\n\n${repoState.stdout}\n\nTask: ${task}\n\nWrite a bash script that makes the necessary code changes. Use heredocs or sed for file edits. Output only the bash script, no explanation.`,
+    },
+  ];
+
+  for (let i = 0; i < MAX_ITERATIONS; i++) {
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 4096,
+      system: "You are a precise coding agent. Write bash scripts to modify code. Always verify your changes compile/pass lint before declaring done. Respond ONLY with a bash script, or the word DONE if the task is complete.",
+      messages,
+    });
+
+    const text = response.content[0].type === "text" ? response.content[0].text : "";
+
+    if (text.trim() === "DONE") {
+      console.log(`Agent completed in ${i + 1} iterations`);
+      return;
+    }
+
+    // Execute the agent's code in the sandbox
+    const result = await engine.execute({
+      runtime: "bash",
+      code: text,
+      workdir: "/sandbox/repo",
+    });
+
+    // Feed the result back to the agent
+    messages.push(
+      { role: "assistant", content: text },
+      {
+        role: "user",
+        content: `Exit code: ${result.exitCode}\nStdout:\n${result.stdout}\nStderr:\n${result.stderr}\n\nContinue implementing, or respond DONE if the task is complete.`,
+      }
+    );
+  }
+
+  throw new Error("Agent did not complete within iteration limit");
+}
+```
+
+<Warning>
+  The agent's code runs as user `sandbox` (uid 100) with a read-only root filesystem. Only `/sandbox` (the tmpfs work area) is writable. This prevents the agent from escaping its sandbox, even if the LLM generates malicious code.
+</Warning>
+
+## Step 5: Deterministic lint and test steps
+
+After the agent finishes coding, run linters and tests deterministically — no LLM involvement. This matches Stripe's blueprint pattern of interleaving deterministic nodes with agentic nodes.
+
+```typescript
+async function runLint(): Promise<ExecutionResult> {
+  return engine.execute({
+    runtime: "bash",
+    code: `
+      cd /sandbox/repo
+      npx prettier --write 'src/**/*.ts'
+      npx eslint --fix 'src/**/*.ts'
+      echo "Lint complete"
+    `,
+    workdir: "/sandbox/repo",
+    timeoutMs: 60_000,
+  });
+}
+
+async function runTests(): Promise<ExecutionResult> {
+  return engine.execute({
+    runtime: "bash",
+    code: `
+      cd /sandbox/repo
+      npx jest --ci --passWithNoTests 2>&1
+    `,
+    workdir: "/sandbox/repo",
+    timeoutMs: 120_000,
+  });
+}
+```
+
+## Step 6: Wire up the full blueprint
+
+Combine all steps into a single orchestration flow, mirroring Stripe's blueprint pattern of at most two CI rounds:
+
+```typescript
+async function runMinion(task: string) {
+  const MAX_CI_ROUNDS = 2;
+
+  // --- Deterministic: setup ---
+  console.log("[1/5] Cloning repo and hydrating context...");
+  await cloneAndSetup();
+
+  // --- Agentic: implement ---
+  console.log("[2/5] Agent implementing task...");
+  await agentImplement(task);
+
+  // --- Deterministic: lint ---
+  console.log("[3/5] Running linters...");
+  const lintResult = await runLint();
+  if (lintResult.exitCode !== 0) {
+    // Let the agent fix lint issues
+    await agentImplement("Fix the lint errors: " + lintResult.stderr);
+    await runLint(); // Re-run lint after agent fix
+  }
+
+  // --- Deterministic: test + iterate ---
+  for (let round = 1; round <= MAX_CI_ROUNDS; round++) {
+    console.log(`[4/5] Running tests (round ${round}/${MAX_CI_ROUNDS})...`);
+    const testResult = await runTests();
+
+    if (testResult.exitCode === 0) {
+      console.log("Tests passed!");
+      break;
+    }
+
+    if (round < MAX_CI_ROUNDS) {
+      // --- Agentic: fix failures ---
+      console.log("Tests failed, agent fixing...");
+      await agentImplement(
+        "Fix the failing tests. Errors:\n" + testResult.stderr
+      );
+    } else {
+      console.log("Tests still failing after max rounds. Proceeding with PR for human review.");
+    }
+  }
+
+  // --- Deterministic: commit and push ---
+  console.log("[5/5] Committing and pushing...");
+  await engine.execute({
+    runtime: "bash",
+    code: `
+      cd /sandbox/repo
+      git add -A
+      git commit -m "fix: resolve type error in parser (closes #42)
+
+      Automated change produced by coding agent."
+      git push origin agent/fix-issue-42
+    `,
+    workdir: "/sandbox/repo",
+  });
+
+  // --- Deterministic: create PR ---
+  await engine.execute({
+    runtime: "bash",
+    code: `
+      cd /sandbox/repo
+      gh pr create \
+        --title "fix: resolve type error in parser (closes #42)" \
+        --body "## Summary
+      Automated fix for issue #42.
+
+      This PR was produced by an unattended coding agent. Please review carefully.
+
+      ## Changes
+      - Fixed type error in src/utils/parser.ts
+      - Added unit tests" \
+        --base main \
+        --head agent/fix-issue-42
+    `,
+    workdir: "/sandbox/repo",
+  });
+
+  await engine.stop();
+  console.log("Done! PR created for human review.");
+}
+
+// Run it
+runMinion("Fix the type error in src/utils/parser.ts described in issue #42");
+```
+
+## Scaling with the remote server
+
+For production, run isol8 as a centralized server so multiple agents can execute in parallel — the equivalent of Stripe's fleet of devboxes. Each agent gets its own persistent session.
+
+### Start the server
+
+```bash
+isol8 serve --port 3000 --key "$ISOL8_API_KEY"
+```
+
+### Connect agents via RemoteIsol8
+
+```typescript
+import { RemoteIsol8 } from "@isol8/core";
+import { randomUUID } from "node:crypto";
+
+async function spawnAgent(task: string) {
+  const sessionId = `agent-${randomUUID()}`;
+
+  const engine = new RemoteIsol8(
+    {
+      host: "http://isol8-server.internal:3000",
+      apiKey: process.env.ISOL8_API_KEY!,
+      sessionId,
+    },
+    {
+      image: "my-org/python-devbox:latest",
+      network: "filtered",
+      networkFilter: {
+        whitelist: ["^github\\.com$", "^api\\.github\\.com$"],
+        blacklist: [],
+      },
+      timeoutMs: 300_000,
+      memoryLimit: "2g",
+    }
+  );
+
+  await engine.start();
+
+  // Run the full agent blueprint against the remote session
+  // Each session is an isolated persistent container
+  await runBlueprintAgainst(engine, task);
+
+  await engine.stop(); // Cleans up the remote session
+}
+
+// Spawn multiple agents in parallel
+await Promise.all([
+  spawnAgent("Fix issue #42"),
+  spawnAgent("Fix issue #43"),
+  spawnAgent("Add unit tests for auth module"),
+]);
+```
+
+### Stream agent output in real-time
+
+Use streaming to pipe agent activity to a UI or Slack thread:
+
+```typescript
+for await (const event of engine.executeStream({
+  runtime: "bash",
+  code: "cd /sandbox/repo && npm test 2>&1",
+})) {
+  switch (event.type) {
+    case "stdout":
+      slackThread.postUpdate(event.data);
+      break;
+    case "stderr":
+      slackThread.postWarning(event.data);
+      break;
+    case "exit":
+      slackThread.postResult(`Tests finished with exit code ${event.data}`);
+      break;
+  }
+}
+```
+
+## Stripe Minions concept mapping
+
+| Stripe Minions concept | isol8 equivalent |
+|:--|:--|
+| Devbox (pre-warmed EC2 instance) | Custom image with `prebuiltImages` + persistent session |
+| Devbox pool (hot and ready) | Warm container pool (`poolSize`, `poolStrategy: "fast"`) |
+| Isolated environment (no production access) | `network: "filtered"` with allowlisted hosts |
+| Blueprint (deterministic + agentic nodes) | Orchestrator code mixing `engine.execute()` with LLM calls |
+| Rule files (Cursor rules, CLAUDE.md) | Files injected via `putFile()` or `files` in `ExecutionRequest` |
+| MCP tools (Toolshed) | `network: "filtered"` allowing agent to call external APIs |
+| Local lint loop (pre-push hooks) | Deterministic lint step with `engine.execute()` before push |
+| CI feedback loop (at most 2 rounds) | Test step looped with `MAX_CI_ROUNDS` + agentic fix step |
+| Secret isolation (no prod credentials) | `secrets` option with automatic output masking |
+| Parallelization (many devboxes) | Multiple `RemoteIsol8` sessions via centralized server |
+
+## Security considerations
+
+Stripe isolates their devboxes from production. isol8 provides equivalent guardrails:
+
+- **Read-only root filesystem** — agents can only write to `/sandbox` and `/tmp`
+- **Non-root execution** — all code runs as `sandbox` user (uid 100)
+- **Network filtering** — allowlist only the hosts your agent needs (GitHub, package registries)
+- **Secret masking** — credentials passed via `secrets` are automatically redacted from stdout/stderr
+- **Resource limits** — CPU, memory, PIDs, and output size caps prevent runaway agents
+- **Seccomp profiles** — strict syscall filtering by default
+- **Session isolation** — each agent session is a separate container with no shared state
+
+```typescript
+const engine = new DockerIsol8({
+  mode: "persistent",
+  image: "my-org/node-devbox:latest",
+  network: "filtered",
+  networkFilter: {
+    whitelist: ["^github\\.com$", "^registry\\.npmjs\\.org$"],
+    blacklist: ["^169\\.254\\.", "^10\\.", "^172\\.(1[6-9]|2[0-9]|3[01])\\."],
+  },
+  secrets: {
+    GITHUB_TOKEN: process.env.GITHUB_TOKEN!,
+    NPM_TOKEN: process.env.NPM_TOKEN!,
+  },
+  cpuLimit: 2,
+  memoryLimit: "2g",
+  pidsLimit: 128,
+  maxOutputSize: 5_242_880, // 5MB
+  security: {
+    seccomp: "strict",
+  },
+});
+```
+
+## Tips from the Stripe playbook
+
+1. **Shift feedback left** — run linters and fast checks inside the container before pushing to CI. This saves tokens and compute.
+2. **Limit CI rounds** — diminishing returns after 1-2 rounds. Cap iterations and hand off to humans.
+3. **Bake dependencies into images** — don't waste agent time installing packages. Use `prebuiltImages` to pre-install everything.
+4. **Scope context tightly** — don't dump your entire codebase into the agent's context window. Inject only relevant rule files and documentation.
+5. **Deterministic where possible** — lint, format, test, commit, and push are deterministic steps. Don't let the LLM do what a shell script can do better.
+6. **Isolate by default** — use `network: "none"` or `network: "filtered"` as your baseline. Only open the network for hosts the agent genuinely needs.
+7. **Use setup scripts** — bake recurring setup (git config, SSH, tool configuration) into the custom image's `setupScript` so it runs automatically.
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="AI agent code execution" icon="robot" href="/guides/ai-agents">
+    Foundational patterns for LLM tool-call loops with isol8.
+  </Card>
+  <Card title="Data and persistence" icon="database" href="/persistence">
+    Persistent sessions, file I/O, and state management across runs.
+  </Card>
+  <Card title="Security model" icon="shield-check" href="/security">
+    Network controls, seccomp, secret masking, and isolation boundaries.
+  </Card>
+  <Card title="Remote server" icon="server" href="/remote">
+    Deploy isol8 as a centralized execution server for agent fleets.
+  </Card>
+</CardGroup>
