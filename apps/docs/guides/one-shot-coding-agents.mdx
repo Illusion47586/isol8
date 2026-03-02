@@ -175,28 +175,25 @@ if (cloneResult.exitCode !== 0) {
 }
 ```
 
-Inject rule files and task context. pi automatically loads `AGENTS.md` (and `CLAUDE.md`) from the working directory at startup — injecting your rules there is the recommended pattern:
+pi automatically loads `AGENTS.md` (and `CLAUDE.md`) from the working directory at startup. Inject your project-level rules there so pi picks them up without any prompt engineering:
 
 ```typescript
 // Inject project-specific agent rules — pi auto-loads AGENTS.md from cwd
 const rulesContent = await fs.readFile("./agent-rules/python-rules.md", "utf-8");
 await engine.putFile("/sandbox/repo/AGENTS.md", rulesContent);
+```
 
-// Inject a task-specific context file referenced in the prompt
-await engine.putFile("/sandbox/repo/TASK.md", `
-# Task
-Fix the type error in src/utils/parser.ts described in issue #42.
+The task description itself goes directly in the `code` field (the prompt) — no need to write it to a file:
 
-# Rules
-- Follow existing code style (prettier + eslint enforced)
-- Write tests for any new functions
-- Do not modify the public API surface
-- Commit messages should reference the issue number
-`);
+```typescript
+const task = `Fix the type error in src/utils/parser.ts described in issue #42.
+Follow existing code style, write tests for any new functions, and do not modify the public API surface.`;
+
+await agentImplement(task);
 ```
 
 <Tip>
-  When using the CLI instead of the library, use `--files <dir>` to inject an entire local directory into `/sandbox` in one shot. All files are mounted at their relative paths under `/sandbox`, skipping `.git`, `node_modules`, and `__pycache__`.
+  Use `--files <dir>` (CLI) or the `files` field in `ExecutionRequest` (library) when you need to inject a large local directory tree — e.g. your entire project source — into `/sandbox` before the agent runs. For small text blobs like rules or config, `putFile()` is simpler.
 </Tip>
 
 ## Step 4: Run the agent step
@@ -354,7 +351,7 @@ async function runMinion(task: string) {
 }
 
 // Run it
-runMinion("Fix the type error in src/utils/parser.ts described in issue #42. Context is in /sandbox/repo/TASK.md.");
+runMinion("Fix the type error in src/utils/parser.ts described in issue #42. Follow existing code style, write tests for any new functions, do not modify the public API surface.");
 ```
 
 ## Scaling with the remote server
