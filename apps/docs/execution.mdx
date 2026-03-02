@@ -27,7 +27,7 @@ flowchart TD
 ```
 
 <Note>
-  In ephemeral mode, simple requests can skip file injection and execute inline (for example `python -c`, `node -e`, `bun -e`, `bash -c`) when no `stdin`, `files`, `outputPaths`, or package installs are requested.
+  In ephemeral mode, simple requests can skip file injection and execute inline (for example `python -c`, `node -e`, `bun -e`, `bash -c`) when no `stdin`, `files`, `outputPaths`, or package installs are requested. The `agent` runtime always uses file injection and passes the code as a prompt to the pi coding agent.
 </Note>
 
 ## Execution Modes
@@ -237,11 +237,18 @@ Inject files *before* execution and retrieve them *after*.
 <Tabs>
   <Tab title="CLI">
     <Note>
-      The CLI does not currently support generic file injection (`files`) or retrieval (`outputPaths`). It can only capture `stdout` to a file using `--out`.
+      The CLI supports file injection for the `agent` runtime via `--files <dir>`, which recursively copies a local directory into `/sandbox`. For other runtimes, use the Library or API for generic file injection (`files`) or retrieval (`outputPaths`). All runtimes support `--out` to capture stdout to a file.
     </Note>
 
     ```bash
+    # Capture stdout to file
     isol8 run script.py --out result.txt
+
+    # Inject project files for agent runtime
+    isol8 run -e "add tests" --runtime agent \
+      --files ./my-project \
+      --net filtered --allow "api.anthropic.com" \
+      --secret "ANTHROPIC_API_KEY=sk-..."
     ```
   </Tab>
   <Tab title="Library">

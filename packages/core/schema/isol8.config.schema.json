@@ -204,6 +204,13 @@
           "enum": ["secure", "fast"],
           "type": "string"
         },
+        "prebuiltImages": {
+          "description": "Prebuilt custom images to build automatically during `isol8 setup` and `isol8 serve` startup. Images that already exist locally are skipped unless `--force` is passed.",
+          "items": {
+            "$ref": "#/definitions/PrebuiltImageConfig"
+          },
+          "type": "array"
+        },
         "remoteCode": {
           "additionalProperties": false,
           "description": "Remote code fetching policy. (Partial override allowed).",
@@ -273,6 +280,38 @@
     "NetworkMode": {
       "description": "Network access mode for isol8 containers.\n\n- `\"none\"` — All network access blocked (default, most secure).\n- `\"host\"` — Full host network access (use with caution).\n- `\"filtered\"` — HTTP/HTTPS traffic routed through a proxy that enforces   whitelist/blacklist regex rules on hostnames.",
       "enum": ["none", "host", "filtered"],
+      "type": "string"
+    },
+    "PrebuiltImageConfig": {
+      "additionalProperties": false,
+      "description": "Configuration for a prebuilt custom image that `isol8 setup` and `isol8 serve` ensure exists locally before accepting work.",
+      "properties": {
+        "installPackages": {
+          "description": "The runtime packages to install into the custom image (e.g. `[\"numpy\", \"pandas\"]`).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "runtime": {
+          "$ref": "#/definitions/Runtime",
+          "description": "The base runtime to extend (e.g. `python`, `node`)."
+        },
+        "setupScript": {
+          "description": "Shell script baked into the image that runs automatically before every execution. Runs as `sandbox` user from `/sandbox` after package installation but before the main code.  When an execution request also carries its own `setupScript`, the image-level script runs first followed by the request-level script.",
+          "type": "string"
+        },
+        "tag": {
+          "description": "The full docker tag of the custom image to build (e.g. `my-custom-python:latest`).",
+          "type": "string"
+        }
+      },
+      "required": ["tag", "runtime", "installPackages"],
+      "type": "object"
+    },
+    "Runtime": {
+      "description": "Supported code execution runtimes.\n\n- `\"python\"` — CPython 3.x\n- `\"node\"` — Node.js LTS\n- `\"bun\"` — Bun runtime\n- `\"deno\"` — Deno runtime\n- `\"bash\"` — Bash shell\n- `\"agent\"` — AI coding agent (pi) running inside a sandboxed container",
+      "enum": ["python", "node", "bun", "deno", "bash", "agent"],
       "type": "string"
     },
     "SecurityConfig": {

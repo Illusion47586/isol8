@@ -1,10 +1,10 @@
 ---
 title: "Runtime reference"
-description: "Supported runtimes, extension mapping, module behavior, and package-install semantics for Python, Node, Bun, Deno, and Bash."
+description: "Supported runtimes, extension mapping, module behavior, and package-install semantics for Python, Node, Bun, Deno, Bash, and Agent."
 icon: "layer-group"
 ---
 
-isol8 supports five runtimes with a shared execution contract (`ExecutionRequest.runtime`) and runtime-specific command/extension behavior.
+isol8 supports six runtimes with a shared execution contract (`ExecutionRequest.runtime`) and runtime-specific command/extension behavior.
 
 ## Supported runtimes
 
@@ -15,9 +15,10 @@ isol8 supports five runtimes with a shared execution contract (`ExecutionRequest
 | Bun | `isol8:bun` | `.ts` | none | Yes |
 | Deno | `isol8:deno` | `.mts` | none | Yes (engine writes temp file) |
 | Bash | `isol8:bash` | `.sh` | none | Yes |
+| Agent | `isol8:agent` | none | none | Yes (prompt text via `-e`) |
 
 <Note>
-  Registration order matters for extension detection: Bun wins `.ts`; Deno uses `.mts` to avoid collision.
+  Registration order matters for extension detection: Bun wins `.ts`; Deno uses `.mts` to avoid collision. The Agent runtime has no extension mapping and must always be specified explicitly via `--runtime agent`.
 </Note>
 
 ## How runtime selection works
@@ -33,6 +34,11 @@ isol8 supports five runtimes with a shared execution contract (`ExecutionRequest
 
     # Explicit override
     isol8 run script.any --runtime python
+
+    # Agent (always explicit, prompt as -e)
+    isol8 run -e "add tests for all endpoints" --runtime agent \
+      --net filtered --allow "api.anthropic.com" \
+      --secret "ANTHROPIC_API_KEY=sk-..."
     ```
   </Tab>
   <Tab title="Library">
@@ -40,6 +46,12 @@ isol8 supports five runtimes with a shared execution contract (`ExecutionRequest
     await engine.execute({
       runtime: "python",
       code: "print('hello')",
+    });
+
+    // Agent runtime (code = prompt text)
+    await engine.execute({
+      runtime: "agent",
+      code: "refactor this module to use async/await",
     });
     ```
   </Tab>
@@ -75,6 +87,7 @@ isol8 supports five runtimes with a shared execution contract (`ExecutionRequest
 | Bun | `bun -e <code>` | `bun run <file>` |
 | Deno | Engine writes file first | `deno run --allow-read=/sandbox,/tmp --allow-write=/sandbox,/tmp --allow-env --allow-net <file>` |
 | Bash | `bash -c <code>` | `bash <file>` |
+| Agent | `bash -c "pi --no-session [agentFlags] -p <prompt>"` | N/A (always inline prompt) |
 
 ## Package install behavior (`installPackages` / `--install`)
 
@@ -85,6 +98,7 @@ isol8 supports five runtimes with a shared execution contract (`ExecutionRequest
 | Bun | `bun install -g --global-dir=...` | `bun install -g ...` |
 | Deno | `deno cache ...` | `deno cache ...` |
 | Bash | `apk add --no-cache ...` | `apk add --no-cache ...` |
+| Agent | `bun install -g --global-dir=...` | `bun install -g ...` |
 
 <Note>
   Runtime installs are written under `/sandbox` so native extensions can execute (`/tmp` is `noexec`).
@@ -117,6 +131,16 @@ isol8 supports five runtimes with a shared execution contract (`ExecutionRequest
 - useful for shell orchestration and glue scripts
 - package installs use Alpine `apk`
 
+### Agent
+
+- runs the [pi coding agent](https://github.com/mariozechner/pi-coding-agent) inside the sandbox
+- the `-e` value is always treated as the **prompt text**, not code
+- requires `network: "filtered"` with at least one whitelist entry (the agent needs LLM API access)
+- defaults to higher resource limits: `pidsLimit: 200`, `sandboxSize: "2g"`
+- extra pi flags (e.g. `--model`, `--thinking`) are passed via `--agent-flags` (CLI) or `agentFlags` (library/API)
+- use `--files <dir>` to inject a local project directory into `/sandbox` for the agent to work on
+- file output after execution is the user's responsibility via the prompt
+
 ## FAQ
 
 <AccordionGroup>
@@ -125,7 +149,11 @@ isol8 supports five runtimes with a shared execution contract (`ExecutionRequest
   </Accordion>
 
   <Accordion title="Can I switch runtimes inside one persistent session?">
-    No. Persistent containers are runtime-bound. Use separate sessions for Python/Node/Bun/Deno/Bash.
+    No. Persistent containers are runtime-bound. Use separate sessions for Python/Node/Bun/Deno/Bash/Agent.
+  </Accordion>
+
+  <Accordion title="Why does the agent runtime require filtered networking?">
+    The agent needs to call an LLM API (e.g. Anthropic, OpenAI) to function. The engine enforces `network: "filtered"` with at least one whitelist entry to ensure the agent has controlled API access while preventing unrestricted network use.
   </Accordion>
 
   <Accordion title="Why do some packages fail on Alpine-based images?">

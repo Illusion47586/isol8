@@ -1,11 +1,11 @@
 ---
 name: isol8
-description: Securely execute untrusted Python, Node.js, Bun, Deno, and Bash code in sandboxed Docker containers.
+description: Securely execute untrusted Python, Node.js, Bun, Deno, Bash, and AI agent code in sandboxed Docker containers.
 ---
 
 # Isol8 Skill
 
-Isol8 is a secure execution engine for running untrusted code inside Docker containers with strict resource limits, network controls, and output sanitization. Use this skill when you need to execute code, scripts, or system commands in a safe, isolated environment.
+Isol8 is a secure execution engine for running untrusted code inside Docker containers with strict resource limits, network controls, and output sanitization. Use this skill when you need to execute code, scripts, system commands, or AI coding agents in a safe, isolated environment.
 
 > For full documentation, see the [isol8 docs](https://bingo-ccc81346.mintlify.app). This file is a quick-reference for AI agents — it covers the most common operations and links to detailed docs for everything else.
 
@@ -28,14 +28,14 @@ Isol8 is a secure execution engine for running untrusted code inside Docker cont
 2. File argument (runtime auto-detected from extension, or forced with `--runtime`)
 3. Stdin (defaults to `python` runtime)
 
-**Extension mapping:** `.py` → python, `.js`/`.mjs`/`.cjs` → node, `.ts` → bun, `.mts` → deno, `.sh` → bash
+**Extension mapping:** `.py` → python, `.js`/`.mjs`/`.cjs` → node, `.ts` → bun, `.mts` → deno, `.sh` → bash. The `agent` runtime has no file extension mapping and must be specified explicitly with `--runtime agent`.
 
 ### Most-Used Flags (`isol8 run`)
 
 | Flag | Default | Description |
 |:-----|:--------|:------------|
 | `-e, --eval <code>` | — | Execute inline code |
-| `-r, --runtime <name>` | auto-detect | Force: `python`, `node`, `bun`, `deno`, `bash` |
+| `-r, --runtime <name>` | auto-detect | Force: `python`, `node`, `bun`, `deno`, `bash`, `agent` |
 | `--no-stream` | `false` | Disable real-time output streaming |
 | `--persistent` | `false` | Keep container alive between runs |
 | `--persist` | `false` | Keep container after execution for debugging |
@@ -71,6 +71,12 @@ isol8 run -e "import os; print(os.environ['KEY'])" --runtime python --secret KEY
 
 # Remote execution
 isol8 run script.py --host http://server:3000 --key my-api-key
+
+# AI coding agent (sandboxed)
+isol8 run -e "refactor this to use async/await" --runtime agent \
+  --net filtered --allow "api.anthropic.com" \
+  --secret "ANTHROPIC_API_KEY=sk-..." \
+  --files ./my-project --workdir /sandbox/my-project --timeout 600000
 
 # Cleanup orphaned containers
 isol8 cleanup               # Interactive (prompts for confirmation)
@@ -199,3 +205,6 @@ Full security model: [Security](https://bingo-ccc81346.mintlify.app/security)
 - **"Operation not permitted" with numpy/packages**: Packages need `--sandbox-size` large enough for installation (512MB+ recommended).
 - **`.ts` files running with Bun instead of Deno**: `.ts` defaults to Bun. Use `--runtime deno` or `.mts` extension.
 - **Serve command failing**: Ensure the server binary can be downloaded from GitHub Releases. Use `isol8 serve --update` to force a fresh download. Use `isol8 serve --debug` to see detailed server logs. For listen port selection, precedence is `--port` > `ISOL8_PORT` > `PORT` > `3000`; if the port is busy, `serve` can prompt for another port or auto-pick an available one.
+- **Agent runtime requires filtered network**: The `agent` runtime enforces `--net filtered` with at least one `--allow` entry. Pass `--allow "api.anthropic.com"` (or your LLM provider's domain).
+- **Agent runtime needs API key**: Pass the LLM provider key via `--secret "ANTHROPIC_API_KEY=sk-..."`. The value is masked in output.
+- **Agent runtime out of space**: The agent runtime defaults to `--sandbox-size 2g`. For large repos, increase with `--sandbox-size 4g`.

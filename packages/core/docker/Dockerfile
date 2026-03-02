@@ -40,3 +40,15 @@ CMD ["deno"]
 # ── Bash ──────────────────────────────────────────────────────────────
 FROM base AS bash
 CMD ["bash"]
+
+# ── Agent ─────────────────────────────────────────────────────────────
+FROM base AS agent
+RUN apk add --no-cache unzip libstdc++ libgcc \
+    && curl -fsSL https://bun.sh/install | bash \
+    && mv /root/.bun/bin/bun /usr/local/bin/bun \
+    && ln -s /usr/local/bin/bun /usr/local/bin/bunx \
+    && bun install -g @mariozechner/pi-coding-agent \
+    && cp -r /root/.bun/install /usr/local/share/bun-global \
+    && printf '#!/bin/sh\nexec bun /usr/local/share/bun-global/global/node_modules/@mariozechner/pi-coding-agent/dist/cli.js "$@"\n' > /usr/local/bin/pi \
+    && chmod +x /usr/local/bin/pi
+CMD ["bash"]

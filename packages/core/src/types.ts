@@ -15,8 +15,9 @@
  * - `"bun"` — Bun runtime
  * - `"deno"` — Deno runtime
  * - `"bash"` — Bash shell
+ * - `"agent"` — AI coding agent (pi) running inside a sandboxed container
  */
-export type Runtime = "python" | "node" | "bun" | "deno" | "bash";
+export type Runtime = "python" | "node" | "bun" | "deno" | "bash" | "agent";
 
 /**
  * Network access mode for isol8 containers.
@@ -118,6 +119,14 @@ export interface ExecutionRequest {
    * @default "/sandbox"
    */
   workdir?: string;
+
+  /**
+   * Extra CLI flags passed to the AI coding agent (pi).
+   * Only used when `runtime` is `"agent"`.
+   * These flags are prepended before the `-p` prompt flag in the command.
+   * @example "--model anthropic/claude-sonnet-4 --thinking"
+   */
+  agentFlags?: string;
 }
 
 /**
@@ -615,16 +624,17 @@ export interface Isol8Config {
   debug: boolean;
 
   /**
-   * Prebuilt images ensuring that custom environments are built and ready
-   * when the server starts. The server will invoke `isol8 build` on these images
-   * automatically during boot if they are not already built locally.
-   * Only applicable in server-mode.
+   * Prebuilt custom images ensuring that environments are built and ready.
+   * Both `isol8 setup` and `isol8 serve` will build any missing images
+   * automatically. Images that already exist locally are skipped unless
+   * `--force` is passed.
    */
   prebuiltImages: PrebuiltImageConfig[];
 }
 
 /**
- * Configuration for a prebuilt image that the server ensures exists.
+ * Configuration for a prebuilt custom image that `isol8 setup` and
+ * `isol8 serve` ensure exists locally before accepting work.
  */
 export interface PrebuiltImageConfig {
   /** The full docker tag of the custom image to build (e.g. `my-custom-python:latest`). */
@@ -689,4 +699,11 @@ export interface Isol8UserConfig {
 
   /** Database-backed API key authentication configuration. */
   auth?: Partial<AuthConfig>;
+
+  /**
+   * Prebuilt custom images to build automatically during `isol8 setup` and
+   * `isol8 serve` startup. Images that already exist locally are skipped
+   * unless `--force` is passed.
+   */
+  prebuiltImages?: PrebuiltImageConfig[];
 }

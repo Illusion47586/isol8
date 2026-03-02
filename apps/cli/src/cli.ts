@@ -4,13 +4,15 @@ import {
   chmodSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   renameSync,
+  statSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { arch, homedir, platform } from "node:os";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import type {
   ExecutionRequest,
   Isol8Engine,
@@ -321,6 +323,11 @@ program
   .option("--debug", "Enable debug logging")
   .option("--persist", "Keep container running after execution for inspection")
   .option("--log-network", "Log all network requests (requires --net filtered)")
+  .option(
+    "--agent-flags <flags>",
+    "Extra CLI flags for the agent runtime (e.g. --model, --thinking)"
+  )
+  .option("--files <dir>", "Inject a local directory into the container at /sandbox")
   .action(async (file: string | undefined, opts) => {
     const {
       code,
@@ -399,8 +406,21 @@ program
             }
           : {}),
         ...(opts.workdir ? { workdir: opts.workdir } : {}),
+        ...(opts.agentFlags ? { agentFlags: opts.agentFlags } : {}),
         fileExtension,
       };
+
+      // Inject local directory into the container when --files is specified
+      if (opts.files) {
+        const filesDir = resolve(opts.files);
+        if (!(existsSync(filesDir) && statSync(filesDir).isDirectory())) {
+          console.error(`[ERR] --files path is not a directory: ${opts.files}`);
+          process.exit(1);
+        }
+        const injectedFiles = readDirectoryRecursive(filesDir);
+        req.files = { ...req.files, ...injectedFiles };
+        logger.debug(`[Run] Injected ${Object.keys(injectedFiles).length} files from ${filesDir}`);
+      }
 
       // Stream by default unless --no-stream is passed
       if (opts.stream !== false) {
@@ -1448,6 +1468,19 @@ async function resolveRunInput(file: string | undefined, opts: any) {
     );
   }
 
+  // Agent runtime defaults: higher pidsLimit (pi spawns subprocesses) and
+  // larger sandbox (agent projects need more disk space).
+  if (runtime === "agent") {
+    if (!opts.pidsLimit) {
+      engineOptions.pidsLimit = 200;
+      logger.debug("[Run] Agent runtime: defaulting pidsLimit to 200");
+    }
+    if (!opts.sandboxSize) {
+      engineOptions.sandboxSize = "2g";
+      logger.debug("[Run] Agent runtime: defaulting sandboxSize to 2g");
+    }
+  }
+
   // If package installation is requested in filtered mode, extend whitelist
   // with runtime package registry hosts so installs can resolve dependencies.
   if (opts.install.length > 0 && engineOptions.network === "filtered") {
@@ -1564,7 +1597,7 @@ function parseRuntimeName(value: string): Runtime {
     return RuntimeRegistry.get(value).name;
   } catch {
     console.error(
-      `[ERR] Invalid runtime: ${value}. Expected one of: python, node, bun, deno, bash`
+      `[ERR] Invalid runtime: ${value}. Expected one of: python, node, bun, deno, bash, agent`
     );
     process.exit(1);
   }
@@ -1582,12 +1615,43 @@ function getDefaultRegistryAllowPatterns(runtime: Runtime): string[] {
       return ["^pypi\\.org$", "^files\\.pythonhosted\\.org$"];
     case "node":
     case "bun":
+    case "agent":
       return ["^registry\\.npmjs\\.org$"];
     case "bash":
       return ["^dl-cdn\\.alpinelinux\\.org$"];
     default:
       return [];
   }
+}
+
+/**
+ * Directories to skip when recursively reading a local directory for --files injection.
+ */
+const SKIP_DIRS = new Set([".git", "node_modules", "__pycache__", ".venv", "venv", ".tox"]);
+
+/**
+ * Recursively read a directory and return a map of container paths to file contents.
+ * Keys are absolute paths under /sandbox (e.g. `/sandbox/src/index.ts`).
+ */
+function readDirectoryRecursive(baseDir: string, currentDir?: string): Record<string, Buffer> {
+  const dir = currentDir ?? baseDir;
+  const files: Record<string, Buffer> = {};
+
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (SKIP_DIRS.has(entry.name)) {
+        continue;
+      }
+      Object.assign(files, readDirectoryRecursive(baseDir, fullPath));
+    } else if (entry.isFile()) {
+      const relPath = relative(baseDir, fullPath);
+      const containerPath = `/sandbox/${relPath}`;
+      files[containerPath] = readFileSync(fullPath);
+    }
+  }
+
+  return files;
 }
 
 function collect(value: string, previous: string[]): string[] {

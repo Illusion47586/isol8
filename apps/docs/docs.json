@@ -123,6 +123,7 @@
             "pages": [
               "guides/persistent-execution",
               "guides/ai-agents",
+              "guides/one-shot-coding-agents",
               "guides/data-processing",
               "guides/web-scraping",
               "guides/education"

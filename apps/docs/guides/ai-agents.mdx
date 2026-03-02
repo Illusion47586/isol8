@@ -8,6 +8,7 @@ Use this guide when your LLM needs a reliable code-execution tool and you want s
 
 ## Diagram: Agent execution loop
 
+{/* prettier-ignore */}
 ```mermaid
 flowchart TD
   A["User asks question"] --> B["LLM plans code"]
@@ -15,7 +16,7 @@ flowchart TD
   C --> D["isol8 sandbox execution"]
   D --> E["stdout/stderr/exitCode"]
   E --> F["LLM reasons on result"]
-  F --> G{"Need another run?"}
+  F --> G{{"Need another run?"}}
   G -->|Yes| B
   G -->|No| H["Final answer"]
 ```

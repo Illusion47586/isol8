@@ -8,6 +8,17 @@
 import type { Runtime } from "../types";
 
 /**
+ * Options passed to {@link RuntimeAdapter.getCommandWithOptions} for runtimes
+ * that need additional context beyond the source code.
+ */
+export interface RuntimeCommandOptions {
+  /** Path to the code file inside the container, if written to disk. */
+  filePath?: string;
+  /** Extra CLI flags for the agent runtime (e.g. `"--model anthropic/claude-sonnet-4"`). */
+  agentFlags?: string;
+}
+
+/**
  * A runtime adapter provides the container image and command construction
  * for a specific language runtime (Python, Node, Bun, Deno).
  *
@@ -29,6 +40,17 @@ export interface RuntimeAdapter {
    * @returns Command array (e.g. `["python3", "-c", "print(1)"]`).
    */
   getCommand(code: string, filePath?: string): string[];
+
+  /**
+   * Build the shell command with extended options.
+   * When implemented, the engine calls this instead of {@link getCommand}.
+   * Used by runtimes that need additional context (e.g. agent flags).
+   *
+   * @param code - The source code or prompt string.
+   * @param options - Extended command options.
+   * @returns Command array.
+   */
+  getCommandWithOptions?(code: string, options: RuntimeCommandOptions): string[];
 
   /** Default file extension for this runtime (e.g. `".py"`). */
   getFileExtension(): string;

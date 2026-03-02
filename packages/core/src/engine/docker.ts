@@ -260,6 +260,7 @@ export class DockerIsol8 implements Isol8Engine {
     await this.semaphore.acquire();
     const startTime = Date.now();
     try {
+      this.validateAgentRuntime(req);
       const request = await this.resolveExecutionRequest(req);
       const result =
         this.mode === "persistent"
@@ -484,6 +485,7 @@ export class DockerIsol8 implements Isol8Engine {
   async *executeStream(req: ExecutionRequest): AsyncIterable<StreamEvent> {
     await this.semaphore.acquire();
     try {
+      this.validateAgentRuntime(req);
       const request = await this.resolveExecutionRequest(req);
       const adapter = this.getAdapter(request.runtime);
       const timeoutMs = request.timeoutMs ?? this.defaultTimeoutMs;
@@ -556,7 +558,7 @@ export class DockerIsol8 implements Isol8Engine {
         }
 
         // Build command
-        const rawCmd = adapter.getCommand(request.code, filePath);
+        const rawCmd = this.buildAdapterCommand(adapter, request, filePath);
         const timeoutSec = Math.ceil(timeoutMs / 1000);
         let cmd: string[];
         if (request.stdin) {
@@ -793,18 +795,18 @@ export class DockerIsol8 implements Isol8Engine {
       let rawCmd: string[];
       if (canUseInline) {
         try {
-          rawCmd = adapter.getCommand(req.code);
+          rawCmd = this.buildAdapterCommand(adapter, req);
         } catch {
           const ext = req.fileExtension ?? adapter.getFileExtension();
           const filePath = `${SANDBOX_WORKDIR}/main${ext}`;
           await this.volumeManager.writeFileViaExec(container, filePath, req.code);
-          rawCmd = adapter.getCommand(req.code, filePath);
+          rawCmd = this.buildAdapterCommand(adapter, req, filePath);
         }
       } else {
         const ext = req.fileExtension ?? adapter.getFileExtension();
         const filePath = `${SANDBOX_WORKDIR}/main${ext}`;
         await this.volumeManager.writeFileViaExec(container, filePath, req.code);
-        rawCmd = adapter.getCommand(req.code, filePath);
+        rawCmd = this.buildAdapterCommand(adapter, req, filePath);
       }
 
       // Install packages if requested
@@ -982,7 +984,7 @@ export class DockerIsol8 implements Isol8Engine {
       }
     }
 
-    const rawCmd = adapter.getCommand(req.code, filePath);
+    const rawCmd = this.buildAdapterCommand(adapter, req, filePath);
     const timeoutSec = Math.ceil(timeoutMs / 1000);
 
     // Install packages if requested
@@ -1161,6 +1163,52 @@ export class DockerIsol8 implements Isol8Engine {
     return RuntimeRegistry.get(runtime);
   }
 
+  /**
+   * Validate agent runtime requirements. The agent runtime requires
+   * filtered network mode with at least one whitelist entry so that
+   * the AI coding agent can reach its LLM provider API.
+   */
+  private validateAgentRuntime(req: ExecutionRequest): void {
+    if (req.runtime !== "agent") {
+      return;
+    }
+
+    if (this.network !== "filtered") {
+      throw new Error(
+        'Agent runtime requires network mode "filtered". ' +
+          "The AI coding agent needs network access to reach its LLM provider API. " +
+          'Use --net filtered --allow "api.anthropic.com" (or your provider\'s domain).'
+      );
+    }
+
+    const whitelist = this.networkFilter?.whitelist ?? [];
+    if (whitelist.length === 0) {
+      throw new Error(
+        "Agent runtime requires at least one network whitelist entry. " +
+          "The AI coding agent needs to reach its LLM provider API. " +
+          'Use --allow "api.anthropic.com" (or your provider\'s domain).'
+      );
+    }
+  }
+
+  /**
+   * Build the execution command from the adapter. Prefers `getCommandWithOptions`
+   * when the adapter implements it, otherwise falls back to `getCommand`.
+   */
+  private buildAdapterCommand(
+    adapter: RuntimeAdapter,
+    req: ExecutionRequest & { code: string },
+    filePath?: string
+  ): string[] {
+    if (adapter.getCommandWithOptions) {
+      return adapter.getCommandWithOptions(req.code, {
+        filePath,
+        agentFlags: req.agentFlags,
+      });
+    }
+    return adapter.getCommand(req.code, filePath);
+  }
+
   private buildHostConfig(): Docker.HostConfig {
     const config: Docker.HostConfig = {
       Memory: parseMemoryLimit(this.memoryLimit),
@@ -1269,9 +1317,11 @@ export class DockerIsol8 implements Isol8Engine {
    * }
    * ```
    */
-  static async cleanup(
-    docker?: Docker
-  ): Promise<{ removed: number; failed: number; errors: string[] }> {
+  static async cleanup(docker?: Docker): Promise<{
+    removed: number;
+    failed: number;
+    errors: string[];
+  }> {
     const dockerInstance = docker ?? new Docker();
 
     // Find all isol8 containers
@@ -1303,9 +1353,11 @@ export class DockerIsol8 implements Isol8Engine {
    * Images are identified by repo tags starting with `isol8:`
    * (for example `isol8:python` or `isol8:python-custom-<hash>`).
    */
-  static async cleanupImages(
-    docker?: Docker
-  ): Promise<{ removed: number; failed: number; errors: string[] }> {
+  static async cleanupImages(docker?: Docker): Promise<{
+    removed: number;
+    failed: number;
+    errors: string[];
+  }> {
     const dockerInstance = docker ?? new Docker();
 
     const images = await dockerInstance.listImages({ all: true });
