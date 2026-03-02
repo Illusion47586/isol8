@@ -374,9 +374,9 @@ export async function buildCustomImage(
       // biome-ignore lint/suspicious/noExplicitAny: stream chunk type is ambiguous
       (event: any) => {
         if (event.stream) {
-          process.stdout.write(event.stream);
+          onProgress?.({ runtime: String(runtime), status: "building", message: event.stream });
         } else if (event.error) {
-          console.error(event.error);
+          onProgress?.({ runtime: String(runtime), status: "error", message: event.error });
         }
       }
     );
