@@ -43,6 +43,8 @@ export class ExecutionManager {
         return ["npm", "install", "--prefix", "/sandbox", ...packages];
       case "bun":
         return ["bun", "install", "-g", "--global-dir=/sandbox/.bun-global", ...packages];
+      case "agent":
+        return ["bun", "install", "-g", "--global-dir=/sandbox/.bun-global", ...packages];
       case "deno":
         return ["sh", "-c", packages.map((p) => `deno cache ${p}`).join(" && ")];
       case "bash":
@@ -78,7 +80,7 @@ export class ExecutionManager {
       env.push("npm_config_fetch_retry_mintimeout=1000");
       env.push("NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=2000");
       env.push("npm_config_fetch_retry_maxtimeout=2000");
-    } else if (runtime === "bun") {
+    } else if (runtime === "bun" || runtime === "agent") {
       env.push("BUN_INSTALL_GLOBAL_DIR=/sandbox/.bun-global");
       env.push("BUN_INSTALL_CACHE_DIR=/sandbox/.bun-cache");
       env.push("BUN_INSTALL_BIN=/sandbox/.bun-global/bin");

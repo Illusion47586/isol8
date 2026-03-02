@@ -11,11 +11,11 @@
 [![npm](https://img.shields.io/npm/v/isol8)](https://www.npmjs.com/package/isol8)
 [![license](https://img.shields.io/npm/l/isol8)](./LICENSE)
 
-Secure code execution engine for AI agents. Run untrusted Python, Node.js, Bun, Deno, and Bash code inside locked-down Docker containers with network filtering, resource limits, and output controls.
+Secure code execution engine for AI agents. Run untrusted Python, Node.js, Bun, Deno, Bash, and AI agent code inside locked-down Docker containers with network filtering, resource limits, and output controls.
 
 ## Features
 
-- **5 runtimes** — Python, Node.js, Bun, Deno, Bash
+- **6 runtimes** — Python, Node.js, Bun, Deno, Bash, Agent (sandboxed AI coding agent)
 - **Ephemeral & persistent** — one-shot execution or stateful REPL-like sessions
 - **Streaming** — real-time output via `executeStream()` / SSE
 - **Fast** — warm container pool for sub-100ms execution latency
@@ -88,6 +88,30 @@ isol8 setup --node lodash,axios
 | `--bash <pkgs>` | Comma-separated Alpine apk packages |
 | `--force` | Force rebuild even if images are up to date |
 
+### Agent Runtime
+
+The `agent` runtime runs an AI coding agent ([pi](https://github.com/mariozechner/pi-coding-agent)) inside an isol8 sandbox. The `-e` flag provides the prompt text, and the agent operates on files injected via `--files`.
+
+**Requirements:**
+- `--net filtered` with at least one `--allow` entry (the agent needs API access)
+- `--secret` to pass the LLM provider API key
+
+**Defaults when `runtime=agent`:**
+- `pidsLimit`: 200 (vs 64 for other runtimes)
+- `sandboxSize`: 2g (vs 512m for other runtimes)
+
+```bash
+isol8 run \
+  -e "add comprehensive error handling to all API endpoints" \
+  --runtime agent \
+  --net filtered --allow "api.anthropic.com" \
+  --secret "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" \
+  --files ./my-project \
+  --workdir /sandbox/my-project \
+  --timeout 600000 \
+  --agent-flags "--model claude-sonnet-4-20250514 --thinking"
+```
+
 ### `isol8 run`
 
 Execute code in isol8. Accepts a file, `--eval`, or stdin.
@@ -107,12 +131,18 @@ isol8 run -e "import numpy; print(numpy.__version__)" --install numpy --runtime 
 
 # Remote execution
 isol8 run script.py --host http://server:3000 --key my-api-key
+
+# AI coding agent (requires --net filtered + --allow)
+isol8 run -e "refactor this module to use async/await" --runtime agent \
+  --net filtered --allow "api.anthropic.com" \
+  --secret "ANTHROPIC_API_KEY=sk-..." \
+  --files ./my-project --workdir /sandbox/my-project --timeout 600000
 ```
 
 | Flag | Description | Default |
 |------|-------------|---------|
 | `-e, --eval <code>` | Execute inline code | — |
-| `-r, --runtime <rt>` | Force runtime: `python`, `node`, `bun`, `deno`, `bash` | auto-detect |
+| `-r, --runtime <rt>` | Force runtime: `python`, `node`, `bun`, `deno`, `bash`, `agent` | auto-detect |
 | `--net <mode>` | Network mode: `none`, `host`, `filtered` | `none` (unless `--install` is used without explicit `--net`, then auto `filtered`) |
 | `--allow <regex>` | Whitelist regex (repeatable, for `filtered`) | — |
 | `--deny <regex>` | Blacklist regex (repeatable, for `filtered`) | — |
@@ -140,6 +170,8 @@ isol8 run script.py --host http://server:3000 --key my-api-key
 | `--gist <gistId/file.ext>` | Gist shorthand for raw source | — |
 | `--hash <sha256>` | Verify SHA-256 hash for fetched code | — |
 | `--allow-insecure-code-url` | Allow insecure `http://` code URLs for this request | `false` |
+| `--agent-flags <flags>` | Extra flags for the `pi` agent (e.g. `--model`, `--thinking`), agent runtime only | — |
+| `--files <dir>` | Inject a local directory recursively into `/sandbox` (skips `.git`, `node_modules`, etc.) | — |
 | `--host <url>` | Remote server URL | — |
 | `--key <key>` | API key for remote server | `$ISOL8_API_KEY` |
 

@@ -24,6 +24,7 @@ export {
 } from "./engine/image-builder";
 // ─── Runtime ───
 export {
+  AgentAdapter,
   BunAdapter,
   bashAdapter,
   DenoAdapter,
@@ -31,7 +32,7 @@ export {
   PythonAdapter,
   RuntimeRegistry,
 } from "./runtime";
-export type { RuntimeAdapter } from "./runtime/adapter";
+export type { RuntimeAdapter, RuntimeCommandOptions } from "./runtime/adapter";
 // ─── Types ───
 export type {
   AuthConfig,

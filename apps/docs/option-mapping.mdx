@@ -125,8 +125,8 @@ Use this reference when you need to answer: "where should I set this value?"
   **Library**: `execute({ allowInsecureCodeUrl: true })`.
 </ResponseField>
 
-<ResponseField name="runtime" type="'python' | 'node' | 'bun' | 'deno' | 'bash'">
-  **CLI**: `-r, --runtime` or extension auto-detection.
+<ResponseField name="runtime" type="'python' | 'node' | 'bun' | 'deno' | 'bash' | 'agent'">
+  **CLI**: `-r, --runtime` or extension auto-detection. The `agent` runtime must be specified explicitly.
 
   **Config**: not set via config.
 
@@ -172,7 +172,7 @@ Use this reference when you need to answer: "where should I set this value?"
 </ResponseField>
 
 <ResponseField name="files" type="Record<string, string | Buffer>">
-  **CLI**: not exposed as a `run` flag.
+  **CLI**: `--files <dir>` (recursively injects a directory into `/sandbox`, primarily for agent runtime).
 
   **API**: `request.files`.
 
@@ -215,6 +215,16 @@ Use this reference when you need to answer: "where should I set this value?"
   **API**: `request.workdir`.
 
   **Library**: `execute({ workdir })`.
+</ResponseField>
+
+<ResponseField name="agentFlags" type="string">
+  Extra flags passed to the `pi` coding agent (e.g. `--model claude-sonnet-4-20250514 --thinking`). Only used when `runtime` is `"agent"`.
+
+  **CLI**: `--agent-flags <flags>`.
+
+  **API**: `request.agentFlags`.
+
+  **Library**: `execute({ agentFlags })`.
 </ResponseField>
 
 <ResponseField name="metadata" type="Record<string, string>">

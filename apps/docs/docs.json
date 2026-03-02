@@ -51,6 +51,7 @@
             "pages": [
               "execution",
               "runtimes",
+              "agent-in-a-box",
               "security",
               "file-systems",
               "persistence",
@@ -123,6 +124,7 @@
             "pages": [
               "guides/persistent-execution",
               "guides/ai-agents",
+              "guides/one-shot-coding-agents",
               "guides/data-processing",
               "guides/web-scraping",
               "guides/education"

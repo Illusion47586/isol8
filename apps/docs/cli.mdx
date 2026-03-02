@@ -37,8 +37,8 @@ isol8 run [file] [options]
   Inline code to execute.
 </ResponseField>
 
-<ResponseField name="-r, --runtime <name>" type="python | node | bun | deno | bash">
-  Force runtime instead of extension-based detection.
+<ResponseField name="-r, --runtime <name>" type="python | node | bun | deno | bash | agent">
+  Force runtime instead of extension-based detection. The `agent` runtime must always be specified explicitly (no file extension mapping).
 </ResponseField>
 
 <ResponseField name="--stdin <data>" type="string">
@@ -133,6 +133,15 @@ isol8 run [file] [options]
   Inject secret env vars and mask values in output.
 </ResponseField>
 
+<ResponseField name="--agent-flags <flags>" type="string">
+  Extra flags passed to the `pi` coding agent before the prompt. Only valid with `--runtime agent`.
+  Common flags: `--model <name>`, `--thinking`, `--max-tokens <n>`.
+</ResponseField>
+
+<ResponseField name="--files <dir>" type="string">
+  Recursively inject a local directory into the container under `/sandbox`. Skips `.git`, `node_modules`, `__pycache__`, `.venv`, `venv`, and `.tox` directories. Useful with the `agent` runtime to provide project files for the agent to work on.
+</ResponseField>
+
 <ResponseField name="--out <file>" type="string">
   Write stdout to local file.
 </ResponseField>
@@ -203,6 +212,25 @@ isol8 run \
   --session-id my-session \
   --host http://localhost:3000 \
   --key my-key
+
+# AI coding agent
+isol8 run \
+  -e "add error handling to all API endpoints" \
+  --runtime agent \
+  --net filtered --allow "api.anthropic.com" \
+  --secret "ANTHROPIC_API_KEY=sk-..." \
+  --files ./my-project \
+  --workdir /sandbox/my-project \
+  --timeout 600000
+
+# Agent with extra pi flags
+isol8 run \
+  -e "refactor auth module" \
+  --runtime agent \
+  --net filtered --allow "api.anthropic.com" \
+  --secret "ANTHROPIC_API_KEY=sk-..." \
+  --files ./src \
+  --agent-flags "--model claude-sonnet-4-20250514 --thinking"
 ```
 
 ## `isol8 setup`
@@ -526,6 +554,10 @@ isol8 cleanup [options]
   Streaming is the default behavior. Use `--no-stream` if you want buffered output only after the run completes.
 </Accordion>
 
+<Accordion title="What is the agent runtime?">
+  The `agent` runtime runs the [pi coding agent](https://github.com/mariozechner/pi-coding-agent) inside an isol8 sandbox. The `-e` value is treated as the prompt, not code. It requires `--net filtered` with an `--allow` entry for the LLM API, and an API key via `--secret`. The CLI automatically raises `pidsLimit` to 200 and `sandboxSize` to 2g for agent runs.
+</Accordion>
+
 ## Troubleshooting quick checks
 
 - **`[ERR] --session-id requires --host`**: `--session-id` is a server feature; add `--host <url>`.
@@ -535,6 +567,8 @@ isol8 cleanup [options]
 - **Runtime not detected from file extension**: pass `--runtime <name>` explicitly.
 - **No output appears while command runs**: check if `--no-stream` is enabled.
 - **Filtered mode still blocks host**: verify `--allow` regex matches hostname exactly.
+- **Agent runtime fails with network error**: ensure `--net filtered` and `--allow` are set. The agent runtime enforces filtered networking with at least one whitelist entry.
+- **Agent runtime out of disk space**: increase `--sandbox-size` (default 2g for agent). Large repos may need 4g+.
 
 ## See also
 
