@@ -52,6 +52,7 @@
               "execution",
               "runtimes",
               "agent-in-a-box",
+              "setup-scripts",
               "security",
               "file-systems",
               "persistence",

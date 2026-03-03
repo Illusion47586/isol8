@@ -156,54 +156,66 @@ await engine.start();
 
 ## Step 3: Hydrate context (clone repo, inject rules)
 
-Before the agent starts coding, set up the workspace. This is the equivalent of Stripe's devbox warm-up and their deterministic "context gathering" nodes.
-
-```typescript
-// Clone the repository into the persistent container
-const cloneResult = await engine.execute({
-  runtime: "bash",
-  code: `
-    cd /sandbox
-    git clone https://$GITHUB_TOKEN@github.com/my-org/my-repo.git repo
-    cd repo
-    git checkout -b agent/fix-issue-42 origin/main
-  `,
-});
-
-if (cloneResult.exitCode !== 0) {
-  throw new Error(`Clone failed: ${cloneResult.stderr}`);
-}
-```
-
-pi automatically loads `AGENTS.md` (and `CLAUDE.md`) from the working directory at startup. Inject your project-level rules there so pi picks them up without any prompt engineering:
-
-```typescript
-// Inject project-specific agent rules — pi auto-loads AGENTS.md from cwd
-const rulesContent = await fs.readFile("./agent-rules/python-rules.md", "utf-8");
-await engine.putFile("/sandbox/repo/AGENTS.md", rulesContent);
-```
-
-The task description itself goes directly in the `code` field (the prompt) — no need to write it to a file:
+Before the agent starts coding, set up the workspace. Use `setupScript` on the agent execution itself — it runs as bash inside the container before pi receives the prompt, so the repo, rules, and any config files are all in place when the agent starts.
 
 ```typescript
 const task = `Fix the type error in src/utils/parser.ts described in issue #42.
 Follow existing code style, write tests for any new functions, and do not modify the public API surface.`;
 
-await agentImplement(task);
+const result = await engine.execute({
+  runtime: "agent",
+  setupScript: `
+    # Clone the repo and create an agent branch
+    git clone https://$GITHUB_TOKEN@github.com/my-org/my-repo.git /sandbox/repo
+    cd /sandbox/repo
+    git checkout -b agent/fix-issue-42 origin/main
+
+    # Write project rules — pi auto-loads AGENTS.md from its working directory
+    cat > /sandbox/repo/AGENTS.md << 'EOF'
+# Project rules
+- Follow existing code style — no reformatting unrelated files
+- No new runtime dependencies without approval
+- All new functions must have JSDoc comments
+- Tests live in tests/ — use the existing test runner (pytest)
+- Do not modify the public API surface
+EOF
+  `,
+  code: task,
+  agentFlags: "--model anthropic/claude-sonnet-4-5 --thinking low",
+  timeoutMs: 300_000,
+});
 ```
 
 <Tip>
-  Use `--files <dir>` (CLI) or the `files` field in `ExecutionRequest` (library) when you need to inject a large local directory tree — e.g. your entire project source — into `/sandbox` before the agent runs. For small text blobs like rules or config, `putFile()` is simpler.
+  `setupScript` runs as bash before pi receives the prompt. It is subject to the same `timeoutMs` as the overall request. A non-zero exit aborts the execution immediately — use it to validate that required secrets are present.
 </Tip>
+
+For setup that never changes between runs (git identity, tool config, registry authentication), bake it into the custom image using `prebuiltImages[].setupScript` so it runs on every execution without adding per-request latency. The per-request `setupScript` is then only the parts specific to each task — cloning the right repo, checking out the right branch, writing the task's rules:
+
+```json isol8.config.json
+{
+  "prebuiltImages": [
+    {
+      "tag": "my-org/python-devbox:latest",
+      "runtime": "python",
+      "installPackages": ["numpy", "pandas", "scikit-learn", "pytest", "black", "ruff"],
+      "setupScript": "git config --global user.name 'isol8-agent' && git config --global user.email 'agent@ci.internal' && git config --global core.autocrlf false"
+    }
+  ]
+}
+```
 
 ## Step 4: Run the agent step
 
 Use `runtime: "agent"` to run the pi coding agent inside the sandbox. The `code` field is the natural-language prompt — pi handles the full LLM loop, tool calls (`read`, `write`, `edit`, `bash`), and file edits autonomously inside the container.
 
+The `setupScript` from Step 3 already clones the repo and writes `AGENTS.md` before pi starts. Here the `agentImplement` helper is a thin wrapper that passes a task prompt to the same pattern:
+
 ```typescript
-async function agentImplement(task: string): Promise<ExecutionResult> {
+async function agentImplement(task: string, setupScript?: string): Promise<ExecutionResult> {
   return engine.execute({
     runtime: "agent",
+    setupScript,
     code: task,
     agentFlags: "--model anthropic/claude-sonnet-4-5 --thinking low",
     timeoutMs: 300_000,
@@ -267,35 +279,45 @@ async function runTests(): Promise<ExecutionResult> {
 
 ## Step 6: Wire up the full blueprint
 
-Combine all steps into a single orchestration flow, mirroring Stripe's blueprint pattern of at most two CI rounds:
+Combine all steps into a single orchestration flow. The `setupScript` handles cloning and context hydration as part of the first agent call — no separate bash step needed:
 
 ```typescript
 async function runMinion(task: string) {
   const MAX_CI_ROUNDS = 2;
 
-  // --- Deterministic: setup ---
-  console.log("[1/5] Cloning repo and hydrating context...");
-  await cloneAndSetup();
+  const setupScript = `
+    git clone https://$GITHUB_TOKEN@github.com/my-org/my-repo.git /sandbox/repo
+    cd /sandbox/repo
+    git checkout -b agent/fix-issue-42 origin/main
 
-  // --- Agentic: implement (runtime: "agent") ---
-  console.log("[2/5] Agent implementing task...");
-  const implResult = await agentImplement(task);
+    cat > /sandbox/repo/AGENTS.md << 'EOF'
+# Project rules
+- Follow existing code style
+- No new runtime dependencies without approval
+- All new functions must have JSDoc comments
+- Tests live in tests/ — use pytest
+EOF
+  `;
+
+  // --- Agentic: implement (runtime: "agent") with context hydration via setupScript ---
+  console.log("[1/4] Agent implementing task...");
+  const implResult = await agentImplement(task, setupScript);
   if (implResult.exitCode !== 0) {
     console.warn("Agent step exited non-zero:", implResult.stderr);
   }
 
   // --- Deterministic: lint ---
-  console.log("[3/5] Running linters...");
+  console.log("[2/4] Running linters...");
   const lintResult = await runLint();
   if (lintResult.exitCode !== 0) {
-    // Let the agent fix lint issues
+    // Let the agent fix lint issues — repo is already in place, no setupScript needed
     await agentImplement("Fix the lint errors:\n" + lintResult.stderr);
     await runLint();
   }
 
   // --- Deterministic: test + iterate ---
   for (let round = 1; round <= MAX_CI_ROUNDS; round++) {
-    console.log(`[4/5] Running tests (round ${round}/${MAX_CI_ROUNDS})...`);
+    console.log(`[3/4] Running tests (round ${round}/${MAX_CI_ROUNDS})...`);
     const testResult = await runTests();
 
     if (testResult.exitCode === 0) {
@@ -313,7 +335,7 @@ async function runMinion(task: string) {
   }
 
   // --- Deterministic: commit and push ---
-  console.log("[5/5] Committing and pushing...");
+  console.log("[4/4] Committing and pushing...");
   await engine.execute({
     runtime: "bash",
     code: `
@@ -442,7 +464,9 @@ for await (const event of engine.executeStream({
 | Isolated environment (no production access) | `network: "filtered"` with allowlisted hosts |
 | Blueprint (deterministic + agentic nodes) | Orchestrator mixing `runtime: "bash"` steps with `runtime: "agent"` steps |
 | Agentic node (LLM implements/fixes) | `engine.execute({ runtime: "agent", code: prompt, agentFlags: ... })` |
-| Rule files (Cursor rules, AGENTS.md) | Files injected via `putFile()` — pi auto-loads `AGENTS.md` from cwd |
+| Context gathering (clone repo, gather docs) | `setupScript` on the agent execution — runs before pi receives the prompt |
+| Rule files (Cursor rules, AGENTS.md) | Written via `setupScript` or `putFile()` — pi auto-loads `AGENTS.md` from cwd |
+| Recurring devbox config (git identity, registries) | `prebuiltImages[].setupScript` — baked into the image, runs on every execution |
 | MCP tools (Toolshed) | `network: "filtered"` allowing agent to call external APIs |
 | Local lint loop (pre-push hooks) | Deterministic lint step with `runtime: "bash"` before push |
 | CI feedback loop (at most 2 rounds) | Test step looped with `MAX_CI_ROUNDS` + agent fix step |
@@ -494,13 +518,16 @@ const engine = new DockerIsol8({
 4. **Scope context tightly** — inject only relevant rule files and documentation as `AGENTS.md`. Don't dump your entire codebase.
 5. **Deterministic where possible** — lint, format, test, commit, and push are deterministic steps. Don't let the LLM do what a shell script can do better.
 6. **Use `secrets` for API keys** — never pass LLM credentials via per-request `env`; use `secrets` so they are masked in output.
-7. **Use setup scripts** — bake recurring setup (git config, SSH, tool configuration) into the custom image's `setupScript` so it runs automatically before the agent starts.
+7. **Use setup scripts for context hydration** — clone the repo, write `AGENTS.md`, and configure tools via `setupScript` on the agent execution. Use `prebuiltImages[].setupScript` for setup that never changes (git identity, registry auth); use per-request `setupScript` for task-specific setup (cloning the right branch, writing the task's rules).
 
 ## Related pages
 
 <CardGroup cols={2}>
   <Card title="Agent in a Box" icon="microchip-ai" href="/agent-in-a-box">
     Full reference for the agent runtime: flags, networking, file injection, and streaming.
+  </Card>
+  <Card title="Setup scripts" icon="scroll" href="/setup-scripts">
+    Full reference for setupScript: image-level vs request-level, execution order, and common patterns.
   </Card>
   <Card title="AI agent code execution" icon="robot" href="/guides/ai-agents">
     Foundational patterns for LLM tool-call loops with isol8.

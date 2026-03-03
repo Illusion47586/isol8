@@ -1,0 +1,299 @@
+---
+title: "Setup scripts"
+description: "Run shell commands before every execution — at image build time or per request — to install tools, configure git, clone repos, or prepare any environment state."
+icon: "scroll"
+---
+
+A **setup script** is a bash script that runs inside the sandbox container _before_ your main code executes. There are two independent levels:
+
+| Level | Declared in | When it runs | Persists? |
+|:---|:---|:---|:---|
+| **Image-level** | `prebuiltImages[].setupScript` in config | Baked into the Docker image; runs on every execution against that image | Yes — part of the image |
+| **Request-level** | `setupScript` in `ExecutionRequest` | Per execution call, on the live container | No — ephemeral by default |
+
+When both are present, the image-level script always runs first, then the request-level script.
+
+## Image-level setup scripts
+
+Declare `setupScript` inside a `prebuiltImages` entry to bake recurring setup into a custom Docker image. The script is written to `/sandbox/.isol8-setup.sh` inside the image and executed automatically before every execution against that image.
+
+Use this for setup that is constant across executions: git identity, SSH configuration, tool symlinks, shell aliases, or any one-time environment preparation.
+
+```json isol8.config.json
+{
+  "prebuiltImages": [
+    {
+      "tag": "my-org/python-devbox:latest",
+      "runtime": "python",
+      "installPackages": ["numpy", "pandas", "pytest", "ruff"],
+      "setupScript": "git config --global user.name 'agent' && git config --global user.email 'agent@ci.internal'"
+    }
+  ]
+}
+```
+
+Build the image (once, or on every deploy — isol8 skips unchanged images):
+
+```bash
+isol8 setup
+```
+
+Or pass the script inline when building from the CLI:
+
+```bash
+isol8 build \
+  --base python \
+  --install numpy pandas pytest ruff \
+  --setup "git config --global user.name 'agent' && git config --global user.email 'agent@ci.internal'" \
+  --tag my-org/python-devbox:latest
+```
+
+### Content-addressed caching
+
+isol8 hashes `runtime + packages + setupScript` to produce a deps hash stored as a Docker image label. If neither the packages nor the script has changed, `isol8 setup` skips the build entirely. Changing a single character in the script invalidates the hash and triggers a rebuild.
+
+```bash
+# Safe to call on every deploy — rebuilds only when content changes
+isol8 setup
+```
+
+### Multi-line scripts
+
+Supply a multi-line script using a JSON string with `\n`, or use a separate shell file with `--setup ./setup.sh` in the CLI:
+
+```json isol8.config.json
+{
+  "prebuiltImages": [
+    {
+      "tag": "my-org/node-devbox:latest",
+      "runtime": "node",
+      "installPackages": ["typescript", "eslint", "prettier"],
+      "setupScript": "git config --global user.name 'agent'\ngit config --global user.email 'agent@ci.internal'\ngit config --global core.autocrlf false\nnpm config set update-notifier false"
+    }
+  ]
+}
+```
+
+```bash
+# With the CLI, pass a path to a .sh file
+isol8 build \
+  --base node \
+  --install typescript eslint prettier \
+  --setup ./scripts/devbox-setup.sh \
+  --tag my-org/node-devbox:latest
+```
+
+## Request-level setup scripts
+
+Pass `setupScript` directly in an `ExecutionRequest` to run ad-hoc setup on the container before your code. This is useful for tasks that differ per execution: cloning a specific repo, writing config files, setting environment variables from secrets, or installing a package not in the base image.
+
+<Tabs>
+  <Tab title="Library">
+    ```typescript
+    import { DockerIsol8 } from "@isol8/core";
+
+    const engine = new DockerIsol8({ network: "filtered", networkFilter: { whitelist: ["^github\\.com$"], blacklist: [] } });
+    await engine.start();
+
+    const result = await engine.execute({
+      runtime: "python",
+      setupScript: `
+        git clone https://$GITHUB_TOKEN@github.com/my-org/my-repo.git /sandbox/repo
+        cd /sandbox/repo && git checkout main
+      `,
+      code: `
+        import subprocess
+        result = subprocess.run(["python", "-m", "pytest", "/sandbox/repo/tests/", "-q"], capture_output=True, text=True)
+        print(result.stdout)
+      `,
+      env: { GITHUB_TOKEN: process.env.GITHUB_TOKEN! },
+      timeoutMs: 120_000,
+    });
+
+    await engine.stop();
+    ```
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    isol8 run \
+      --runtime python \
+      --setup "git clone https://$GITHUB_TOKEN@github.com/my-org/my-repo.git /sandbox/repo" \
+      -e "import subprocess; subprocess.run(['python', '-m', 'pytest', '/sandbox/repo/tests/', '-q'])" \
+      --net filtered \
+      --allow "github.com"
+    ```
+  </Tab>
+  <Tab title="API">
+    ```bash
+    curl -X POST http://localhost:3000/execute \
+      -H "Authorization: Bearer $ISOL8_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "request": {
+          "runtime": "python",
+          "setupScript": "git clone https://$GITHUB_TOKEN@github.com/my-org/my-repo.git /sandbox/repo",
+          "code": "import subprocess; subprocess.run([\"python\", \"-m\", \"pytest\", \"/sandbox/repo/tests/\", \"-q\"])",
+          "env": { "GITHUB_TOKEN": "ghp_..." }
+        }
+      }'
+    ```
+  </Tab>
+</Tabs>
+
+## Execution environment
+
+Both image-level and request-level scripts run with the same constraints:
+
+- **User**: `sandbox` (uid 100, non-root)
+- **Working directory**: `/sandbox`
+- **Shell**: `bash`
+- **Timeout**: subject to the same `timeoutMs` as the full execution request
+- **Exit code**: a non-zero exit from the setup script aborts the execution and throws `Setup script failed (exit code N): <stderr>`
+- **Secrets**: values from the engine's `secrets` option are available as environment variables and are automatically masked in stdout/stderr
+
+## Execution order
+
+When both levels are set, the order is deterministic:
+
+```
+1. Image-level setup script   (from prebuiltImages[].setupScript, baked into image)
+2. Request-level setup script (from ExecutionRequest.setupScript, per-call)
+3. Main code / agent prompt
+```
+
+## Common patterns
+
+### Git identity for agent runs
+
+Bake git identity into the image so every agent step can commit without extra setup:
+
+```json
+{
+  "setupScript": "git config --global user.name 'isol8-agent' && git config --global user.email 'agent@ci.internal' && git config --global core.autocrlf false"
+}
+```
+
+### Clone a private repo before execution
+
+Use a request-level script to clone a specific branch per task:
+
+```typescript
+await engine.execute({
+  runtime: "bash",
+  setupScript: `
+    git clone https://$GITHUB_TOKEN@github.com/my-org/my-repo.git /sandbox/repo
+    cd /sandbox/repo
+    git checkout -b agent/task-${taskId} origin/main
+  `,
+  code: "echo 'repo ready'",
+});
+```
+
+### Configure package registries
+
+Point npm or pip to a private registry for every execution against a custom image:
+
+```json
+{
+  "setupScript": "npm config set registry https://npm.my-org.internal && pip config set global.index-url https://pypi.my-org.internal/simple"
+}
+```
+
+### Install a non-standard tool
+
+Use a request-level script to install a tool that isn't in the base image:
+
+```typescript
+await engine.execute({
+  runtime: "bash",
+  setupScript: "curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg && echo 'deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main' | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null && sudo apt update && sudo apt install gh -y",
+  code: "gh --version",
+});
+```
+
+<Tip>
+  For tools needed on every run, always prefer baking them into a custom image via `prebuiltImages[].setupScript` or `installPackages`. Request-level installs run on every call and add latency.
+</Tip>
+
+### Write config files before agent runs
+
+Inject `.npmrc`, `.gitconfig`, or other config files before the agent starts:
+
+```typescript
+await engine.execute({
+  runtime: "agent",
+  setupScript: `
+    cat > /sandbox/.npmrc << 'EOF'
+registry=https://registry.npmjs.org/
+//registry.npmjs.org/:_authToken=$NPM_TOKEN
+EOF
+  `,
+  code: "Add unit tests for the auth module",
+  agentFlags: "--model anthropic/claude-sonnet-4-5",
+});
+```
+
+### Warm up a persistent session
+
+In persistent mode, run setup once at the start of the session rather than on every request:
+
+```typescript
+const engine = new DockerIsol8({ mode: "persistent", network: "filtered", networkFilter: { whitelist: ["^github\\.com$", "^api\\.anthropic\\.com$"], blacklist: [] } });
+await engine.start();
+
+// One-time setup at session start
+await engine.execute({
+  runtime: "bash",
+  setupScript: `
+    git clone https://$GITHUB_TOKEN@github.com/my-org/my-repo.git /sandbox/repo
+    cd /sandbox/repo && git checkout -b agent/fix-issue origin/main
+    npm ci
+  `,
+  code: "echo 'workspace ready'",
+  env: { GITHUB_TOKEN: process.env.GITHUB_TOKEN! },
+});
+
+// Subsequent calls reuse the prepared workspace
+await engine.execute({ runtime: "agent", code: "Fix the type errors in src/parser.ts" });
+await engine.execute({ runtime: "bash", code: "cd /sandbox/repo && npx tsc --noEmit" });
+
+await engine.stop();
+```
+
+## Error handling
+
+If the setup script exits non-zero, isol8 throws before running your code:
+
+```
+Error: Setup script failed (exit code 1): fatal: repository 'https://github.com/my-org/private-repo.git/' not found
+```
+
+Always check that secrets (tokens, passwords) are available before running scripts that depend on them:
+
+```typescript
+await engine.execute({
+  runtime: "bash",
+  setupScript: `
+    : "${GITHUB_TOKEN:?GITHUB_TOKEN is required}"
+    git clone https://$GITHUB_TOKEN@github.com/my-org/my-repo.git /sandbox/repo
+  `,
+  code: "ls /sandbox/repo",
+});
+```
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Custom images" icon="box" href="/packages">
+    Bake packages and setup scripts into reusable Docker images with prebuiltImages.
+  </Card>
+  <Card title="Persistent execution" icon="layer-group" href="/guides/persistent-execution">
+    Reuse a single container across multiple execute() calls to preserve workspace state.
+  </Card>
+  <Card title="Agent in a Box" icon="microchip-ai" href="/agent-in-a-box">
+    Run the pi coding agent inside isol8 — setup scripts prepare the workspace before the agent starts.
+  </Card>
+  <Card title="One-shot coding agents" icon="wand-magic-sparkles" href="/guides/one-shot-coding-agents">
+    End-to-end blueprint: clone repo, implement, lint, test, create PR — setup scripts handle context hydration.
+  </Card>
+</CardGroup>

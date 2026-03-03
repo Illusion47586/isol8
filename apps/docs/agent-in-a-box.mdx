@@ -181,6 +181,122 @@ Use `files` in `ExecutionRequest` (library/API) or `--files <dir>` (CLI) to inje
   pi automatically loads `AGENTS.md` (and `CLAUDE.md`) from the working directory at startup. Injecting your project rules as `/sandbox/AGENTS.md` gives the agent project-specific context without touching the prompt.
 </Tip>
 
+## Setup scripts
+
+A `setupScript` runs as a bash script inside the container **before** pi receives its prompt. Use it to clone repos, write config files, install tools, or prepare any state the agent needs. The script runs as the `sandbox` user from `/sandbox`.
+
+### Clone a repo before the agent starts
+
+The most common pattern: clone the target repo so pi finds it ready on the filesystem.
+
+```typescript
+const result = await engine.execute({
+  runtime: "agent",
+  setupScript: `
+    git clone https://$GITHUB_TOKEN@github.com/my-org/my-repo.git /sandbox/repo
+    cd /sandbox/repo && git checkout -b agent/fix origin/main
+  `,
+  code: "Fix the failing TypeScript type errors in src/parser.ts. Write tests for any functions you change.",
+  agentFlags: "--model anthropic/claude-sonnet-4-5",
+  timeoutMs: 300_000,
+});
+```
+
+### Inject `.npmrc` or `.gitconfig` before the agent runs
+
+The agent may need authenticated access to npm or private git remotes. Write config files via the setup script so credentials are in place before pi starts:
+
+```typescript
+await engine.execute({
+  runtime: "agent",
+  setupScript: `
+    # Authenticate npm to private registry
+    cat > /sandbox/.npmrc << 'EOF'
+registry=https://registry.npmjs.org/
+//registry.npmjs.org/:_authToken=$NPM_TOKEN
+EOF
+
+    # Configure git identity for commits
+    git config --global user.name "isol8-agent"
+    git config --global user.email "agent@ci.internal"
+
+    # Clone the target repo
+    git clone https://$GITHUB_TOKEN@github.com/my-org/my-repo.git /sandbox/repo
+    cd /sandbox/repo && npm ci
+  `,
+  code: "Add end-to-end tests for the checkout flow. Use the existing test patterns in tests/e2e/.",
+  agentFlags: "--model anthropic/claude-sonnet-4-5 --thinking low",
+  timeoutMs: 600_000,
+});
+```
+
+### Inject AGENTS.md via setup script
+
+pi auto-loads `AGENTS.md` from its working directory. Write project rules via the setup script to give the agent context without touching the prompt:
+
+```typescript
+await engine.execute({
+  runtime: "agent",
+  setupScript: `
+    git clone https://$GITHUB_TOKEN@github.com/my-org/my-repo.git /sandbox/repo
+
+    # Write project rules — pi picks these up automatically
+    cat > /sandbox/repo/AGENTS.md << 'EOF'
+# Coding rules
+- Follow existing code style
+- No new runtime dependencies without approval
+- All new functions must have JSDoc comments
+- Tests live in tests/ — use vitest
+EOF
+  `,
+  code: "Refactor the authentication module to use async/await throughout.",
+  agentFlags: "--model anthropic/claude-sonnet-4-5",
+  timeoutMs: 300_000,
+});
+```
+
+### Bake setup into a custom image
+
+For setup that never changes between runs (git identity, tool config, registry auth), bake it into a custom image using `prebuiltImages[].setupScript` in your config. The script runs on every execution against that image without adding per-request latency:
+
+```json isol8.config.json
+{
+  "prebuiltImages": [
+    {
+      "tag": "my-org/node-devbox:latest",
+      "runtime": "node",
+      "installPackages": ["typescript", "eslint", "prettier", "vitest"],
+      "setupScript": "git config --global user.name 'isol8-agent' && git config --global user.email 'agent@ci.internal' && git config --global core.autocrlf false && npm config set update-notifier false"
+    }
+  ]
+}
+```
+
+Then your execution only needs the per-run parts:
+
+```typescript
+const engine = new DockerIsol8({
+  image: "my-org/node-devbox:latest",
+  network: "filtered",
+  networkFilter: { whitelist: ["^api\\.anthropic\\.com$", "^github\\.com$"], blacklist: [] },
+});
+
+await engine.start();
+
+await engine.execute({
+  runtime: "agent",
+  // Image-level script already ran git config — only clone is needed here
+  setupScript: "git clone https://$GITHUB_TOKEN@github.com/my-org/my-repo.git /sandbox/repo",
+  code: "Add unit tests for the UserService class.",
+  agentFlags: "--model anthropic/claude-sonnet-4-5 --thinking low",
+  timeoutMs: 300_000,
+});
+```
+
+<Tip>
+  When both image-level and request-level `setupScript` are set, the image-level script always runs first. See [Setup scripts](/setup-scripts) for the full reference.
+</Tip>
+
 ## Persistent sessions
 
 Use `mode: "persistent"` to run multiple steps in the same container — for example, cloning a repo with bash and then running the agent against it:
@@ -298,6 +414,9 @@ const engine = new DockerIsol8({
 <CardGroup cols={2}>
   <Card title="One-shot coding agents" icon="wand-magic-sparkles" href="/guides/one-shot-coding-agents">
     End-to-end blueprint: clone repo, implement, lint, test, create PR — using the agent runtime.
+  </Card>
+  <Card title="Setup scripts" icon="scroll" href="/setup-scripts">
+    Full reference for setupScript: image-level vs request-level, execution order, error handling.
   </Card>
   <Card title="AI agent code execution" icon="robot" href="/guides/ai-agents">
     Foundational patterns for LLM tool-call loops with isol8.
