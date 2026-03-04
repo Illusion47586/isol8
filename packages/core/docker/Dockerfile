@@ -1,6 +1,6 @@
 # ── Base ──────────────────────────────────────────────────────────────
 FROM alpine:3.21 AS base
-RUN apk add --no-cache tini curl ca-certificates iptables bash git \
+RUN apk add --no-cache tini curl ca-certificates iptables bash git github-cli \
     && addgroup -S sandbox && adduser -S sandbox -G sandbox -h /sandbox
 COPY proxy.sh /usr/local/bin/proxy.sh
 COPY proxy-handler.sh /usr/local/bin/proxy-handler.sh

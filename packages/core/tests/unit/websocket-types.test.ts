@@ -169,6 +169,60 @@ describe("WsServerMessage", () => {
   });
 });
 
+describe("StreamEvent phase field", () => {
+  test("phase is optional — events without phase are valid", () => {
+    const event: StreamEvent = { type: "stdout", data: "hello\n" };
+    expect(event.phase).toBeUndefined();
+  });
+
+  test("phase: 'setup' marks setup script output", () => {
+    const events: StreamEvent[] = [
+      { type: "stdout", data: "cloning repo...\n", phase: "setup" },
+      { type: "stderr", data: "warning: detached HEAD\n", phase: "setup" },
+      { type: "exit", data: "0", phase: "setup" },
+    ];
+
+    for (const e of events) {
+      expect(e.phase).toBe("setup");
+    }
+  });
+
+  test("phase: 'code' marks main code output", () => {
+    const events: StreamEvent[] = [
+      { type: "stdout", data: "hello world\n", phase: "code" },
+      { type: "stderr", data: "some warning\n", phase: "code" },
+      { type: "exit", data: "0", phase: "code" },
+    ];
+
+    for (const e of events) {
+      expect(e.phase).toBe("code");
+    }
+  });
+
+  test("error event during setup carries phase: 'setup'", () => {
+    const event: StreamEvent = {
+      type: "error",
+      data: "Setup script failed (exit code 1)",
+      phase: "setup",
+    };
+    expect(event.type).toBe("error");
+    expect(event.phase).toBe("setup");
+  });
+
+  test("JSON round-trip preserves phase field", () => {
+    const original: StreamEvent = { type: "stdout", data: "output\n", phase: "setup" };
+    const parsed = JSON.parse(JSON.stringify(original)) as StreamEvent;
+    expect(parsed).toEqual(original);
+    expect(parsed.phase).toBe("setup");
+  });
+
+  test("JSON round-trip — phase absent when not set", () => {
+    const original: StreamEvent = { type: "stdout", data: "output\n" };
+    const parsed = JSON.parse(JSON.stringify(original)) as StreamEvent;
+    expect(parsed.phase).toBeUndefined();
+  });
+});
+
 describe("WebSocket message parsing (simulated server logic)", () => {
   test("valid JSON parses as WsClientMessage", () => {
     const raw = JSON.stringify({

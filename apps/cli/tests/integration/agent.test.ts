@@ -10,7 +10,7 @@ import { hasDocker } from "./setup";
  * we test:
  * - The pi binary is accessible and runnable
  * - The container has required tools (bun, git, bash)
- * - The agent validation logic (filtered network + whitelist required)
+ * - The agent validation logic (network access required; host or filtered with whitelist)
  * - Command construction and flag passing
  * - File injection via the files option
  */
@@ -33,7 +33,7 @@ describe("Integration: Agent Runtime", () => {
         code: "Write hello world",
         runtime: "agent",
       })
-    ).rejects.toThrow('Agent runtime requires network mode "filtered"');
+    ).rejects.toThrow("Agent runtime requires network access.");
   }, 30_000);
 
   test("Agent runtime rejects filtered network without whitelist", async () => {

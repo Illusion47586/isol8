@@ -336,6 +336,34 @@ Real-time output is essential for long-running tasks or LLM code generation.
   When using `RemoteIsol8`, `executeStream()` automatically selects the best available transport: WebSocket (`/execute/ws`) with automatic SSE (`/execute/stream`) fallback. See the [WebSocket endpoint reference](/server/get-execute-ws) for protocol details.
 </Info>
 
+### StreamEvent reference
+
+Each value yielded by `executeStream` is a `StreamEvent`:
+
+| Field | Type | Description |
+|:---|:---|:---|
+| `type` | `"stdout" \| "stderr" \| "exit" \| "error"` | Event kind. `exit` carries the process exit code as a string in `data`. |
+| `data` | `string` | Payload: output text for stdout/stderr, exit code string for exit, error message for error. |
+| `phase` | `"setup" \| "code"` | Which stage produced the event. `"setup"` = from a `setupScript`; `"code"` = from the main code/command. Always set by isol8. |
+
+Use `phase` to distinguish `setupScript` output from main code output when both are present:
+
+```typescript
+for await (const event of engine.executeStream({
+  runtime: "bash",
+  setupScript: "git clone https://$GITHUB_TOKEN@github.com/my-org/repo.git /sandbox/repo",
+  code: "ls /sandbox/repo",
+})) {
+  if (event.phase === "setup") {
+    process.stderr.write(`[setup] ${event.data}`);
+  } else if (event.type === "stdout") {
+    process.stdout.write(event.data);
+  }
+}
+```
+
+If a `setupScript` exits non-zero, `executeStream` yields an `error` event then an `exit` event (both with `phase: "setup"`) and stops — no `phase: "code"` events follow. See [Setup scripts](/setup-scripts#error-handling) for full details.
+
 ## Resource Limits & Safety
 
 isol8 enforces strict limits to contain untrusted code.
@@ -409,6 +437,9 @@ isol8 run -e "print('my-secret-value')" --secret KEY=my-secret-value
   </Card>
   <Card title="Runtime reference" icon="square-terminal" href="/runtimes">
     Runtime-specific behavior, extensions, and package semantics.
+  </Card>
+  <Card title="Setup scripts" icon="scroll" href="/setup-scripts">
+    Run shell commands before execution — streaming output, phase events, and early-exit on failure.
   </Card>
   <Card title="Remote code URLs" icon="link" href="/remote-code">
     URL-based source fetching policy and integrity controls.

@@ -133,12 +133,12 @@ export class ExecutionManager {
     });
   }
 
-  async runSetupScript(
+  async *runSetupScript(
     container: Docker.Container,
     script: string,
     timeoutMs: number,
     volumeManager: VolumeManager
-  ): Promise<void> {
+  ): AsyncGenerator<StreamEvent> {
     const scriptPath = "/sandbox/.isol8-setup.sh";
     await volumeManager.writeFileViaExec(container, scriptPath, script);
 
@@ -173,39 +173,76 @@ export class ExecutionManager {
 
     const stream = await exec.start({ Detach: false, Tty: false });
 
-    return new Promise<void>((resolve, reject) => {
-      let stderr = "";
-      const stdoutStream = new PassThrough();
-      const stderrStream = new PassThrough();
+    const queue: StreamEvent[] = [];
+    let notify: (() => void) | null = null;
+    let done = false;
 
-      container.modem.demuxStream(stream, stdoutStream, stderrStream);
+    const push = (event: StreamEvent) => {
+      queue.push(event);
+      if (notify) {
+        notify();
+        notify = null;
+      }
+    };
 
-      stderrStream.on("data", (chunk) => {
-        const text = chunk.toString();
-        stderr += text;
-        logger.debug(`[setup:stderr] ${text.trimEnd()}`);
-      });
+    const timer = setTimeout(() => {
+      push({ type: "error", data: "SETUP SCRIPT TIMED OUT", phase: "setup" });
+      push({ type: "exit", data: "137", phase: "setup" });
+      done = true;
+    }, timeoutMs);
 
-      stdoutStream.on("data", (chunk) => {
-        const text = chunk.toString();
-        logger.debug(`[setup:stdout] ${text.trimEnd()}`);
-      });
+    const stdoutStream = new PassThrough();
+    const stderrStream = new PassThrough();
 
-      stream.on("end", async () => {
-        try {
-          const info = await exec.inspect();
-          if (info.ExitCode !== 0) {
-            reject(new Error(`Setup script failed (exit code ${info.ExitCode}): ${stderr}`));
-          } else {
-            resolve();
-          }
-        } catch (err) {
-          reject(err);
-        }
-      });
+    container.modem.demuxStream(stream, stdoutStream, stderrStream);
 
-      stream.on("error", reject);
+    stdoutStream.on("data", (chunk: Buffer) => {
+      const text = chunk.toString("utf-8");
+      logger.debug(`[setup:stdout] ${text.trimEnd()}`);
+      push({ type: "stdout", data: text, phase: "setup" });
     });
+
+    stderrStream.on("data", (chunk: Buffer) => {
+      const text = chunk.toString("utf-8");
+      logger.debug(`[setup:stderr] ${text.trimEnd()}`);
+      push({ type: "stderr", data: text, phase: "setup" });
+    });
+
+    stream.on("end", async () => {
+      clearTimeout(timer);
+      try {
+        const info = await exec.inspect();
+        const exitCode = info.ExitCode ?? 0;
+        if (exitCode !== 0) {
+          push({
+            type: "error",
+            data: `Setup script failed (exit code ${exitCode})`,
+            phase: "setup",
+          });
+        }
+        push({ type: "exit", data: exitCode.toString(), phase: "setup" });
+      } catch {
+        push({ type: "exit", data: "1", phase: "setup" });
+      }
+      done = true;
+    });
+
+    stream.on("error", (err: Error) => {
+      clearTimeout(timer);
+      push({ type: "error", data: err.message, phase: "setup" });
+      push({ type: "exit", data: "1", phase: "setup" });
+      done = true;
+    });
+
+    while (!done || queue.length > 0) {
+      if (queue.length > 0) {
+        yield queue.shift()!;
+      } else {
+        await new Promise<void>((r) => {
+          notify = r;
+        });
+      }
+    }
   }
 
   async *streamExecOutput(
@@ -227,8 +264,8 @@ export class ExecutionManager {
     };
 
     const timer = setTimeout(() => {
-      push({ type: "error", data: "EXECUTION TIMED OUT" });
-      push({ type: "exit", data: "137" });
+      push({ type: "error", data: "EXECUTION TIMED OUT", phase: "code" });
+      push({ type: "exit", data: "137", phase: "code" });
       done = true;
     }, timeoutMs);
 
@@ -242,7 +279,7 @@ export class ExecutionManager {
       if (Object.keys(this.secrets).length > 0) {
         text = maskSecrets(text, this.secrets);
       }
-      push({ type: "stdout", data: text });
+      push({ type: "stdout", data: text, phase: "code" });
     });
 
     stderrStream.on("data", (chunk: Buffer) => {
@@ -250,24 +287,24 @@ export class ExecutionManager {
       if (Object.keys(this.secrets).length > 0) {
         text = maskSecrets(text, this.secrets);
       }
-      push({ type: "stderr", data: text });
+      push({ type: "stderr", data: text, phase: "code" });
     });
 
     stream.on("end", async () => {
       clearTimeout(timer);
       try {
         const info = await exec.inspect();
-        push({ type: "exit", data: (info.ExitCode ?? 0).toString() });
+        push({ type: "exit", data: (info.ExitCode ?? 0).toString(), phase: "code" });
       } catch {
-        push({ type: "exit", data: "1" });
+        push({ type: "exit", data: "1", phase: "code" });
       }
       done = true;
     });
 
     stream.on("error", (err: Error) => {
       clearTimeout(timer);
-      push({ type: "error", data: err.message });
-      push({ type: "exit", data: "1" });
+      push({ type: "error", data: err.message, phase: "code" });
+      push({ type: "exit", data: "1", phase: "code" });
       done = true;
     });
 

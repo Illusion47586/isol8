@@ -324,11 +324,32 @@ export async function createServer(options: ServerOptions) {
       poolSize: config.poolSize,
       remoteCode: config.remoteCode,
       ...requestOptions,
-      mode: "ephemeral",
+      mode: body.sessionId ? "persistent" : "ephemeral",
+      audit: config.audit,
     };
 
-    const engine = new DockerIsol8(engineOptions, config.maxConcurrent);
-    await engine.start();
+    let engine: DockerIsol8;
+    let isSessionEngine = false;
+
+    if (body.sessionId) {
+      const session = sessions.get(body.sessionId);
+      if (session) {
+        logger.debug(`[Server] Reusing existing session for stream: ${body.sessionId}`);
+        engine = session.engine;
+        session.lastAccessedAt = Date.now();
+        session.isActive = true;
+      } else {
+        logger.debug(`[Server] Creating new session for stream: ${body.sessionId}`);
+        engine = new DockerIsol8(engineOptions, config.maxConcurrent);
+        await engine.start();
+        sessions.set(body.sessionId, { engine, lastAccessedAt: Date.now(), isActive: true });
+      }
+      isSessionEngine = true;
+    } else {
+      logger.debug("[Server] Creating ephemeral engine for stream");
+      engine = new DockerIsol8(engineOptions, config.maxConcurrent);
+      await engine.start();
+    }
 
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
@@ -351,8 +372,16 @@ export async function createServer(options: ServerOptions) {
           const errorEvent = `data: ${JSON.stringify({ type: "error", data: message })}\n\n`;
           controller.enqueue(encoder.encode(errorEvent));
         } finally {
-          logger.debug("[Server] Cleaning up stream engine");
-          await engine.stop();
+          if (isSessionEngine && body.sessionId) {
+            const session = sessions.get(body.sessionId);
+            if (session) {
+              session.isActive = false;
+              session.lastAccessedAt = Date.now();
+            }
+          } else {
+            logger.debug("[Server] Cleaning up ephemeral stream engine");
+            await engine.stop();
+          }
           controller.close();
         }
       },
@@ -431,13 +460,33 @@ export async function createServer(options: ServerOptions) {
             poolSize: config.poolSize,
             remoteCode: config.remoteCode,
             ...requestOptions,
-            mode: "ephemeral",
+            mode: msg.sessionId ? "persistent" : "ephemeral",
+            audit: config.audit,
           };
 
-          const engine = new DockerIsol8(engineOptions, config.maxConcurrent);
+          let engine: DockerIsol8;
+          let isSessionEngine = false;
+
+          if (msg.sessionId) {
+            const session = sessions.get(msg.sessionId);
+            if (session) {
+              logger.debug(`[Server] WebSocket reusing existing session: ${msg.sessionId}`);
+              engine = session.engine;
+              session.lastAccessedAt = Date.now();
+              session.isActive = true;
+            } else {
+              logger.debug(`[Server] WebSocket creating new session: ${msg.sessionId}`);
+              engine = new DockerIsol8(engineOptions, config.maxConcurrent);
+              await engine.start();
+              sessions.set(msg.sessionId, { engine, lastAccessedAt: Date.now(), isActive: true });
+            }
+            isSessionEngine = true;
+          } else {
+            engine = new DockerIsol8(engineOptions, config.maxConcurrent);
+            await engine.start();
+          }
 
           try {
-            await engine.start();
             logger.debug("[Server] WebSocket: acquiring semaphore");
             await globalSemaphore.acquire();
             try {
@@ -453,8 +502,16 @@ export async function createServer(options: ServerOptions) {
             logger.debug(`[Server] WebSocket stream error: ${message}`);
             ws.send(JSON.stringify({ type: "error", data: message }));
           } finally {
-            logger.debug("[Server] WebSocket: cleaning up engine");
-            await engine.stop();
+            if (isSessionEngine && msg.sessionId) {
+              const session = sessions.get(msg.sessionId);
+              if (session) {
+                session.isActive = false;
+                session.lastAccessedAt = Date.now();
+              }
+            } else {
+              logger.debug("[Server] WebSocket: cleaning up ephemeral engine");
+              await engine.stop();
+            }
             ws.close(1000, "Execution complete");
           }
         },

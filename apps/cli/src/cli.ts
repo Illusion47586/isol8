@@ -284,6 +284,10 @@ program
   .description("Execute code in isol8")
   .argument("[file]", "Script file to execute")
   .option("-e, --eval <code>", "Execute inline code string")
+  .option(
+    "--cmd <command>",
+    "Run bash command(s) in the sandbox (mutually exclusive with code input)"
+  )
   .option("-r, --runtime <name>", "Force runtime (python, node, bun, deno, bash)")
   .option("--net <mode>", "Network mode: none, host, filtered", "none")
   .option("--allow <regex>", "Whitelist regex for filtered mode (repeatable)", collect, [])
@@ -331,6 +335,7 @@ program
   .action(async (file: string | undefined, opts) => {
     const {
       code,
+      cmd,
       codeUrl,
       codeHash,
       allowInsecureCodeUrl,
@@ -346,9 +351,14 @@ program
     logger.debug(`[Run] Runtime: ${runtime}, mode: ${engineOptions.mode}`);
     logger.debug(`[Run] Network: ${engineOptions.network}, timeout: ${engineOptions.timeoutMs}ms`);
     logger.debug(`[Run] Memory: ${engineOptions.memoryLimit}, CPU: ${engineOptions.cpuLimit}`);
-    logger.debug(`[Run] Code source: ${codeUrl ? `url=${codeUrl}` : "inline/file/stdin"}`);
+    logger.debug(
+      `[Run] Code source: ${codeUrl ? `url=${codeUrl}` : cmd ? "cmd" : "inline/file/stdin"}`
+    );
     if (code) {
       logger.debug(`[Run] Code length: ${code.length} chars`);
+    }
+    if (cmd) {
+      logger.debug(`[Run] Cmd: ${cmd}`);
     }
     if (stdinData) {
       logger.debug(`[Run] Stdin data provided (${stdinData.length} chars)`);
@@ -393,6 +403,7 @@ program
         runtime,
         timeoutMs: engineOptions.timeoutMs,
         ...(code ? { code } : {}),
+        ...(cmd ? { cmd } : {}),
         ...(codeUrl ? { codeUrl } : {}),
         ...(codeHash ? { codeHash } : {}),
         ...(allowInsecureCodeUrl ? { allowInsecureCodeUrl } : {}),
@@ -1376,12 +1387,23 @@ async function resolveRunInput(file: string | undefined, opts: any) {
   const hasExplicitNetFlag = process.argv.some((arg) => arg === "--net");
 
   let code: string | undefined;
+  let cmd: string | undefined;
   let codeUrl: string | undefined;
   let codeHash: string | undefined;
   let allowInsecureCodeUrl = false;
   let runtime: Runtime;
 
-  if (opts.url || opts.github || opts.gist) {
+  if (opts.cmd) {
+    if (file || opts.eval || opts.url || opts.github || opts.gist) {
+      console.error(
+        "[ERR] --cmd cannot be combined with file input, --eval, --url, --github, or --gist."
+      );
+      process.exit(1);
+    }
+    cmd = opts.cmd;
+    runtime = (opts.runtime ?? "bash") as Runtime;
+    logger.debug(`[Run] cmd mode, runtime: ${runtime}`);
+  } else if (opts.url || opts.github || opts.gist) {
     if (file || opts.eval) {
       console.error("[ERR] --url/--github/--gist cannot be used with file input or --eval.");
       process.exit(1);
@@ -1546,6 +1568,7 @@ async function resolveRunInput(file: string | undefined, opts: any) {
 
   return {
     code,
+    cmd,
     codeUrl,
     codeHash,
     allowInsecureCodeUrl,
