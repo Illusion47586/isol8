@@ -1,589 +1,445 @@
 ---
 title: "One-shot coding agents"
-description: "Build unattended, one-shot coding agents — like Stripe's Minions — using isol8 custom images as isolated developer environments."
+description: "Build your own Stripe Minions — unattended coding agents that clone a repo, implement a task, verify the result, and open a PR — with no human in the loop."
 icon: "wand-magic-sparkles"
 ---
 
-Stripe's [Minions](https://stripe.dev/blog/minions-stripes-one-shot-end-to-end-coding-agents) are unattended coding agents that one-shot tasks end to end: a developer kicks one off, and it produces a complete pull request with no human code — only human review. Over 1,300 PRs merge at Stripe each week this way.
+Stripe's [Minions](https://stripe.dev/blog/minions-stripes-one-shot-end-to-end-coding-agents) are unattended coding agents that one-shot tasks end to end: a developer kicks one off, and it produces a complete pull request with no human in the loop. Over 1,300 PRs merge at Stripe each week this way.
 
-The architecture behind Minions has three pillars:
+This guide shows you how to build the same thing with isol8 — the architecture, each pipeline stage, and the patterns that make one-shot agents reliable.
 
-1. **Isolated, pre-warmed developer environments** — each agent run gets its own sandbox with tools, repos, and dependencies ready to go.
-2. **A blueprint-driven agent loop** — deterministic steps (lint, test, push) interleaved with agentic LLM steps (implement, fix failures).
-3. **Context hydration** — rule files, MCP tools, and documentation injected before the agent starts.
+## Architecture
 
-isol8 gives you pillar 1 out of the box, and the building blocks to wire up pillars 2 and 3. This guide walks through the full setup using **custom images** as your pre-warmed devboxes and the **`agent` runtime** as your agentic step.
+A one-shot coding agent system has three layers: a **client** that submits tasks, an **orchestrator** that sequences steps, and an **isol8 container** where all code and agent work happens.
 
-## Architecture overview
+The client can be anything — a GitHub bot reacting to issue labels, a Slack bot responding to commands, a web UI with a task form, or a CLI script. It simply sends a task description to the orchestrator and optionally consumes progress events.
 
-{/* prettier-ignore */}
 ```mermaid
 flowchart TD
-  A["Task input (Slack, ticket, CLI)"] --> B["Orchestrator"]
-  B --> C["Build / select custom image"]
-  C --> D["isol8 persistent session"]
-  D --> E["Setup: clone repo, hydrate context"]
-  E --> F["Agent step: runtime='agent', code=prompt"]
-  F --> G{{"Lint locally"}}
-  G -->|Fail| F
-  G -->|Pass| H["Push + run CI"]
-  H --> I{{"CI passes?"}}
-  I -->|Fail round 1| J["Agent step: fix CI failures"]
-  J --> H
-  I -->|Pass or round 2| K["Create PR for human review"]
+  Client["Client — GitHub bot / Slack bot / Web UI / CLI"]
+  Orchestrator["Orchestrator — sequences steps, handles retries"]
+  Container["isol8 container — persistent mode, shared filesystem"]
+
+  Client -->|"submit task"| Orchestrator
+  Orchestrator -->|"execute steps"| Container
+  Container -->|"stdout / stderr / exit code"| Orchestrator
+  Orchestrator -->|"progress events + PR link"| Client
 ```
 
-## Step 1: Build a custom devbox image
+The orchestrator is the core of the system. It creates a single persistent isol8 container and runs a pipeline of steps inside it:
 
-Stripe pre-warms EC2 "devboxes" with repos, caches, and tools. With isol8, **custom images** serve the same purpose — a Docker image with your project's dependencies baked in so every agent run starts instantly.
+```mermaid
+flowchart TD
+  Setup["Setup — clone repo, install deps"]
+  Implement["Implement — agent writes code"]
+  Verify["Verify — lint + build"]
+  Fix["Fix loop — agent fixes errors"]
+  Ship["Ship — commit + open PR"]
 
-### CLI approach
-
-```bash
-# Build a Python data-science devbox
-isol8 build \
-  --base python \
-  --install numpy pandas scikit-learn pytest black ruff \
-  --setup "git config --global user.name 'agent' && git config --global user.email 'agent@ci'" \
-  --tag my-org/python-devbox:latest
-
-# Build a Node.js fullstack devbox
-isol8 build \
-  --base node \
-  --install typescript eslint prettier jest \
-  --tag my-org/node-devbox:latest
+  Setup --> Implement --> Verify --> Fix --> Ship
+  Fix -->|"still failing"| Fix
 ```
 
-The `--setup` flag bakes a shell script into the image that runs before every execution — use it for git config, SSH keys, tool setup, or anything your agent needs before it starts coding.
+Every step runs inside the **same container**. The filesystem state built up during setup (`/sandbox/repo`) persists through implement, verify, fix, and ship.
 
-### Config approach (recommended for servers)
+## The container: one persistent session per task
 
-Define `prebuiltImages` in `isol8.config.json` so images are built automatically when the server starts or when you run `isol8 setup`:
-
-```json
-{
-  "$schema": "https://raw.githubusercontent.com/Illusion47586/isol8/main/packages/core/schema/isol8.config.schema.json",
-  "maxConcurrent": 20,
-  "prebuiltImages": [
-    {
-      "tag": "my-org/python-devbox:latest",
-      "runtime": "python",
-      "installPackages": ["numpy", "pandas", "scikit-learn", "pytest", "black", "ruff"],
-      "setupScript": "git config --global user.name 'agent' && git config --global user.email 'agent@ci'"
-    },
-    {
-      "tag": "my-org/node-devbox:latest",
-      "runtime": "node",
-      "installPackages": ["typescript", "eslint", "prettier", "jest"]
-    }
-  ],
-  "defaults": {
-    "timeoutMs": 300000,
-    "memoryLimit": "2g",
-    "network": "filtered"
-  },
-  "network": {
-    "whitelist": [
-      "^api\\.anthropic\\.com$",
-      "^github\\.com$",
-      "^api\\.github\\.com$",
-      "^registry\\.npmjs\\.org$",
-      "^pypi\\.org$"
-    ],
-    "blacklist": ["^169\\.254\\."]
-  },
-  "cleanup": {
-    "autoPrune": true,
-    "maxContainerAgeMs": 7200000
-  },
-  "poolStrategy": "fast",
-  "poolSize": { "clean": 5, "dirty": 5 }
-}
-```
-
-Then build everything:
-
-```bash
-isol8 setup
-```
-
-<Tip>
-  isol8 uses content-addressed hashing for custom images. If the packages and setup script haven't changed, `isol8 setup` skips the build entirely — making it safe to call on every deploy.
-</Tip>
-
-## Step 2: Create the orchestrator
-
-The orchestrator is the "blueprint" — a TypeScript program that sequences deterministic bash steps and agentic `agent` runtime steps. Use `DockerIsol8` in persistent mode with your custom image.
+Each task gets a single `DockerIsol8` instance in `mode: "persistent"`. All steps share the container's filesystem.
 
 ```typescript
-import { DockerIsol8 } from "@isol8/core";
-import type { ExecutionResult } from "@isol8/core";
-
 const engine = new DockerIsol8({
   mode: "persistent",
-  image: "my-org/python-devbox:latest",
-  network: "filtered",
-  networkFilter: {
-    // LLM API access + VCS + package registries
-    whitelist: [
-      "^api\\.anthropic\\.com$",
-      "^github\\.com$",
-      "^api\\.github\\.com$",
-      "^pypi\\.org$",
-    ],
-    blacklist: ["^169\\.254\\."],
-  },
-  timeoutMs: 300_000, // 5 minutes per step
-  memoryLimit: "2g",
-  pidsLimit: 200,     // agent runtime spawns subprocesses; must be set explicitly (true default is 64)
+  network: "host",
+  timeoutMs: 1_800_000,   // 30-minute hard ceiling for the whole run
+  memoryLimit: "4g",
+  cpuLimit: 2,
+  pidsLimit: 200,          // agent spawns subprocesses; default of 64 is too low
+  sandboxSize: "4g",
+  maxOutputSize: 10 * 1024 * 1024,
+  image: "isol8:agent",
   secrets: {
-    // Passed as environment variables; values are automatically masked in stdout/stderr
-    GITHUB_TOKEN: process.env.GITHUB_TOKEN!,
-    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY!,
+    GITHUB_TOKEN: githubToken,
+    ANTHROPIC_API_KEY: anthropicKey,
   },
 });
 
 await engine.start();
+// ... run all steps ...
+await engine.stop(); // always in a finally block
 ```
 
 <Note>
-  `mode: "persistent"` reuses a single container across all `execute()` calls, preserving filesystem state — just like Stripe's devboxes persist across agent steps.
+  `network: "host"` is used here because the agent needs to reach GitHub, the LLM provider API, and package registries simultaneously. If you know your exact set of hostnames, `network: "filtered"` with an explicit whitelist is more secure. See [Security considerations](#security-considerations).
 </Note>
 
-<Tip>
-  **Persistent vs. ephemeral:** Use `mode: "persistent"` when you need multiple `execute()` calls to share filesystem state (the multi-step blueprint pattern above). For truly fire-and-forget one-shot tasks where a single agent call does all the work, `mode: "ephemeral"` is simpler — no `start()`/`stop()` lifecycle to manage, and stale containers can't accumulate if the process crashes. See the [simple one-shot pattern](#simple-one-shot-pattern) below.
-</Tip>
+## Step 1: Setup — clone before the agent starts
 
-<Note>
-  The agent runtime **requires** `network: "filtered"` with at least one whitelist entry. Passing `network: "none"` or an empty whitelist throws immediately. Pass your LLM provider's domain (e.g. `^api\\.anthropic\\.com$`) in the whitelist.
-</Note>
-
-## Simple one-shot pattern
-
-If you don't need the multi-step lint/test/iterate blueprint, you can skip the persistent engine entirely. A single `executeStream()` call with a comprehensive prompt and a `setupScript` that clones the repo is often all you need:
+Before the agent receives any prompt, a `setupScript` clones the repo and checks out a branch. Setup scripts run as bash inside the container and complete before the main execution begins.
 
 ```typescript
-import { DockerIsol8 } from "@isol8/core";
-
-const engine = new DockerIsol8({
-  network: "filtered",
-  networkFilter: {
-    whitelist: ["^api\\.anthropic\\.com$", "^github\\.com$", "^api\\.github\\.com$"],
-    blacklist: ["^169\\.254\\."],
-  },
-  memoryLimit: "2g",
-  pidsLimit: 200,
-  secrets: {
-    GITHUB_TOKEN: process.env.GITHUB_TOKEN!,
-    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY!,
-  },
-});
-
-await engine.start();
-
-for await (const event of engine.executeStream({
-  runtime: "agent",
-  setupScript: `
-    git clone https://$GITHUB_TOKEN@github.com/my-org/my-repo.git /sandbox/repo
-    cd /sandbox/repo
-    git checkout -b agent/fix-issue-42 origin/main
-    cat > /sandbox/repo/AGENTS.md << 'EOF'
-# Project rules
-- Follow existing code style
-- Write tests for new functions
-- Do not modify the public API surface
-EOF
-  `,
-  code: `Fix the type error in src/utils/parser.ts described in issue #42.
-Lint, run tests, then commit the fix and create a PR targeting main with a clear description.`,
-  agentFlags: "--model anthropic/claude-sonnet-4-5 --thinking low",
-  workdir: "/sandbox/repo",
-  timeoutMs: 600_000,
-})) {
-  if (event.type === "stdout") process.stdout.write(event.data);
-  if (event.type === "stderr") process.stderr.write(event.data);
-  if (event.type === "exit") console.log(`\nDone (exit ${event.data})`);
+function buildSetupScript(repo: string, branch: string): string {
+  return `
+set -e
+git config --global user.email "agent@ci.internal"
+git config --global user.name "Agent"
+cd /sandbox && rm -rf repo
+git clone https://x-access-token:$GITHUB_TOKEN@github.com/${repo}.git repo 2>&1
+cd repo
+git checkout -b ${branch} || git checkout ${branch}
+npm ci
+echo "ready — branch ${branch}"`;
 }
 
-await engine.stop();
+await engine.execute({
+  runtime: "agent",
+  setupScript: buildSetupScript("my-org/my-repo", "agent/fix-auth"),
+  code: 'echo "[setup] done"',
+  timeoutMs: 300_000,
+  workdir: "/sandbox/repo",
+});
 ```
 
-<Tip>
-  In this pattern the agent is responsible for linting, testing, committing, and opening the PR — all inside the prompt. The `setupScript` handles repo setup before pi starts. Use the multi-step blueprint (Steps 3–6) when you need deterministic control over each phase or want to loop on test failures programmatically.
-</Tip>
+<Warning>
+  **`git checkout -b` on retry:** With `set -e`, `git checkout -b` exits non-zero if the branch already exists (e.g. on a retry). The `|| git checkout ${branch}` fallback is load-bearing — always include it.
+</Warning>
 
-## Step 3: Hydrate context (clone repo, inject rules)
+## Step 2: Implement — the agent gets the task
 
-Before the agent starts coding, set up the workspace. Use `setupScript` on the agent execution itself — it runs as bash inside the container before pi receives the prompt, so the repo, rules, and any config files are all in place when the agent starts.
+The implement step passes a prompt to the agent runtime. The agent reads files, writes code, and runs tools — all inside the sandbox.
+
+A naive approach passes the raw task description directly:
 
 ```typescript
-const task = `Fix the type error in src/utils/parser.ts described in issue #42.
-Follow existing code style, write tests for any new functions, and do not modify the public API surface.`;
-
-const result = await engine.execute({
+await engine.execute({
   runtime: "agent",
-  setupScript: `
-    # Clone the repo and create an agent branch
-    git clone https://$GITHUB_TOKEN@github.com/my-org/my-repo.git /sandbox/repo
-    cd /sandbox/repo
-    git checkout -b agent/fix-issue-42 origin/main
+  code: `You are working in /sandbox/repo on branch \`${branch}\` of ${repo}.
 
-    # Write project rules — pi auto-loads AGENTS.md from its working directory
-    cat > /sandbox/repo/AGENTS.md << 'EOF'
-# Project rules
-- Follow existing code style — no reformatting unrelated files
-- No new runtime dependencies without approval
-- All new functions must have JSDoc comments
-- Tests live in tests/ — use the existing test runner (pytest)
-- Do not modify the public API surface
-EOF
-  `,
-  code: task,
-  agentFlags: "--model anthropic/claude-sonnet-4-5 --thinking low",
-  workdir: "/sandbox/repo", // pi starts directly in the repo — no need to cd in the prompt
+Implement the following task — read the repo structure first, make all necessary code
+changes, run \`npm install\` if node_modules is missing. Do NOT commit anything.
+
+Task:
+${task}`,
+  agentFlags: "--model anthropic/claude-sonnet-4-5 --no-session",
+  timeoutMs: 1_200_000,
+  workdir: "/sandbox/repo",
+});
+```
+
+This works for simple tasks but is fragile. The isol8 agent has no way to ask follow-up questions — the prompt is the complete specification.
+
+<Note>
+  **In practice, the orchestrator should act as a master agent.** Gather context before handing off: read relevant files, pull issue details, summarize related PRs, fetch coding guidelines. Construct a self-sufficient prompt that gives the agent everything it needs without clarification.
+</Note>
+
+A better implement step looks like this:
+
+```typescript
+// The orchestrator gathers context before handing off
+const relevantFiles = await readFilesFromGitHub(repo, issue.changedPaths);
+const relatedIssues = await searchIssues(repo, issue.title);
+const codeStyle = await readFile(repo, "CONTRIBUTING.md");
+
+const prompt = `
+You are working in /sandbox/repo. The codebase uses TypeScript strict mode.
+
+## Task
+${issue.body}
+
+## Files most likely to need changes
+${relevantFiles.map(f => `### ${f.path}\n\`\`\`\n${f.content}\n\`\`\``).join("\n\n")}
+
+## Code style rules
+${codeStyle}
+
+## Related context
+${relatedIssues.map(i => `- #${i.number}: ${i.title}`).join("\n")}
+
+Make all necessary changes. Do NOT commit.
+`;
+
+await engine.execute({
+  runtime: "agent",
+  code: prompt,
+  agentFlags: "--model anthropic/claude-sonnet-4-5 --no-session",
+  timeoutMs: 1_200_000,
+  workdir: "/sandbox/repo",
+});
+```
+
+## Step 3: Verify — lint and build
+
+After the agent implements, deterministic shell steps verify the result. Lint and build are the only steps allowed to fail — their output is collected and fed into a fix loop, not treated as a hard error.
+
+```typescript
+const lintResult = await engine.execute({
+  runtime: "agent",
+  cmd: "npm run lint 2>&1",
+  workdir: "/sandbox/repo",
+  timeoutMs: 120_000,
+});
+
+const buildResult = await engine.execute({
+  runtime: "agent",
+  cmd: "npm run build 2>&1",
+  workdir: "/sandbox/repo",
   timeoutMs: 300_000,
 });
 ```
 
-<Tip>
-  `setupScript` runs as bash before pi receives the prompt. It is subject to the same `timeoutMs` as the overall request. A non-zero exit aborts the execution immediately — use it to validate that required secrets are present. The setup script always runs from `/sandbox` regardless of `workdir` — use explicit `cd` inside the script if you need a different directory.
-</Tip>
-
-<Tip>
-  Set `workdir: "/sandbox/repo"` on every agent `ExecutionRequest` after cloning the repo. `workdir` sets the working directory for pi's process (the main code exec) — pi will start in `/sandbox/repo` rather than the default `/sandbox`, so `AGENTS.md` is auto-loaded and relative tool calls resolve correctly. It does not affect `setupScript`, which always runs from `/sandbox`.
-</Tip>
-
-For setup that never changes between runs (git identity, tool config, registry authentication), bake it into the custom image using `prebuiltImages[].setupScript` so it runs on every execution without adding per-request latency. The per-request `setupScript` is then only the parts specific to each task — cloning the right repo, checking out the right branch, writing the task's rules:
-
-```json isol8.config.json
-{
-  "prebuiltImages": [
-    {
-      "tag": "my-org/python-devbox:latest",
-      "runtime": "python",
-      "installPackages": ["numpy", "pandas", "scikit-learn", "pytest", "black", "ruff"],
-      "setupScript": "git config --global user.name 'isol8-agent' && git config --global user.email 'agent@ci.internal' && git config --global core.autocrlf false"
-    }
-  ]
-}
+```mermaid
+flowchart TD
+  Lint["Lint"] --> LintCheck{{"Pass?"}}
+  Build["Build"] --> BuildCheck{{"Pass?"}}
+  LintCheck -->|Yes| BuildCheck
+  LintCheck -->|No| CollectErrors["Collect errors"]
+  BuildCheck -->|No| CollectErrors
+  BuildCheck -->|Yes| Ship["Ship — commit + PR"]
+  CollectErrors --> FixLoop["Fix loop"]
 ```
 
-## Step 4: Run the agent step
+## Step 4: Fix loop — automated retry
 
-Use `runtime: "agent"` to run the pi coding agent inside the sandbox. The `code` field is the natural-language prompt — pi handles the full LLM loop, tool calls (`read`, `write`, `edit`, `bash`), and file edits autonomously inside the container.
-
-The `setupScript` from Step 3 already clones the repo and writes `AGENTS.md` before pi starts. Here the `agentImplement` helper is a thin wrapper that passes a task prompt to the same pattern:
+If lint or build fails, the fix loop runs the agent again with the error output, then re-verifies. Two rounds is the practical ceiling — after that, hand off to humans.
 
 ```typescript
-async function agentImplement(task: string, setupScript?: string): Promise<ExecutionResult> {
-  return engine.execute({
+const maxFixRounds = 2;
+
+for (let round = 1; round <= maxFixRounds; round++) {
+  await engine.execute({
     runtime: "agent",
-    setupScript,
-    code: task,
-    agentFlags: "--model anthropic/claude-sonnet-4-5 --thinking low",
-    workdir: "/sandbox/repo", // pi starts in the repo root
-    timeoutMs: 300_000,
-    // Do NOT pass ANTHROPIC_API_KEY here — it is already available
-    // via `secrets` in the engine config, and secrets are masked in output.
-    // Using per-request env bypasses masking.
+    code: `You are working in /sandbox/repo. Fix all of the following errors.
+Do NOT commit anything.
+
+${lintErrors}
+${buildErrors}`,
+    agentFlags: "--model anthropic/claude-sonnet-4-5 --no-session",
+    timeoutMs: 900_000,
+    workdir: "/sandbox/repo",
   });
-}
-```
 
-<Tip>
-  Always pass LLM API keys via `secrets` in the engine config, not in per-request `env`. Keys in `secrets` are automatically redacted from stdout/stderr; keys in `env` are not.
-</Tip>
-
-isol8 automatically appends a sandbox-awareness system prompt to pi's default prompt via `--append-system-prompt`. You do not need to tell pi it is in a container.
-
-The `agentFlags` field passes extra arguments to the `pi` CLI before `-p`. Useful flags:
-
-| Flag | Description |
-|:---|:---|
-| `--model <provider/id>` | LLM to use (e.g. `anthropic/claude-sonnet-4-5`, `openai/gpt-4o`) |
-| `--thinking <level>` | Thinking budget: `off`, `minimal`, `low`, `medium`, `high`, `xhigh` |
-| `--tools <list>` | Limit built-in tools (default: `read,bash,edit,write`) |
-| `--no-tools` | Disable all built-in tools (prompt-only mode) |
-| `--no-skills` | Disable auto-loading of skill files |
-| `--no-extensions` | Disable auto-loading of extensions |
-
-<Warning>
-  The agent runtime enforces `network: "filtered"` at both `execute()` and `executeStream()` call sites. Passing `network: "none"` or `network: "host"` — or an empty whitelist — throws before any container work begins.
-</Warning>
-
-## Step 5: Deterministic lint and test steps
-
-After the agent finishes coding, run linters and tests deterministically — no LLM involvement. This matches Stripe's blueprint pattern of interleaving deterministic nodes with agentic nodes.
-
-```typescript
-async function runLint(): Promise<ExecutionResult> {
-  return engine.execute({
-    runtime: "bash",
-    code: `
-      cd /sandbox/repo
-      npx prettier --write 'src/**/*.ts'
-      npx eslint --fix 'src/**/*.ts'
-      echo "Lint complete"
-    `,
-    timeoutMs: 60_000,
-  });
-}
-
-async function runTests(): Promise<ExecutionResult> {
-  return engine.execute({
-    runtime: "bash",
-    code: `
-      cd /sandbox/repo
-      npx jest --ci --passWithNoTests 2>&1
-    `,
+  // Re-verify after fix
+  const relint = await engine.execute({
+    runtime: "agent",
+    cmd: "npm run lint 2>&1",
+    workdir: "/sandbox/repo",
     timeoutMs: 120_000,
   });
+  const rebuild = await engine.execute({
+    runtime: "agent",
+    cmd: "npm run build 2>&1",
+    workdir: "/sandbox/repo",
+    timeoutMs: 300_000,
+  });
+
+  if (relint.exitCode === 0 && rebuild.exitCode === 0) break;
+  if (round === maxFixRounds) throw new Error("Still failing after max fix rounds");
 }
 ```
 
-## Step 6: Wire up the full blueprint
+<Tip>
+  Diminishing returns set in quickly. Two fix rounds is the practical ceiling — after that, hand off to humans rather than burning more tokens.
+</Tip>
 
-Combine all steps into a single orchestration flow. The `setupScript` handles cloning and context hydration as part of the first agent call — no separate bash step needed:
+## Step 5: Ship — commit and open a PR
 
-```typescript
-async function runMinion(task: string) {
-  const MAX_CI_ROUNDS = 2;
-
-  const setupScript = `
-    git clone https://$GITHUB_TOKEN@github.com/my-org/my-repo.git /sandbox/repo
-    cd /sandbox/repo
-    git checkout -b agent/fix-issue-42 origin/main
-
-    cat > /sandbox/repo/AGENTS.md << 'EOF'
-# Project rules
-- Follow existing code style
-- No new runtime dependencies without approval
-- All new functions must have JSDoc comments
-- Tests live in tests/ — use pytest
-EOF
-  `;
-
-  // --- Agentic: implement (runtime: "agent") with context hydration via setupScript ---
-  console.log("[1/4] Agent implementing task...");
-  const implResult = await agentImplement(task, setupScript);
-  if (implResult.exitCode !== 0) {
-    console.warn("Agent step exited non-zero:", implResult.stderr);
-  }
-
-  // --- Deterministic: lint ---
-  console.log("[2/4] Running linters...");
-  const lintResult = await runLint();
-  if (lintResult.exitCode !== 0) {
-    // Let the agent fix lint issues — repo is already in place, no setupScript needed
-    await agentImplement("Fix the lint errors:\n" + lintResult.stderr);
-    await runLint();
-  }
-
-  // --- Deterministic: test + iterate ---
-  for (let round = 1; round <= MAX_CI_ROUNDS; round++) {
-    console.log(`[3/4] Running tests (round ${round}/${MAX_CI_ROUNDS})...`);
-    const testResult = await runTests();
-
-    if (testResult.exitCode === 0) {
-      console.log("Tests passed!");
-      break;
-    }
-
-    if (round < MAX_CI_ROUNDS) {
-      // --- Agentic: fix failures ---
-      console.log("Tests failed, agent fixing...");
-      await agentImplement("Fix the failing tests. Errors:\n" + testResult.stderr);
-    } else {
-      console.log("Tests still failing after max rounds. Proceeding with PR for human review.");
-    }
-  }
-
-  // --- Deterministic: commit and push ---
-  console.log("[4/4] Committing and pushing...");
-  await engine.execute({
-    runtime: "bash",
-    code: `
-      cd /sandbox/repo
-      git add -A
-      git commit -m "fix: resolve type error in parser (closes #42)
-
-      Automated change produced by coding agent."
-      git push origin agent/fix-issue-42
-    `,
-  });
-
-  // --- Deterministic: create PR ---
-  await engine.execute({
-    runtime: "bash",
-    code: `
-      cd /sandbox/repo
-      gh pr create \
-        --title "fix: resolve type error in parser (closes #42)" \
-        --body "## Summary
-      Automated fix for issue #42.
-
-      This PR was produced by an unattended coding agent. Please review carefully.
-
-      ## Changes
-      - Fixed type error in src/utils/parser.ts
-      - Added unit tests" \
-        --base main \
-        --head agent/fix-issue-42
-    `,
-  });
-
-  await engine.stop();
-  console.log("Done! PR created for human review.");
-}
-
-// Run it
-runMinion("Fix the type error in src/utils/parser.ts described in issue #42. Follow existing code style, write tests for any new functions, do not modify the public API surface.");
-```
-
-## Scaling with the remote server
-
-For production, run isol8 as a centralized server so multiple agents can execute in parallel — the equivalent of Stripe's fleet of devboxes. Each agent gets its own persistent session.
-
-### Start the server
-
-```bash
-isol8 serve --port 3000 --key "$ISOL8_API_KEY"
-```
-
-### Connect agents via RemoteIsol8
+The commit and PR steps are also delegated to the agent. Two shell patterns matter:
 
 ```typescript
-import { RemoteIsol8 } from "@isol8/core";
-import { randomUUID } from "node:crypto";
+// Commit — write message to a file, use -F not -m (avoids interactive editor traps)
+await engine.execute({
+  runtime: "agent",
+  code: `Write a conventional commit message to /tmp/commit-msg.txt, then run:
+git add -A && git commit -F /tmp/commit-msg.txt && git push -u origin ${branch}`,
+  agentFlags: "--model anthropic/claude-sonnet-4-5 --no-session",
+  timeoutMs: 300_000,
+  workdir: "/sandbox/repo",
+});
 
-async function spawnAgent(task: string) {
-  const sessionId = `agent-${randomUUID()}`;
+// PR — write body to a file, use --body-file not --body (avoids shell escaping issues)
+const prResult = await engine.execute({
+  runtime: "agent",
+  code: `Write the PR title to /tmp/pr-title.txt and body to /tmp/pr-body.md, then run:
+gh pr create --title "$(cat /tmp/pr-title.txt)" --body-file /tmp/pr-body.md --base main --head ${branch}
+Output the resulting PR URL on its own line.`,
+  agentFlags: "--model anthropic/claude-sonnet-4-5 --no-session",
+  timeoutMs: 300_000,
+  workdir: "/sandbox/repo",
+});
 
-  const engine = new RemoteIsol8(
-    {
-      host: "http://isol8-server.internal:3000",
-      apiKey: process.env.ISOL8_API_KEY!,
-      sessionId,
+// Extract the PR URL from output
+const PR_URL_REGEX = /https:\/\/github\.com\/[^\s]+\/pull\/(\d+)/;
+const prMatch = (prResult.stdout + prResult.stderr).match(PR_URL_REGEX);
+const prUrl = prMatch?.[0];
+```
+
+## Full pipeline
+
+Putting it all together, the orchestrator function:
+
+```typescript
+async function runOneShot(task: string, repo: string, branch: string) {
+  const engine = new DockerIsol8({
+    mode: "persistent",
+    network: "host",
+    timeoutMs: 1_800_000,
+    memoryLimit: "4g",
+    cpuLimit: 2,
+    pidsLimit: 200,
+    sandboxSize: "4g",
+    image: "isol8:agent",
+    secrets: {
+      GITHUB_TOKEN: process.env.GITHUB_TOKEN!,
+      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY!,
     },
-    {
-      mode: "persistent",
-      image: "my-org/python-devbox:latest",
-      network: "filtered",
-      networkFilter: {
-        whitelist: ["^api\\.anthropic\\.com$", "^github\\.com$", "^api\\.github\\.com$"],
-        blacklist: [],
-      },
-      timeoutMs: 300_000,
-      memoryLimit: "2g",
-      pidsLimit: 200,
-    }
-  );
+  });
 
   await engine.start();
 
-  // Run the full agent blueprint against the remote session
-  await runBlueprintAgainst(engine, task);
+  try {
+    // 1. Setup
+    await engine.execute({
+      runtime: "agent",
+      setupScript: buildSetupScript(repo, branch),
+      code: 'echo "setup complete"',
+      timeoutMs: 300_000,
+    });
 
-  await engine.stop();
+    // 2. Implement
+    await engine.execute({
+      runtime: "agent",
+      code: buildPrompt(task, repo, branch),
+      agentFlags: "--model anthropic/claude-sonnet-4-5 --no-session",
+      timeoutMs: 1_200_000,
+      workdir: "/sandbox/repo",
+    });
+
+    // 3. Verify
+    const lint = await engine.execute({
+      runtime: "agent",
+      cmd: "npm run lint 2>&1",
+      workdir: "/sandbox/repo",
+      timeoutMs: 120_000,
+    });
+    const build = await engine.execute({
+      runtime: "agent",
+      cmd: "npm run build 2>&1",
+      workdir: "/sandbox/repo",
+      timeoutMs: 300_000,
+    });
+
+    // 4. Fix loop (if needed)
+    if (lint.exitCode !== 0 || build.exitCode !== 0) {
+      await runFixLoop(engine, lint, build, branch);
+    }
+
+    // 5. Ship
+    const prUrl = await commitAndCreatePR(engine, branch);
+    return prUrl;
+  } finally {
+    await engine.stop();
+  }
 }
-
-// Spawn multiple agents in parallel
-await Promise.all([
-  spawnAgent("Fix issue #42"),
-  spawnAgent("Fix issue #43"),
-  spawnAgent("Add unit tests for auth module"),
-]);
 ```
 
-### Stream agent output in real-time
+## Streaming progress to clients
 
-Use streaming to pipe agent activity to a UI or Slack thread:
+Every step can use `executeStream()` to emit progress in real-time. The `phase` field on each `StreamEvent` distinguishes setup output from agent output:
 
 ```typescript
 for await (const event of engine.executeStream({
   runtime: "agent",
-  code: "Fix the type error in src/utils/parser.ts",
-  agentFlags: "--model anthropic/claude-sonnet-4-5",
-  workdir: "/sandbox/repo",
+  setupScript: buildSetupScript(repo, branch),
+  code: buildPrompt(task, repo, branch),
+  agentFlags: "--model anthropic/claude-sonnet-4-5 --no-session",
 })) {
-  switch (event.type) {
-    case "stdout":
-      slackThread.postUpdate(event.data);
-      break;
-    case "stderr":
-      slackThread.postWarning(event.data);
-      break;
-    case "exit":
-      slackThread.postResult(`Agent finished with exit code ${event.data}`);
-      break;
+  if (event.phase === "setup") {
+    onProgress({ step: "setup", data: event.data });
+  } else if (event.type === "stdout") {
+    onProgress({ step: "implement", data: event.data });
+  } else if (event.type === "exit") {
+    onProgress({ step: "implement", data: `exited: ${event.data}` });
   }
 }
 ```
 
-## Stripe Minions concept mapping
+How you relay these events to the client depends on your architecture — SSE, WebSockets, a message queue, or writing to a database that the client polls. The orchestrator produces `StreamEvent`s; what the client does with them is up to you.
 
-| Stripe Minions concept | isol8 equivalent |
-|:--|:--|
-| Devbox (pre-warmed EC2 instance) | Custom image with `prebuiltImages` + persistent session |
-| Devbox pool (hot and ready) | Warm container pool (`poolSize`, `poolStrategy: "fast"`) |
-| Isolated environment (no production access) | `network: "filtered"` with allowlisted hosts |
-| Blueprint (deterministic + agentic nodes) | Orchestrator mixing `runtime: "bash"` steps with `runtime: "agent"` steps |
-| Agentic node (LLM implements/fixes) | `engine.execute({ runtime: "agent", code: prompt, agentFlags: ... })` |
-| Context gathering (clone repo, gather docs) | `setupScript` on the agent execution — runs before pi receives the prompt |
-| Rule files (Cursor rules, AGENTS.md) | Written via `setupScript` or `putFile()` — pi auto-loads `AGENTS.md` from cwd |
-| Recurring devbox config (git identity, registries) | `prebuiltImages[].setupScript` — baked into the image, runs on every execution |
-| MCP tools (Toolshed) | `network: "filtered"` allowing agent to call external APIs |
-| Local lint loop (pre-push hooks) | Deterministic lint step with `runtime: "bash"` before push |
-| CI feedback loop (at most 2 rounds) | Test step looped with `MAX_CI_ROUNDS` + agent fix step |
-| Secret isolation (no prod credentials) | `secrets` option — values are automatically masked in output |
-| Parallelization (many devboxes) | Multiple `RemoteIsol8` sessions via centralized server |
+<Note>
+  If the `setupScript` exits non-zero, the stream yields a `{ type: "error", phase: "setup" }` event followed by an `exit` event, and the agent never starts. Filter on `phase` to surface setup failures separately from agent failures.
+</Note>
+
+## Concurrency and cancellation
+
+When running multiple tasks concurrently, use a job queue with bounded concurrency. Each task should get its own `AbortController` for cancellation — aborting triggers `engine.stop()` to destroy the container immediately.
+
+```typescript
+import PQueue from "p-queue";
+
+const queue = new PQueue({ concurrency: 3 });
+const controllers = new Map<string, AbortController>();
+
+function enqueueTask(taskId: string, task: string, repo: string, branch: string) {
+  const controller = new AbortController();
+  controllers.set(taskId, controller);
+
+  queue.add(async () => {
+    if (controller.signal.aborted) return;
+    await runOneShot(task, repo, branch);
+  }, { signal: controller.signal });
+}
+
+function cancelTask(taskId: string) {
+  controllers.get(taskId)?.abort();
+}
+```
+
+Inside the orchestrator, wire the abort signal to `engine.stop()`:
+
+```typescript
+const onAbort = () => engine.stop().catch(() => undefined);
+signal?.addEventListener("abort", onAbort, { once: true });
+
+try {
+  // ... all steps ...
+} finally {
+  signal?.removeEventListener("abort", onAbort);
+  await engine.stop();
+}
+```
 
 ## Security considerations
 
-Stripe isolates their devboxes from production. isol8 provides equivalent guardrails:
-
-- **Read-only root filesystem** — agents can only write to `/sandbox` and `/tmp`
-- **Non-root execution** — all code runs as `sandbox` user (uid 100)
-- **Network filtering** — allowlist only the hosts your agent needs (LLM APIs, GitHub, package registries)
-- **Secret masking** — credentials in `secrets` are automatically redacted from stdout/stderr
-- **Resource limits** — CPU, memory, PIDs, and output size caps prevent runaway agents
-- **Seccomp profiles** — strict syscall filtering applied by default
-- **Session isolation** — each agent session is a separate container with no shared state
-- **Sandbox-aware system prompt** — isol8 appends a prompt informing pi of sandbox constraints, so the agent doesn't attempt operations that will fail
+For production deployments — especially multi-tenant or untrusted-task workloads — use `network: "filtered"` with an explicit allowlist instead of `network: "host"`:
 
 ```typescript
 const engine = new DockerIsol8({
   mode: "persistent",
-  image: "my-org/node-devbox:latest",
   network: "filtered",
   networkFilter: {
     whitelist: [
-      "^api\\.anthropic\\.com$",
-      "^github\\.com$",
-      "^registry\\.npmjs\\.org$",
+      "^api\\.anthropic\\.com$",       // LLM API
+      "^github\\.com$",                // git clone + push
+      "^api\\.github\\.com$",          // gh CLI (pr create, auth)
+      "^registry\\.npmjs\\.org$",      // npm installs
     ],
-    blacklist: ["^169\\.254\\.", "^10\\.", "^172\\.(1[6-9]|2[0-9]|3[01])\\."],
+    blacklist: [
+      "^169\\.254\\.",                  // link-local (cloud metadata)
+      "^10\\.",                         // RFC 1918
+      "^172\\.(1[6-9]|2[0-9]|3[01])\\.", // RFC 1918
+    ],
   },
   secrets: {
-    GITHUB_TOKEN: process.env.GITHUB_TOKEN!,
-    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY!,
+    GITHUB_TOKEN: githubToken,
+    ANTHROPIC_API_KEY: anthropicKey,
   },
+  memoryLimit: "4g",
   cpuLimit: 2,
-  memoryLimit: "2g",
   pidsLimit: 200,
-  maxOutputSize: 5_242_880, // 5MB
+  maxOutputSize: 10 * 1024 * 1024,
 });
 ```
 
-## Tips from the Stripe playbook
-
-1. **Shift feedback left** — run linters and fast checks inside the container before pushing to CI. This saves tokens and compute.
-2. **Limit CI rounds** — diminishing returns after 1-2 rounds. Cap iterations and hand off to humans.
-3. **Bake dependencies into images** — don't waste agent time installing packages. Use `prebuiltImages` to pre-install everything.
-4. **Scope context tightly** — inject only relevant rule files and documentation as `AGENTS.md`. Don't dump your entire codebase.
-5. **Deterministic where possible** — lint, format, test, commit, and push are deterministic steps. Don't let the LLM do what a shell script can do better.
-6. **Use `secrets` for API keys** — never pass LLM credentials via per-request `env`; use `secrets` so they are masked in output.
-7. **Use setup scripts for context hydration** — clone the repo, write `AGENTS.md`, and configure tools via `setupScript` on the agent execution. Use `prebuiltImages[].setupScript` for setup that never changes (git identity, registry auth); use per-request `setupScript` for task-specific setup (cloning the right branch, writing the task's rules).
+All other isol8 isolation guarantees apply regardless of network mode: read-only root filesystem, non-root `sandbox` user, seccomp syscall filtering, `/sandbox` tmpfs, and automatic secret masking in output.
 
 ## Related pages
 
@@ -592,7 +448,7 @@ const engine = new DockerIsol8({
     Full reference for the agent runtime: flags, networking, file injection, and streaming.
   </Card>
   <Card title="Setup scripts" icon="scroll" href="/setup-scripts">
-    Full reference for setupScript: image-level vs request-level, execution order, and common patterns.
+    Image-level vs request-level setup, execution order, streaming output, and error handling.
   </Card>
   <Card title="AI agent code execution" icon="robot" href="/guides/ai-agents">
     Foundational patterns for LLM tool-call loops with isol8.

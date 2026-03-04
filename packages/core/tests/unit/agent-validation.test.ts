@@ -5,9 +5,11 @@ import { DockerIsol8 } from "../../src/engine/docker";
 /**
  * Tests for the agent runtime validation logic in DockerIsol8.
  *
- * The engine enforces that agent runtime executions use network: "filtered"
- * with at least one whitelist entry. These tests verify that constraint
- * via the public execute() API.
+ * The engine enforces that agent runtime executions use either:
+ * - network: "filtered" with at least one whitelist entry, or
+ * - network: "host" (full network access)
+ *
+ * network: "none" is always rejected for agent runtime.
  */
 describe("Agent runtime validation", () => {
   const createMockDocker = () => {
@@ -54,7 +56,7 @@ describe("Agent runtime validation", () => {
     return { docker, container, createContainer, removeMock };
   };
 
-  // ── Validation: network mode ──
+  // ── Validation: network: "none" is always rejected ──
 
   test("rejects agent runtime with network: 'none'", async () => {
     const { docker } = createMockDocker();
@@ -69,26 +71,10 @@ describe("Agent runtime validation", () => {
         code: "Write hello world",
         runtime: "agent",
       })
-    ).rejects.toThrow('Agent runtime requires network mode "filtered"');
+    ).rejects.toThrow("Agent runtime requires network access");
   });
 
-  test("rejects agent runtime with network: 'host'", async () => {
-    const { docker } = createMockDocker();
-    const engine = new DockerIsol8({
-      docker,
-      mode: "ephemeral",
-      network: "host",
-    });
-
-    await expect(
-      engine.execute({
-        code: "Write hello world",
-        runtime: "agent",
-      })
-    ).rejects.toThrow('Agent runtime requires network mode "filtered"');
-  });
-
-  // ── Validation: whitelist required ──
+  // ── Validation: filtered requires whitelist ──
 
   test("rejects agent runtime with empty whitelist", async () => {
     const { docker } = createMockDocker();
@@ -131,7 +117,6 @@ describe("Agent runtime validation", () => {
 
   test("accepts agent runtime with filtered network and whitelist", () => {
     const { docker } = createMockDocker();
-    // Construction should succeed — validation happens in execute()
     const engine = new DockerIsol8({
       docker,
       mode: "ephemeral",
@@ -140,6 +125,16 @@ describe("Agent runtime validation", () => {
         whitelist: ["^api\\.anthropic\\.com$"],
         blacklist: [],
       },
+    });
+    expect(engine).toBeDefined();
+  });
+
+  test("accepts agent runtime with network: 'host'", () => {
+    const { docker } = createMockDocker();
+    const engine = new DockerIsol8({
+      docker,
+      mode: "ephemeral",
+      network: "host",
     });
     expect(engine).toBeDefined();
   });

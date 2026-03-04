@@ -96,23 +96,51 @@ pi then runs its own tool-call loop inside the container. It can read, write, an
 
 ## Networking requirement
 
-The agent runtime **requires** `network: "filtered"` with at least one whitelist entry. Passing `network: "none"` throws:
+The agent runtime **requires** network access — the AI coding agent must reach its LLM provider API. `network: "none"` throws:
 
 ```
-Error: agent runtime requires network "filtered" with at least one whitelist entry.
-The agent needs access to an LLM API endpoint (e.g. "^api\\.anthropic\\.com$").
+Error: Agent runtime requires network access.
+The AI coding agent needs to reach its LLM provider API.
+Use --net host, or --net filtered --allow "api.anthropic.com" (or your provider's domain).
 ```
 
-```typescript
-// Correct
-const engine = new DockerIsol8({
-  network: "filtered",
-  networkFilter: {
-    whitelist: ["^api\\.anthropic\\.com$"],
-    blacklist: ["^169\\.254\\."],
-  },
-});
-```
+Two valid network modes for the agent runtime:
+
+| Mode | When to use |
+|:---|:---|
+| `"filtered"` | Recommended. Restricts outbound traffic to an explicit allowlist of LLM API hostnames. |
+| `"host"` | Full host network access. Use in trusted environments where you control what the agent calls. |
+
+<Tabs>
+  <Tab title="filtered (recommended)">
+    ```typescript
+    const engine = new DockerIsol8({
+      network: "filtered",
+      networkFilter: {
+        whitelist: ["^api\\.anthropic\\.com$"],
+        blacklist: ["^169\\.254\\."],
+      },
+    });
+    ```
+
+    `"filtered"` requires at least one whitelist entry — an empty whitelist throws:
+
+    ```
+    Error: Agent runtime requires at least one network whitelist entry.
+    ```
+  </Tab>
+  <Tab title="host">
+    ```typescript
+    const engine = new DockerIsol8({
+      network: "host",
+    });
+    ```
+
+    <Warning>
+      `"host"` gives the agent full access to your host network. Use only in trusted, controlled environments. Prefer `"filtered"` with an explicit whitelist whenever possible.
+    </Warning>
+  </Tab>
+</Tabs>
 
 ## Sandbox system prompt
 
@@ -371,6 +399,30 @@ for await (const event of engine.executeStream({
 }
 ```
 
+Each event carries an optional `phase` field (`"setup"` or `"code"`) so you can distinguish setup-script output from agent output:
+
+```typescript
+for await (const event of engine.executeStream({
+  runtime: "agent",
+  setupScript: "git clone https://$GITHUB_TOKEN@github.com/my-org/repo.git /sandbox/repo",
+  code: "Fix the type errors in src/parser.ts",
+  agentFlags: "--model anthropic/claude-sonnet-4-5",
+})) {
+  if (event.phase === "setup") {
+    // output from the setupScript (clone, config, etc.)
+    process.stderr.write(`[setup] ${event.data}`);
+  } else if (event.type === "stdout") {
+    process.stdout.write(event.data);
+  } else if (event.type === "exit") {
+    console.log(`\nAgent exited: ${event.data}`);
+  }
+}
+```
+
+<Note>
+  If the `setupScript` exits non-zero, the stream yields a `{ type: "error", phase: "setup" }` event followed by an `exit` event, and the agent never starts. Filter on `phase` to surface setup failures separately from agent failures.
+</Note>
+
 ## Default resource limits
 
 The agent runtime spawns subprocesses for tool calls (`bash`, package installs, git operations). The default `pidsLimit` of `64` is often too low — **explicitly set `pidsLimit: 200`** to avoid process limit errors:
@@ -418,7 +470,7 @@ const engine = new DockerIsol8({
 
 ## Troubleshooting
 
-**`Error: agent runtime requires network "filtered"`** — Switch to `network: "filtered"` and add an LLM API endpoint to the whitelist.
+**`Error: Agent runtime requires network access`** — Switch to `network: "filtered"` with at least one whitelist entry, or `network: "host"`. `network: "none"` is not supported for the agent runtime.
 
 **Agent exits non-zero** — Check `result.stderr`. Common causes: missing API key, endpoint not in whitelist, `timeoutMs` too short.
 
@@ -430,7 +482,7 @@ const engine = new DockerIsol8({
 
 <CardGroup cols={2}>
   <Card title="One-shot coding agents" icon="wand-magic-sparkles" href="/guides/one-shot-coding-agents">
-    End-to-end blueprint: clone repo, implement, lint, test, create PR — using the agent runtime.
+    Architecture and pipeline: clone repo, implement, verify, fix, and open a PR — with no human in the loop.
   </Card>
   <Card title="Setup scripts" icon="scroll" href="/setup-scripts">
     Full reference for setupScript: image-level vs request-level, execution order, error handling.

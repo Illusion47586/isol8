@@ -148,7 +148,7 @@ Both image-level and request-level scripts run with the same constraints:
 - **Working directory**: `/sandbox`
 - **Shell**: `bash`
 - **Timeout**: subject to the same `timeoutMs` as the full execution request
-- **Exit code**: a non-zero exit from the setup script aborts the execution and throws `Setup script failed (exit code N): <stderr>`
+- **Exit code**: a non-zero exit from the setup script aborts the execution before the main code runs (see [Error handling](#error-handling) below)
 - **Secrets**: values from the engine's `secrets` option are available as environment variables and are automatically masked in stdout/stderr
 
 ## Execution order
@@ -160,6 +160,8 @@ When both levels are set, the order is deterministic:
 2. Request-level setup script (from ExecutionRequest.setupScript, per-call)
 3. Main code / agent prompt
 ```
+
+If any stage exits non-zero, the remaining stages do not run. In streaming mode, `StreamEvent` objects with `phase: "setup"` are emitted during stages 1–2, and `phase: "code"` during stage 3.
 
 ## Common patterns
 
@@ -262,7 +264,9 @@ await engine.stop();
 
 ## Error handling
 
-If the setup script exits non-zero, isol8 throws before running your code:
+### Non-streaming (`execute`)
+
+If the setup script exits non-zero, `execute()` throws before running your code:
 
 ```
 Error: Setup script failed (exit code 1): fatal: repository 'https://github.com/my-org/private-repo.git/' not found
@@ -281,6 +285,36 @@ await engine.execute({
 });
 ```
 
+### Streaming (`executeStream`)
+
+When using `executeStream`, setup-script output is yielded as `StreamEvent` objects with `phase: "setup"` before any `phase: "code"` events appear. If the script exits non-zero, the stream emits a `{ type: "error", phase: "setup" }` event followed by the `exit` event, and the main code never runs — no further events are yielded.
+
+```typescript
+for await (const event of engine.executeStream({
+  runtime: "bash",
+  setupScript: "git clone https://$GITHUB_TOKEN@github.com/my-org/repo.git /sandbox/repo",
+  code: "ls /sandbox/repo",
+})) {
+  if (event.phase === "setup") {
+    // stdout/stderr/error from the setup script
+    if (event.type === "error") {
+      console.error("Setup failed:", event.data);
+    } else if (event.type === "exit" && event.data !== "0") {
+      console.error("Setup exited with code", event.data);
+      // No more events will follow — main code did not run
+    }
+  } else {
+    // phase === "code" — main code output
+    if (event.type === "stdout") process.stdout.write(event.data);
+    if (event.type === "stderr") process.stderr.write(event.data);
+  }
+}
+```
+
+<Note>
+  The `phase` field is optional on `StreamEvent` for backward compatibility, but is always set by isol8 — setup events always carry `"setup"` and main code events always carry `"code"`. Checking `event.phase === "setup"` is safe.
+</Note>
+
 ## Related pages
 
 <CardGroup cols={2}>
@@ -294,6 +328,9 @@ await engine.execute({
     Run the pi coding agent inside isol8 — setup scripts prepare the workspace before the agent starts.
   </Card>
   <Card title="One-shot coding agents" icon="wand-magic-sparkles" href="/guides/one-shot-coding-agents">
-    End-to-end blueprint: clone repo, implement, lint, test, create PR — setup scripts handle context hydration.
+    Architecture and pipeline: clone repo, implement, verify, fix, and open a PR — setup scripts handle context hydration.
+  </Card>
+  <Card title="Execution guide" icon="terminal" href="/execution">
+    Streaming output, execution modes, resource limits, and file I/O.
   </Card>
 </CardGroup>

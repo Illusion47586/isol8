@@ -35,15 +35,24 @@ export type NetworkMode = "none" | "host" | "filtered";
 export interface ExecutionRequest {
   /**
    * Source code to execute.
-   * Mutually exclusive with {@link codeUrl}.
+   * Mutually exclusive with {@link codeUrl} and {@link cmd}.
    */
   code?: string;
 
   /**
    * Remote URL to fetch source code from before execution.
-   * Mutually exclusive with {@link code}.
+   * Mutually exclusive with {@link code} and {@link cmd}.
    */
   codeUrl?: string;
+
+  /**
+   * Bash command(s) to run inside the sandbox container.
+   * Always executed via `bash -c` regardless of the `runtime` field.
+   * Mutually exclusive with {@link code} and {@link codeUrl}.
+   * @example "npm install && npm test"
+   * @example "git clone https://github.com/user/repo && cd repo && make"
+   */
+  cmd?: string;
 
   /** Expected SHA-256 hash (hex) of the fetched source code. */
   codeHash?: string;
@@ -201,6 +210,13 @@ export interface StreamEvent {
   type: "stdout" | "stderr" | "exit" | "error";
   /** Text content for stdout/stderr, exit code string for exit, error message for error. */
   data: string;
+  /**
+   * Execution phase that produced this event.
+   *
+   * - `"setup"` — emitted during `setupScript` execution (image-level or request-level).
+   * - `"code"` — emitted during main code / command execution.
+   */
+  phase?: "setup" | "code";
 }
 
 // ─── WebSocket Messages ───

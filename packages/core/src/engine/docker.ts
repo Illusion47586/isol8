@@ -91,17 +91,23 @@ export class DockerIsol8 implements Isol8Engine {
   private pool: ContainerPool | null = null;
   private readonly imageCache = new Map<string, string>();
 
-  private async resolveExecutionRequest(
-    req: ExecutionRequest
-  ): Promise<ExecutionRequest & { code: string }> {
+  private async resolveExecutionRequest(req: ExecutionRequest): Promise<ExecutionRequest> {
     const inlineCode = req.code?.trim();
     const codeUrl = req.codeUrl?.trim();
+    const cmd = req.cmd?.trim();
 
-    if (inlineCode && codeUrl) {
-      throw new Error("ExecutionRequest.code and ExecutionRequest.codeUrl are mutually exclusive.");
+    const sourceCount = [inlineCode, codeUrl, cmd].filter(Boolean).length;
+    if (sourceCount > 1) {
+      throw new Error(
+        "ExecutionRequest.code, ExecutionRequest.codeUrl, and ExecutionRequest.cmd are mutually exclusive — provide exactly one."
+      );
     }
-    if (!(inlineCode || codeUrl)) {
-      throw new Error("ExecutionRequest must include either code or codeUrl.");
+    if (sourceCount === 0) {
+      throw new Error("ExecutionRequest must include exactly one of: code, codeUrl, or cmd.");
+    }
+
+    if (cmd) {
+      return { ...req, cmd: req.cmd! };
     }
 
     if (inlineCode) {
@@ -277,7 +283,7 @@ export class DockerIsol8 implements Isol8Engine {
    * Record an audit entry for the execution.
    */
   private async recordAudit(
-    req: ExecutionRequest & { code: string },
+    req: ExecutionRequest,
     result: ExecutionResult,
     startTime: number,
     container?: Docker.Container
@@ -285,7 +291,7 @@ export class DockerIsol8 implements Isol8Engine {
     try {
       // Calculate code hash using Web Crypto API
       const enc = new TextEncoder();
-      const data = enc.encode(req.code);
+      const data = enc.encode(req.code ?? req.cmd ?? "");
       const digest = await crypto.subtle.digest("SHA-256", data);
       const codeHash = Array.from(new Uint8Array(digest))
         .map((b) => b.toString(16).padStart(2, "0"))
@@ -506,9 +512,7 @@ export class DockerIsol8 implements Isol8Engine {
    * Streaming execution in persistent mode — reuses the long-lived container so that
    * filesystem state is preserved across calls, mirroring {@link executePersistent}.
    */
-  private async *executeStreamPersistent(
-    request: ExecutionRequest & { code: string }
-  ): AsyncIterable<StreamEvent> {
+  private async *executeStreamPersistent(request: ExecutionRequest): AsyncIterable<StreamEvent> {
     const adapter = this.getAdapter(request.runtime);
     const timeoutMs = request.timeoutMs ?? this.defaultTimeoutMs;
     const execWorkdir = request.workdir ? resolveWorkdir(request.workdir) : SANDBOX_WORKDIR;
@@ -527,10 +531,18 @@ export class DockerIsol8 implements Isol8Engine {
       );
     }
 
-    const ext = request.fileExtension ?? adapter.getFileExtension();
-    const filePath = `${SANDBOX_WORKDIR}/exec_${Date.now()}${ext}`;
+    let rawCmd: string[];
+    if (request.cmd) {
+      // cmd mode: run bash command directly, no file write needed
+      rawCmd = ["bash", "-c", request.cmd];
+    } else {
+      const ext = request.fileExtension ?? adapter.getFileExtension();
+      const filePath = `${SANDBOX_WORKDIR}/exec_${Date.now()}${ext}`;
 
-    await this.volumeManager.putFile(this.container!, filePath, request.code);
+      await this.volumeManager.putFile(this.container!, filePath, request.code!);
+
+      rawCmd = this.buildAdapterCommand(adapter, request, filePath);
+    }
 
     // Inject input files
     if (request.files) {
@@ -539,7 +551,6 @@ export class DockerIsol8 implements Isol8Engine {
       }
     }
 
-    // Install packages if requested
     if (remainingPackages.length > 0) {
       await this.executionManager.installPackages(
         this.container!,
@@ -551,25 +562,42 @@ export class DockerIsol8 implements Isol8Engine {
 
     // Run image-level setup script if the resolved image carries one
     if (imageSetupScript) {
-      await this.executionManager.runSetupScript(
+      let setupExitCode = 0;
+      for await (const event of this.executionManager.runSetupScript(
         this.container!,
         imageSetupScript,
         timeoutMs,
         this.volumeManager
-      );
+      )) {
+        yield event;
+        if (event.type === "exit") {
+          setupExitCode = Number(event.data);
+        }
+      }
+      if (setupExitCode !== 0) {
+        return;
+      }
     }
 
     // Run request-level setup script if provided
     if (request.setupScript) {
-      await this.executionManager.runSetupScript(
+      let setupExitCode = 0;
+      for await (const event of this.executionManager.runSetupScript(
         this.container!,
         request.setupScript,
         timeoutMs,
         this.volumeManager
-      );
+      )) {
+        yield event;
+        if (event.type === "exit") {
+          setupExitCode = Number(event.data);
+        }
+      }
+      if (setupExitCode !== 0) {
+        return;
+      }
     }
 
-    const rawCmd = this.buildAdapterCommand(adapter, request, filePath);
     const timeoutSec = Math.ceil(timeoutMs / 1000);
     let cmd: string[];
     if (request.stdin) {
@@ -607,9 +635,7 @@ export class DockerIsol8 implements Isol8Engine {
    * Streaming execution in ephemeral mode — acquires a pre-warmed container from the pool,
    * streams output, then returns the container to the pool for reuse.
    */
-  private async *executeStreamEphemeral(
-    request: ExecutionRequest & { code: string }
-  ): AsyncIterable<StreamEvent> {
+  private async *executeStreamEphemeral(request: ExecutionRequest): AsyncIterable<StreamEvent> {
     const adapter = this.getAdapter(request.runtime);
     const timeoutMs = request.timeoutMs ?? this.defaultTimeoutMs;
     const resolved = await this.resolveImage(adapter, request.installPackages);
@@ -624,11 +650,6 @@ export class DockerIsol8 implements Isol8Engine {
       await this.networkManager.startProxy(container);
       await this.networkManager.setupIptables(container);
 
-      // Write code
-      const ext = request.fileExtension ?? adapter.getFileExtension();
-      const filePath = `${SANDBOX_WORKDIR}/main${ext}`;
-      await this.volumeManager.writeFileViaExec(container, filePath, request.code);
-
       // Install packages if requested
       if (resolved.remainingPackages.length > 0) {
         await this.executionManager.installPackages(
@@ -641,22 +662,40 @@ export class DockerIsol8 implements Isol8Engine {
 
       // Run image-level setup script if the resolved image carries one
       if (resolved.imageSetupScript) {
-        await this.executionManager.runSetupScript(
+        let setupExitCode = 0;
+        for await (const event of this.executionManager.runSetupScript(
           container,
           resolved.imageSetupScript,
           timeoutMs,
           this.volumeManager
-        );
+        )) {
+          yield event;
+          if (event.type === "exit") {
+            setupExitCode = Number(event.data);
+          }
+        }
+        if (setupExitCode !== 0) {
+          return;
+        }
       }
 
       // Run request-level setup script if provided
       if (request.setupScript) {
-        await this.executionManager.runSetupScript(
+        let setupExitCode = 0;
+        for await (const event of this.executionManager.runSetupScript(
           container,
           request.setupScript,
           timeoutMs,
           this.volumeManager
-        );
+        )) {
+          yield event;
+          if (event.type === "exit") {
+            setupExitCode = Number(event.data);
+          }
+        }
+        if (setupExitCode !== 0) {
+          return;
+        }
       }
 
       // Inject input files
@@ -667,7 +706,18 @@ export class DockerIsol8 implements Isol8Engine {
       }
 
       // Build command
-      const rawCmd = this.buildAdapterCommand(adapter, request, filePath);
+      let rawCmd: string[];
+      if (request.cmd) {
+        // cmd mode: run bash command directly, no file write needed
+        rawCmd = ["bash", "-c", request.cmd];
+      } else {
+        // Write code to file and build adapter command
+        const ext = request.fileExtension ?? adapter.getFileExtension();
+        const filePath = `${SANDBOX_WORKDIR}/main${ext}`;
+        await this.volumeManager.writeFileViaExec(container, filePath, request.code!);
+        rawCmd = this.buildAdapterCommand(adapter, request, filePath);
+      }
+
       const timeoutSec = Math.ceil(timeoutMs / 1000);
       let cmd: string[];
       if (request.stdin) {
@@ -861,7 +911,7 @@ export class DockerIsol8 implements Isol8Engine {
   }
 
   private async executeEphemeral(
-    req: ExecutionRequest & { code: string },
+    req: ExecutionRequest,
     startTime: number
   ): Promise<ExecutionResult> {
     const adapter = this.getAdapter(req.runtime);
@@ -894,25 +944,30 @@ export class DockerIsol8 implements Isol8Engine {
       // Fast path: for simple executions, avoid file write and execute inline.
       // Falls back to file-based path for runtimes that require file input (e.g. Deno)
       // or when request options require filesystem artifacts.
-      const canUseInline =
-        !(req.stdin || req.files || req.outputPaths) &&
-        (!req.installPackages || req.installPackages.length === 0);
-
       let rawCmd: string[];
-      if (canUseInline) {
-        try {
-          rawCmd = this.buildAdapterCommand(adapter, req);
-        } catch {
+      if (req.cmd) {
+        // cmd mode: run bash command directly, no file write needed
+        rawCmd = ["bash", "-c", req.cmd];
+      } else {
+        const canUseInline =
+          !(req.stdin || req.files || req.outputPaths) &&
+          (!req.installPackages || req.installPackages.length === 0);
+
+        if (canUseInline) {
+          try {
+            rawCmd = this.buildAdapterCommand(adapter, req);
+          } catch {
+            const ext = req.fileExtension ?? adapter.getFileExtension();
+            const filePath = `${SANDBOX_WORKDIR}/main${ext}`;
+            await this.volumeManager.writeFileViaExec(container, filePath, req.code!);
+            rawCmd = this.buildAdapterCommand(adapter, req, filePath);
+          }
+        } else {
           const ext = req.fileExtension ?? adapter.getFileExtension();
           const filePath = `${SANDBOX_WORKDIR}/main${ext}`;
-          await this.volumeManager.writeFileViaExec(container, filePath, req.code);
+          await this.volumeManager.writeFileViaExec(container, filePath, req.code!);
           rawCmd = this.buildAdapterCommand(adapter, req, filePath);
         }
-      } else {
-        const ext = req.fileExtension ?? adapter.getFileExtension();
-        const filePath = `${SANDBOX_WORKDIR}/main${ext}`;
-        await this.volumeManager.writeFileViaExec(container, filePath, req.code);
-        rawCmd = this.buildAdapterCommand(adapter, req, filePath);
       }
 
       // Install packages if requested
@@ -927,22 +982,46 @@ export class DockerIsol8 implements Isol8Engine {
 
       // Run image-level setup script if the resolved image carries one
       if (resolved.imageSetupScript) {
-        await this.executionManager.runSetupScript(
+        let stderr = "";
+        let exitCode = 0;
+        for await (const event of this.executionManager.runSetupScript(
           container,
           resolved.imageSetupScript,
           timeoutMs,
           this.volumeManager
-        );
+        )) {
+          if (event.type === "stderr") {
+            stderr += event.data;
+          }
+          if (event.type === "exit") {
+            exitCode = Number(event.data);
+          }
+        }
+        if (exitCode !== 0) {
+          throw new Error(`Setup script failed (exit code ${exitCode}): ${stderr}`);
+        }
       }
 
       // Run request-level setup script if provided
       if (req.setupScript) {
-        await this.executionManager.runSetupScript(
+        let stderr = "";
+        let exitCode = 0;
+        for await (const event of this.executionManager.runSetupScript(
           container,
           req.setupScript,
           timeoutMs,
           this.volumeManager
-        );
+        )) {
+          if (event.type === "stderr") {
+            stderr += event.data;
+          }
+          if (event.type === "exit") {
+            exitCode = Number(event.data);
+          }
+        }
+        if (exitCode !== 0) {
+          throw new Error(`Setup script failed (exit code ${exitCode}): ${stderr}`);
+        }
       }
 
       // Execute the actual command, wrapped with timeout to ensure kill on expiry
@@ -1056,7 +1135,7 @@ export class DockerIsol8 implements Isol8Engine {
   }
 
   private async executePersistent(
-    req: ExecutionRequest & { code: string },
+    req: ExecutionRequest,
     startTime: number
   ): Promise<ExecutionResult> {
     const adapter = this.getAdapter(req.runtime);
@@ -1077,11 +1156,19 @@ export class DockerIsol8 implements Isol8Engine {
       );
     }
 
-    const ext = req.fileExtension ?? adapter.getFileExtension();
-    const filePath = `${SANDBOX_WORKDIR}/exec_${Date.now()}${ext}`;
+    let rawCmd: string[];
+    if (req.cmd) {
+      // cmd mode: run bash command directly, no file write needed
+      rawCmd = ["bash", "-c", req.cmd];
+    } else {
+      const ext = req.fileExtension ?? adapter.getFileExtension();
+      const filePath = `${SANDBOX_WORKDIR}/exec_${Date.now()}${ext}`;
 
-    // Write code to the container
-    await this.volumeManager.putFile(this.container!, filePath, req.code);
+      // Write code to the container
+      await this.volumeManager.putFile(this.container!, filePath, req.code!);
+
+      rawCmd = this.buildAdapterCommand(adapter, req, filePath);
+    }
 
     // Inject input files
     if (req.files) {
@@ -1090,7 +1177,6 @@ export class DockerIsol8 implements Isol8Engine {
       }
     }
 
-    const rawCmd = this.buildAdapterCommand(adapter, req, filePath);
     const timeoutSec = Math.ceil(timeoutMs / 1000);
 
     // Install packages if requested
@@ -1105,22 +1191,46 @@ export class DockerIsol8 implements Isol8Engine {
 
     // Run image-level setup script if the resolved image carries one
     if (imageSetupScript) {
-      await this.executionManager.runSetupScript(
+      let stderr = "";
+      let exitCode = 0;
+      for await (const event of this.executionManager.runSetupScript(
         this.container!,
         imageSetupScript,
         timeoutMs,
         this.volumeManager
-      );
+      )) {
+        if (event.type === "stderr") {
+          stderr += event.data;
+        }
+        if (event.type === "exit") {
+          exitCode = Number(event.data);
+        }
+      }
+      if (exitCode !== 0) {
+        throw new Error(`Setup script failed (exit code ${exitCode}): ${stderr}`);
+      }
     }
 
     // Run request-level setup script if provided
     if (req.setupScript) {
-      await this.executionManager.runSetupScript(
+      let stderr = "";
+      let exitCode = 0;
+      for await (const event of this.executionManager.runSetupScript(
         this.container!,
         req.setupScript,
         timeoutMs,
         this.volumeManager
-      );
+      )) {
+        if (event.type === "stderr") {
+          stderr += event.data;
+        }
+        if (event.type === "exit") {
+          exitCode = Number(event.data);
+        }
+      }
+      if (exitCode !== 0) {
+        throw new Error(`Setup script failed (exit code ${exitCode}): ${stderr}`);
+      }
     }
 
     // Handle stdin
@@ -1271,29 +1381,32 @@ export class DockerIsol8 implements Isol8Engine {
 
   /**
    * Validate agent runtime requirements. The agent runtime requires
-   * filtered network mode with at least one whitelist entry so that
-   * the AI coding agent can reach its LLM provider API.
+   * either filtered network mode (with at least one whitelist entry) or
+   * host network mode so that the AI coding agent can reach its LLM
+   * provider API.
    */
   private validateAgentRuntime(req: ExecutionRequest): void {
     if (req.runtime !== "agent") {
       return;
     }
 
-    if (this.network !== "filtered") {
+    if (this.network === "none") {
       throw new Error(
-        'Agent runtime requires network mode "filtered". ' +
-          "The AI coding agent needs network access to reach its LLM provider API. " +
-          'Use --net filtered --allow "api.anthropic.com" (or your provider\'s domain).'
+        "Agent runtime requires network access. " +
+          "The AI coding agent needs to reach its LLM provider API. " +
+          'Use --net host, or --net filtered --allow "api.anthropic.com" (or your provider\'s domain).'
       );
     }
 
-    const whitelist = this.networkFilter?.whitelist ?? [];
-    if (whitelist.length === 0) {
-      throw new Error(
-        "Agent runtime requires at least one network whitelist entry. " +
-          "The AI coding agent needs to reach its LLM provider API. " +
-          'Use --allow "api.anthropic.com" (or your provider\'s domain).'
-      );
+    if (this.network === "filtered") {
+      const whitelist = this.networkFilter?.whitelist ?? [];
+      if (whitelist.length === 0) {
+        throw new Error(
+          "Agent runtime requires at least one network whitelist entry. " +
+            "The AI coding agent needs to reach its LLM provider API. " +
+            'Use --allow "api.anthropic.com" (or your provider\'s domain).'
+        );
+      }
     }
   }
 
@@ -1303,16 +1416,17 @@ export class DockerIsol8 implements Isol8Engine {
    */
   private buildAdapterCommand(
     adapter: RuntimeAdapter,
-    req: ExecutionRequest & { code: string },
+    req: ExecutionRequest,
     filePath?: string
   ): string[] {
+    const code = req.code ?? "";
     if (adapter.getCommandWithOptions) {
-      return adapter.getCommandWithOptions(req.code, {
+      return adapter.getCommandWithOptions(code, {
         filePath,
         agentFlags: req.agentFlags,
       });
     }
-    return adapter.getCommand(req.code, filePath);
+    return adapter.getCommand(code, filePath);
   }
 
   private buildHostConfig(): Docker.HostConfig {
