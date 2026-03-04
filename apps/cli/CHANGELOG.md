@@ -1,5 +1,22 @@
 # @isol8/cli
 
+## 0.20.0
+
+### Minor Changes
+
+- [#112](https://github.com/Illusion47586/isol8/pull/112) [`25eb815`](https://github.com/Illusion47586/isol8/commit/25eb81597d99f95d4c7c79a3362f3eeba6589df3) Thanks [@Illusion47586](https://github.com/Illusion47586)! - Add `cmd` field to `ExecutionRequest` for running arbitrary bash commands in the sandbox.
+
+  `cmd` lets users execute bash commands directly inside the sandbox container via `bash -c "<cmd>"`, bypassing the runtime-specific code execution path. It is mutually exclusive with `code` and `codeUrl` — providing more than one is a validation error.
+
+  - `ExecutionRequest.cmd?: string` — runs via `bash -c` in all runtimes
+  - All four execute paths (`executeEphemeral`, `executePersistent`, `executeStreamEphemeral`, `executeStreamPersistent`) handle the `cmd` branch
+  - CLI gains a `--cmd <command>` flag; defaults runtime to `bash` if not specified
+
+### Patch Changes
+
+- Updated dependencies [[`25eb815`](https://github.com/Illusion47586/isol8/commit/25eb81597d99f95d4c7c79a3362f3eeba6589df3), [`25eb815`](https://github.com/Illusion47586/isol8/commit/25eb81597d99f95d4c7c79a3362f3eeba6589df3)]:
+  - @isol8/core@0.20.0
+
 ## 0.19.0
 
 ### Minor Changes

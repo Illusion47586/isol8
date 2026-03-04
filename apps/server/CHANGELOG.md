@@ -1,5 +1,20 @@
 # @isol8/server
 
+## 0.20.0
+
+### Patch Changes
+
+- [#112](https://github.com/Illusion47586/isol8/pull/112) [`25eb815`](https://github.com/Illusion47586/isol8/commit/25eb81597d99f95d4c7c79a3362f3eeba6589df3) Thanks [@Illusion47586](https://github.com/Illusion47586)! - Fix `executeStream` to properly support persistent mode and warm container pool.
+
+  `executeStream` was always spinning up a brand-new ephemeral container, ignoring both the `mode: "persistent"` setting (so filesystem state was never preserved across streaming calls) and the pre-warmed container pool (so every streaming call paid full cold-start overhead). The server's `/execute/stream` (SSE) and `/execute/ws` (WebSocket) endpoints were also hardcoding `mode: "ephemeral"` and ignoring `sessionId`.
+
+  - `executeStream` now dispatches to `executeStreamPersistent` (reuses `this.container`, preserving state) or `executeStreamEphemeral` (acquires from and returns to the warm pool) based on `this.mode`, matching the behaviour of `execute`
+  - `WsClientMessage` execute variant gains an optional `sessionId` field
+  - Server `/execute/stream` and `/execute/ws` now support `sessionId` for persistent streaming sessions, consistent with `/execute`
+
+- Updated dependencies [[`25eb815`](https://github.com/Illusion47586/isol8/commit/25eb81597d99f95d4c7c79a3362f3eeba6589df3), [`25eb815`](https://github.com/Illusion47586/isol8/commit/25eb81597d99f95d4c7c79a3362f3eeba6589df3)]:
+  - @isol8/core@0.20.0
+
 ## 0.19.0
 
 ### Minor Changes
