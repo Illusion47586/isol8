@@ -78,12 +78,21 @@ When `runtime: "agent"` is used, isol8 runs:
 pi --no-session --append-system-prompt '<sandbox context>' [agentFlags] -p '<code>'
 ```
 
-- `--no-session` — disables session persistence (ephemeral, non-interactive)
+- `--no-session` — disables session persistence (ephemeral, non-interactive). This is always set by isol8; you do not need to include it in `agentFlags`.
 - `--append-system-prompt` — automatically injected by isol8 to inform pi of sandbox constraints
 - `agentFlags` — extra pi flags you supply (model, thinking level, tool restrictions)
 - `-p '<code>'` — your prompt, shell-quoted
 
 pi then runs its own tool-call loop inside the container. It can read, write, and edit files under `/sandbox`, and run arbitrary bash commands — all within the sandbox's resource and network limits.
+
+<Note>
+  The `isol8:agent` Docker image (which provides `bun`, `pi`, and `gh`) is built automatically when you run `isol8 setup` or when `DockerIsol8` first uses the agent runtime. If you need to build it manually — for example in an offline environment — run:
+
+  ```bash
+  docker build --target agent -t isol8:agent \
+    node_modules/@isol8/core/dist/docker/
+  ```
+</Note>
 
 ## Networking requirement
 
@@ -364,11 +373,19 @@ for await (const event of engine.executeStream({
 
 ## Default resource limits
 
-The agent runtime applies higher defaults than other runtimes since pi spawns subprocesses for tool calls:
+The agent runtime spawns subprocesses for tool calls (`bash`, package installs, git operations). The default `pidsLimit` of `64` is often too low — **explicitly set `pidsLimit: 200`** to avoid process limit errors:
 
-| Option | Agent default | Other runtimes |
+```typescript
+const engine = new DockerIsol8({
+  network: "filtered",
+  networkFilter: { whitelist: ["^api\\.anthropic\\.com$"], blacklist: [] },
+  pidsLimit: 200, // required — the default of 64 is too low for agent workloads
+});
+```
+
+| Option | Recommended for agent | Default (all runtimes) |
 |:---|:---|:---|
-| `pidsLimit` | `200` | `64` |
+| `pidsLimit` | `200` (set explicitly) | `64` |
 | `sandboxSize` | `2g` | `512m` |
 
 ## Retrieving output files
@@ -405,7 +422,7 @@ const engine = new DockerIsol8({
 
 **Agent exits non-zero** — Check `result.stderr`. Common causes: missing API key, endpoint not in whitelist, `timeoutMs` too short.
 
-**Agent can't reach the LLM API** — Verify the whitelist pattern is anchored (`^api\\.anthropic\\.com$`). A missing `^` or `$` won't match as expected.
+**Agent can't reach the LLM API** — Verify the whitelist pattern. Patterns are matched as extended regular expressions using `grep -E` (substring match, not full-string). Without anchors, a pattern like `anthropic\\.com` would also match `evil-anthropic.com.attacker.net`. Use `^` and `$` anchors for precise matching: `^api\\.anthropic\\.com$`.
 
 **Files not in result** — Add `outputPaths` or call `getFile()` after the run. In ephemeral mode, container state is discarded on exit.
 

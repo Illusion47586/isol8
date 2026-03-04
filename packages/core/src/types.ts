@@ -213,7 +213,7 @@ export interface StreamEvent {
  * - `"signal"` — Send a control signal to the running process (reserved for future use).
  */
 export type WsClientMessage =
-  | { type: "execute"; request: ExecutionRequest; options?: Isol8Options }
+  | { type: "execute"; request: ExecutionRequest; options?: Isol8Options; sessionId?: string }
   | { type: "stdin"; data: string }
   | { type: "signal"; signal: "SIGINT" | "SIGTERM" };
 

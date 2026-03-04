@@ -481,128 +481,234 @@ export class DockerIsol8 implements Isol8Engine {
   /**
    * Execute code and stream output chunks as they arrive.
    * Yields {@link StreamEvent} objects for stdout, stderr, exit, and error events.
+   *
+   * Respects the engine mode:
+   * - **Persistent** — reuses `this.container` across calls, preserving filesystem state.
+   * - **Ephemeral** — acquires a pre-warmed container from the pool and returns it after use.
    */
   async *executeStream(req: ExecutionRequest): AsyncIterable<StreamEvent> {
     await this.semaphore.acquire();
     try {
       this.validateAgentRuntime(req);
       const request = await this.resolveExecutionRequest(req);
-      const adapter = this.getAdapter(request.runtime);
-      const timeoutMs = request.timeoutMs ?? this.defaultTimeoutMs;
-      const resolved = await this.resolveImage(adapter, request.installPackages);
-      const image = resolved.image;
-      const execWorkdir = request.workdir ? resolveWorkdir(request.workdir) : SANDBOX_WORKDIR;
 
-      // Create container (always ephemeral-style for streaming)
-      const container: Docker.Container = await this.docker.createContainer({
-        Image: image,
-        Cmd: ["sleep", "infinity"],
-        WorkingDir: SANDBOX_WORKDIR,
+      if (this.mode === "persistent") {
+        yield* this.executeStreamPersistent(request);
+      } else {
+        yield* this.executeStreamEphemeral(request);
+      }
+    } finally {
+      this.semaphore.release();
+    }
+  }
+
+  /**
+   * Streaming execution in persistent mode — reuses the long-lived container so that
+   * filesystem state is preserved across calls, mirroring {@link executePersistent}.
+   */
+  private async *executeStreamPersistent(
+    request: ExecutionRequest & { code: string }
+  ): AsyncIterable<StreamEvent> {
+    const adapter = this.getAdapter(request.runtime);
+    const timeoutMs = request.timeoutMs ?? this.defaultTimeoutMs;
+    const execWorkdir = request.workdir ? resolveWorkdir(request.workdir) : SANDBOX_WORKDIR;
+
+    let remainingPackages = request.installPackages ?? [];
+    let imageSetupScript: string | undefined;
+
+    // Lazily create the persistent container (same logic as executePersistent)
+    if (!this.container) {
+      const started = await this.startPersistentContainer(adapter, request.installPackages);
+      remainingPackages = started.remainingPackages;
+      imageSetupScript = started.imageSetupScript;
+    } else if (this.persistentRuntime?.name !== adapter.name) {
+      throw new Error(
+        `Cannot switch runtime from "${this.persistentRuntime?.name}" to "${adapter.name}". Each persistent container supports a single runtime. Create a new Isol8 instance for a different runtime.`
+      );
+    }
+
+    const ext = request.fileExtension ?? adapter.getFileExtension();
+    const filePath = `${SANDBOX_WORKDIR}/exec_${Date.now()}${ext}`;
+
+    await this.volumeManager.putFile(this.container!, filePath, request.code);
+
+    // Inject input files
+    if (request.files) {
+      for (const [fPath, fContent] of Object.entries(request.files)) {
+        await this.volumeManager.putFile(this.container!, fPath, fContent);
+      }
+    }
+
+    // Install packages if requested
+    if (remainingPackages.length > 0) {
+      await this.executionManager.installPackages(
+        this.container!,
+        request.runtime,
+        remainingPackages,
+        timeoutMs
+      );
+    }
+
+    // Run image-level setup script if the resolved image carries one
+    if (imageSetupScript) {
+      await this.executionManager.runSetupScript(
+        this.container!,
+        imageSetupScript,
+        timeoutMs,
+        this.volumeManager
+      );
+    }
+
+    // Run request-level setup script if provided
+    if (request.setupScript) {
+      await this.executionManager.runSetupScript(
+        this.container!,
+        request.setupScript,
+        timeoutMs,
+        this.volumeManager
+      );
+    }
+
+    const rawCmd = this.buildAdapterCommand(adapter, request, filePath);
+    const timeoutSec = Math.ceil(timeoutMs / 1000);
+    let cmd: string[];
+    if (request.stdin) {
+      const stdinPath = `${SANDBOX_WORKDIR}/_stdin_${Date.now()}`;
+      await this.volumeManager.writeFileViaExec(this.container!, stdinPath, request.stdin);
+      const cmdStr = rawCmd.map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(" ");
+      cmd = this.executionManager.wrapWithTimeout(
+        ["sh", "-c", `cat ${stdinPath} | ${cmdStr}`],
+        timeoutSec
+      );
+    } else {
+      cmd = this.executionManager.wrapWithTimeout(rawCmd, timeoutSec);
+    }
+
+    const exec = await this.container!.exec({
+      Cmd: cmd,
+      Env: this.executionManager.buildEnv(
+        request.env,
+        this.networkManager.proxyPort,
+        this.network,
+        this.networkFilter
+      ),
+      AttachStdout: true,
+      AttachStderr: true,
+      WorkingDir: execWorkdir,
+      User: "sandbox",
+    });
+
+    const execStream = await exec.start({ Tty: false });
+
+    yield* this.executionManager.streamExecOutput(execStream, exec, this.container!, timeoutMs);
+  }
+
+  /**
+   * Streaming execution in ephemeral mode — acquires a pre-warmed container from the pool,
+   * streams output, then returns the container to the pool for reuse.
+   */
+  private async *executeStreamEphemeral(
+    request: ExecutionRequest & { code: string }
+  ): AsyncIterable<StreamEvent> {
+    const adapter = this.getAdapter(request.runtime);
+    const timeoutMs = request.timeoutMs ?? this.defaultTimeoutMs;
+    const resolved = await this.resolveImage(adapter, request.installPackages);
+    const image = resolved.image;
+    const execWorkdir = request.workdir ? resolveWorkdir(request.workdir) : SANDBOX_WORKDIR;
+
+    // Acquire a pre-warmed container from the pool
+    const pool = this.ensurePool();
+    const container = await pool.acquire(image);
+
+    try {
+      await this.networkManager.startProxy(container);
+      await this.networkManager.setupIptables(container);
+
+      // Write code
+      const ext = request.fileExtension ?? adapter.getFileExtension();
+      const filePath = `${SANDBOX_WORKDIR}/main${ext}`;
+      await this.volumeManager.writeFileViaExec(container, filePath, request.code);
+
+      // Install packages if requested
+      if (resolved.remainingPackages.length > 0) {
+        await this.executionManager.installPackages(
+          container,
+          request.runtime,
+          resolved.remainingPackages,
+          timeoutMs
+        );
+      }
+
+      // Run image-level setup script if the resolved image carries one
+      if (resolved.imageSetupScript) {
+        await this.executionManager.runSetupScript(
+          container,
+          resolved.imageSetupScript,
+          timeoutMs,
+          this.volumeManager
+        );
+      }
+
+      // Run request-level setup script if provided
+      if (request.setupScript) {
+        await this.executionManager.runSetupScript(
+          container,
+          request.setupScript,
+          timeoutMs,
+          this.volumeManager
+        );
+      }
+
+      // Inject input files
+      if (request.files) {
+        for (const [fPath, fContent] of Object.entries(request.files)) {
+          await this.volumeManager.writeFileViaExec(container, fPath, fContent);
+        }
+      }
+
+      // Build command
+      const rawCmd = this.buildAdapterCommand(adapter, request, filePath);
+      const timeoutSec = Math.ceil(timeoutMs / 1000);
+      let cmd: string[];
+      if (request.stdin) {
+        const stdinPath = `${SANDBOX_WORKDIR}/_stdin`;
+        await this.volumeManager.writeFileViaExec(container, stdinPath, request.stdin);
+        const cmdStr = rawCmd.map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(" ");
+        cmd = this.executionManager.wrapWithTimeout(
+          ["sh", "-c", `cat ${stdinPath} | ${cmdStr}`],
+          timeoutSec
+        );
+      } else {
+        cmd = this.executionManager.wrapWithTimeout(rawCmd, timeoutSec);
+      }
+
+      const exec = await container.exec({
+        Cmd: cmd,
         Env: this.executionManager.buildEnv(
-          undefined,
+          request.env,
           this.networkManager.proxyPort,
           this.network,
           this.networkFilter
         ),
-        NetworkDisabled: this.network === "none",
-        HostConfig: this.buildHostConfig(),
-        StopTimeout: 2,
+        AttachStdout: true,
+        AttachStderr: true,
+        WorkingDir: execWorkdir,
+        User: "sandbox",
       });
 
-      try {
-        await container.start();
+      const execStream = await exec.start({ Tty: false });
 
-        await this.networkManager.startProxy(container);
-        await this.networkManager.setupIptables(container);
-
-        // Write code
-        const ext = request.fileExtension ?? adapter.getFileExtension();
-        const filePath = `${SANDBOX_WORKDIR}/main${ext}`;
-        await this.volumeManager.writeFileViaExec(container, filePath, request.code);
-
-        // Install packages if requested
-        if (resolved.remainingPackages.length > 0) {
-          await this.executionManager.installPackages(
-            container,
-            request.runtime,
-            resolved.remainingPackages,
-            timeoutMs
-          );
-        }
-
-        // Run image-level setup script if the resolved image carries one
-        if (resolved.imageSetupScript) {
-          await this.executionManager.runSetupScript(
-            container,
-            resolved.imageSetupScript,
-            timeoutMs,
-            this.volumeManager
-          );
-        }
-
-        // Run request-level setup script if provided
-        if (request.setupScript) {
-          await this.executionManager.runSetupScript(
-            container,
-            request.setupScript,
-            timeoutMs,
-            this.volumeManager
-          );
-        }
-
-        // Inject input files
-        if (request.files) {
-          for (const [fPath, fContent] of Object.entries(request.files)) {
-            await this.volumeManager.writeFileViaExec(container, fPath, fContent);
-          }
-        }
-
-        // Build command
-        const rawCmd = this.buildAdapterCommand(adapter, request, filePath);
-        const timeoutSec = Math.ceil(timeoutMs / 1000);
-        let cmd: string[];
-        if (request.stdin) {
-          const stdinPath = `${SANDBOX_WORKDIR}/_stdin`;
-          await this.volumeManager.writeFileViaExec(container, stdinPath, request.stdin);
-          const cmdStr = rawCmd.map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(" ");
-          cmd = this.executionManager.wrapWithTimeout(
-            ["sh", "-c", `cat ${stdinPath} | ${cmdStr}`],
-            timeoutSec
-          );
-        } else {
-          cmd = this.executionManager.wrapWithTimeout(rawCmd, timeoutSec);
-        }
-
-        const exec = await container.exec({
-          Cmd: cmd,
-          Env: this.executionManager.buildEnv(
-            request.env,
-            this.networkManager.proxyPort,
-            this.network,
-            this.networkFilter
-          ),
-          AttachStdout: true,
-          AttachStderr: true,
-          WorkingDir: execWorkdir,
-          User: "sandbox",
-        });
-
-        const execStream = await exec.start({ Tty: false });
-
-        yield* this.executionManager.streamExecOutput(execStream, exec, container, timeoutMs);
-      } finally {
-        if (this.persist) {
-          logger.debug(`[Persist] Leaving container running for inspection: ${container.id}`);
-        } else {
-          try {
-            await container.remove({ force: true });
-          } catch {
-            // Best effort cleanup
-          }
-        }
-      }
+      yield* this.executionManager.streamExecOutput(execStream, exec, container, timeoutMs);
     } finally {
-      this.semaphore.release();
+      if (this.persist) {
+        logger.debug(`[Persist] Leaving container running for inspection: ${container.id}`);
+      } else {
+        // Return container to pool for reuse - fire-and-forget for performance
+        pool.release(container, image).catch((err) => {
+          logger.debug(`[Pool] release failed: ${err}`);
+          container.remove({ force: true }).catch(() => {});
+        });
+      }
     }
   }
 

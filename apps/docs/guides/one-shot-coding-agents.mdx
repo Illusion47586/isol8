@@ -135,7 +135,7 @@ const engine = new DockerIsol8({
   },
   timeoutMs: 300_000, // 5 minutes per step
   memoryLimit: "2g",
-  pidsLimit: 200,     // agent runtime spawns subprocesses; isol8 defaults this to 200 automatically
+  pidsLimit: 200,     // agent runtime spawns subprocesses; must be set explicitly (true default is 64)
   secrets: {
     // Passed as environment variables; values are automatically masked in stdout/stderr
     GITHUB_TOKEN: process.env.GITHUB_TOKEN!,
@@ -150,9 +150,67 @@ await engine.start();
   `mode: "persistent"` reuses a single container across all `execute()` calls, preserving filesystem state — just like Stripe's devboxes persist across agent steps.
 </Note>
 
+<Tip>
+  **Persistent vs. ephemeral:** Use `mode: "persistent"` when you need multiple `execute()` calls to share filesystem state (the multi-step blueprint pattern above). For truly fire-and-forget one-shot tasks where a single agent call does all the work, `mode: "ephemeral"` is simpler — no `start()`/`stop()` lifecycle to manage, and stale containers can't accumulate if the process crashes. See the [simple one-shot pattern](#simple-one-shot-pattern) below.
+</Tip>
+
 <Note>
   The agent runtime **requires** `network: "filtered"` with at least one whitelist entry. Passing `network: "none"` or an empty whitelist throws immediately. Pass your LLM provider's domain (e.g. `^api\\.anthropic\\.com$`) in the whitelist.
 </Note>
+
+## Simple one-shot pattern
+
+If you don't need the multi-step lint/test/iterate blueprint, you can skip the persistent engine entirely. A single `executeStream()` call with a comprehensive prompt and a `setupScript` that clones the repo is often all you need:
+
+```typescript
+import { DockerIsol8 } from "@isol8/core";
+
+const engine = new DockerIsol8({
+  network: "filtered",
+  networkFilter: {
+    whitelist: ["^api\\.anthropic\\.com$", "^github\\.com$", "^api\\.github\\.com$"],
+    blacklist: ["^169\\.254\\."],
+  },
+  memoryLimit: "2g",
+  pidsLimit: 200,
+  secrets: {
+    GITHUB_TOKEN: process.env.GITHUB_TOKEN!,
+    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY!,
+  },
+});
+
+await engine.start();
+
+for await (const event of engine.executeStream({
+  runtime: "agent",
+  setupScript: `
+    git clone https://$GITHUB_TOKEN@github.com/my-org/my-repo.git /sandbox/repo
+    cd /sandbox/repo
+    git checkout -b agent/fix-issue-42 origin/main
+    cat > /sandbox/repo/AGENTS.md << 'EOF'
+# Project rules
+- Follow existing code style
+- Write tests for new functions
+- Do not modify the public API surface
+EOF
+  `,
+  code: `Fix the type error in src/utils/parser.ts described in issue #42.
+Lint, run tests, then commit the fix and create a PR targeting main with a clear description.`,
+  agentFlags: "--model anthropic/claude-sonnet-4-5 --thinking low",
+  workdir: "/sandbox/repo",
+  timeoutMs: 600_000,
+})) {
+  if (event.type === "stdout") process.stdout.write(event.data);
+  if (event.type === "stderr") process.stderr.write(event.data);
+  if (event.type === "exit") console.log(`\nDone (exit ${event.data})`);
+}
+
+await engine.stop();
+```
+
+<Tip>
+  In this pattern the agent is responsible for linting, testing, committing, and opening the PR — all inside the prompt. The `setupScript` handles repo setup before pi starts. Use the multi-step blueprint (Steps 3–6) when you need deterministic control over each phase or want to loop on test failures programmatically.
+</Tip>
 
 ## Step 3: Hydrate context (clone repo, inject rules)
 
@@ -182,12 +240,17 @@ EOF
   `,
   code: task,
   agentFlags: "--model anthropic/claude-sonnet-4-5 --thinking low",
+  workdir: "/sandbox/repo", // pi starts directly in the repo — no need to cd in the prompt
   timeoutMs: 300_000,
 });
 ```
 
 <Tip>
-  `setupScript` runs as bash before pi receives the prompt. It is subject to the same `timeoutMs` as the overall request. A non-zero exit aborts the execution immediately — use it to validate that required secrets are present.
+  `setupScript` runs as bash before pi receives the prompt. It is subject to the same `timeoutMs` as the overall request. A non-zero exit aborts the execution immediately — use it to validate that required secrets are present. The setup script always runs from `/sandbox` regardless of `workdir` — use explicit `cd` inside the script if you need a different directory.
+</Tip>
+
+<Tip>
+  Set `workdir: "/sandbox/repo"` on every agent `ExecutionRequest` after cloning the repo. `workdir` sets the working directory for pi's process (the main code exec) — pi will start in `/sandbox/repo` rather than the default `/sandbox`, so `AGENTS.md` is auto-loaded and relative tool calls resolve correctly. It does not affect `setupScript`, which always runs from `/sandbox`.
 </Tip>
 
 For setup that never changes between runs (git identity, tool config, registry authentication), bake it into the custom image using `prebuiltImages[].setupScript` so it runs on every execution without adding per-request latency. The per-request `setupScript` is then only the parts specific to each task — cloning the right repo, checking out the right branch, writing the task's rules:
@@ -218,6 +281,7 @@ async function agentImplement(task: string, setupScript?: string): Promise<Execu
     setupScript,
     code: task,
     agentFlags: "--model anthropic/claude-sonnet-4-5 --thinking low",
+    workdir: "/sandbox/repo", // pi starts in the repo root
     timeoutMs: 300_000,
     // Do NOT pass ANTHROPIC_API_KEY here — it is already available
     // via `secrets` in the engine config, and secrets are masked in output.
@@ -440,6 +504,7 @@ for await (const event of engine.executeStream({
   runtime: "agent",
   code: "Fix the type error in src/utils/parser.ts",
   agentFlags: "--model anthropic/claude-sonnet-4-5",
+  workdir: "/sandbox/repo",
 })) {
   switch (event.type) {
     case "stdout":
