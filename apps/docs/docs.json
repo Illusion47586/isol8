@@ -118,6 +118,15 @@
         ]
       },
       {
+        "tab": "Maxions",
+        "groups": [
+          {
+            "group": "Maxions",
+            "pages": ["maxions"]
+          }
+        ]
+      },
+      {
         "tab": "Guides",
         "groups": [
           {
