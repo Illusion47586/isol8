@@ -126,3 +126,88 @@ describe("loadConfig", () => {
     rmSync(tmpDir, { recursive: true });
   });
 });
+
+describe("loadConfig — dependencies shorthand", () => {
+  const tmpDir = join(tmpdir(), `isol8-deps-test-${Date.now()}`);
+
+  test("dependencies shorthand expands to prebuiltImages", () => {
+    mkdirSync(tmpDir, { recursive: true });
+    writeFileSync(
+      join(tmpDir, "isol8.config.json"),
+      JSON.stringify({
+        dependencies: {
+          python: ["numpy", "pandas", "scipy"],
+        },
+      })
+    );
+
+    const config = loadConfig(tmpDir);
+    expect(config.prebuiltImages).toHaveLength(1);
+    expect(config.prebuiltImages[0]).toEqual({
+      tag: "isol8:python-custom",
+      runtime: "python",
+      installPackages: ["numpy", "pandas", "scipy"],
+    });
+
+    rmSync(tmpDir, { recursive: true });
+  });
+
+  test("dependencies shorthand supports multiple runtimes", () => {
+    mkdirSync(tmpDir, { recursive: true });
+    writeFileSync(
+      join(tmpDir, "isol8.config.json"),
+      JSON.stringify({
+        dependencies: {
+          python: ["numpy"],
+          node: ["lodash"],
+        },
+      })
+    );
+
+    const config = loadConfig(tmpDir);
+    expect(config.prebuiltImages).toHaveLength(2);
+    const runtimes = config.prebuiltImages.map((p) => p.runtime).sort();
+    expect(runtimes).toEqual(["node", "python"]);
+
+    rmSync(tmpDir, { recursive: true });
+  });
+
+  test("dependencies entries are appended after explicit prebuiltImages", () => {
+    mkdirSync(tmpDir, { recursive: true });
+    writeFileSync(
+      join(tmpDir, "isol8.config.json"),
+      JSON.stringify({
+        prebuiltImages: [{ tag: "my-custom:v1", runtime: "python", installPackages: ["requests"] }],
+        dependencies: {
+          node: ["express"],
+        },
+      })
+    );
+
+    const config = loadConfig(tmpDir);
+    expect(config.prebuiltImages).toHaveLength(2);
+    expect(config.prebuiltImages[0].tag).toBe("my-custom:v1");
+    expect(config.prebuiltImages[1].tag).toBe("isol8:node-custom");
+    expect(config.prebuiltImages[1].installPackages).toEqual(["express"]);
+
+    rmSync(tmpDir, { recursive: true });
+  });
+
+  test("config without dependencies produces empty prebuiltImages by default", () => {
+    const config = loadConfig("/nonexistent/path");
+    expect(config.prebuiltImages).toEqual([]);
+  });
+
+  test("dependencies shorthand generates correct tag format", () => {
+    mkdirSync(tmpDir, { recursive: true });
+    writeFileSync(
+      join(tmpDir, "isol8.config.json"),
+      JSON.stringify({ dependencies: { bun: ["hono"] } })
+    );
+
+    const config = loadConfig(tmpDir);
+    expect(config.prebuiltImages[0].tag).toBe("isol8:bun-custom");
+
+    rmSync(tmpDir, { recursive: true });
+  });
+});

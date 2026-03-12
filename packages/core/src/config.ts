@@ -9,7 +9,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import type { Isol8Config } from "./types";
+import type { Isol8Config, Isol8UserConfig, PrebuiltImageConfig, Runtime } from "./types";
 
 /**
  * Built-in default configuration. Used as the base for all config merges.
@@ -110,7 +110,7 @@ export function loadConfig(cwd?: string): Isol8Config {
   for (const configPath of searchPaths) {
     if (existsSync(configPath)) {
       const raw = readFileSync(configPath, "utf-8");
-      const parsed = JSON.parse(raw) as Partial<Isol8Config>;
+      const parsed = JSON.parse(raw) as Partial<Isol8UserConfig>;
       return mergeConfig(DEFAULT_CONFIG, parsed);
     }
   }
@@ -119,11 +119,38 @@ export function loadConfig(cwd?: string): Isol8Config {
 }
 
 /**
+ * Expands the `dependencies` shorthand into `prebuiltImages` entries.
+ *
+ * `{ dependencies: { python: ["numpy"] } }` expands to:
+ * `[{ tag: "isol8:python-custom", runtime: "python", installPackages: ["numpy"] }]`
+ */
+function expandDependencies(
+  deps: Partial<Record<Runtime, string[]>> | undefined
+): PrebuiltImageConfig[] {
+  if (!deps) {
+    return [];
+  }
+  return (Object.entries(deps) as [Runtime, string[]][]).map(([runtime, packages]) => ({
+    tag: `isol8:${runtime}-custom`,
+    runtime,
+    installPackages: packages,
+  }));
+}
+
+/**
  * Deep-merges a partial config with defaults. Each top-level section is merged
  * independently so that specifying e.g. `{ defaults: { timeoutMs: 5000 } }`
  * preserves all other default values.
+ *
+ * The `dependencies` shorthand field (from `Isol8UserConfig`) is expanded into
+ * `prebuiltImages` entries and appended after any explicit `prebuiltImages`.
  */
-function mergeConfig(defaults: Isol8Config, overrides: Partial<Isol8Config>): Isol8Config {
+function mergeConfig(defaults: Isol8Config, overrides: Partial<Isol8UserConfig>): Isol8Config {
+  const explicitPrebuilt = overrides.prebuiltImages ?? defaults.prebuiltImages;
+  const fromDeps = expandDependencies(overrides.dependencies);
+  const prebuiltImages =
+    fromDeps.length > 0 ? [...explicitPrebuilt, ...fromDeps] : explicitPrebuilt;
+
   return {
     maxConcurrent: overrides.maxConcurrent ?? defaults.maxConcurrent,
     defaults: {
@@ -161,7 +188,7 @@ function mergeConfig(defaults: Isol8Config, overrides: Partial<Isol8Config>): Is
       ...defaults.auth,
       ...overrides.auth,
     },
-    prebuiltImages: overrides.prebuiltImages ?? defaults.prebuiltImages,
+    prebuiltImages,
     debug: overrides.debug ?? defaults.debug,
   };
 }

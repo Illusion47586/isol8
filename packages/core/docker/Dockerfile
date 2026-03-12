@@ -9,8 +9,20 @@ WORKDIR /sandbox
 ENTRYPOINT ["/sbin/tini", "--"]
 
 # ── Python ────────────────────────────────────────────────────────────
-FROM base AS python
-RUN apk add --no-cache python3 py3-pip
+# Uses python:3.12-slim (Debian) instead of Alpine so that pre-built
+# manylinux/musllinux wheels are available for data-science packages
+# (numpy, scipy, matplotlib, statsmodels, etc.).
+FROM python:3.12-slim AS python
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        tini curl ca-certificates iptables bash git \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd -r sandbox && useradd -r -g sandbox -d /sandbox -s /bin/bash sandbox \
+    && mkdir -p /sandbox && chown sandbox:sandbox /sandbox
+COPY proxy.sh /usr/local/bin/proxy.sh
+COPY proxy-handler.sh /usr/local/bin/proxy-handler.sh
+RUN chmod +x /usr/local/bin/proxy.sh /usr/local/bin/proxy-handler.sh
+WORKDIR /sandbox
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["python3"]
 
 # ── Node ──────────────────────────────────────────────────────────────

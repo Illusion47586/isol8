@@ -9,6 +9,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { Readable } from "node:stream";
 import type Docker from "dockerode";
 import { RuntimeRegistry } from "../runtime";
 import { logger } from "../utils/logger";
@@ -234,13 +235,25 @@ export async function buildBaseImages(
 
       // Wait for build to complete
       await new Promise<void>((resolve, reject) => {
-        docker.modem.followProgress(stream, (err) => {
-          if (err) {
-            reject(err);
-          } else {
-            resolve();
+        const buildLog: string[] = [];
+        docker.modem.followProgress(
+          stream,
+          (err) => {
+            if (err) {
+              const log = buildLog.join("").trim();
+              const detail = log ? `\n--- build log ---\n${log}\n-----------------` : "";
+              reject(new Error(`${err instanceof Error ? err.message : String(err)}${detail}`));
+            } else {
+              resolve();
+            }
+          },
+          // biome-ignore lint/suspicious/noExplicitAny: stream chunk type is ambiguous
+          (event: any) => {
+            if (event.stream) {
+              buildLog.push(event.stream);
+            }
           }
-        });
+        );
       });
 
       // Clean up the old image if it existed and was replaced
@@ -350,23 +363,27 @@ export async function buildCustomImage(
     imageLabels[LABELS.setupScript] = setupScript;
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Dockerode is missing raw Buffer support typings
-  const stream = await docker.buildImage(tarBuffer as any, {
+  const stream = await docker.buildImage(Readable.from(tarBuffer), {
     t: tag,
     dockerfile: "Dockerfile",
     labels: imageLabels,
   });
 
   await new Promise<void>((resolve, reject) => {
+    const buildLog: string[] = [];
     docker.modem.followProgress(
       // biome-ignore lint/suspicious/noExplicitAny: Dockerode is missing raw Buffer support typings
       stream as any,
       // biome-ignore lint/suspicious/noExplicitAny: Dockerode callback types are not exact for modem
       (err: any, res: any) => {
         if (err) {
-          reject(err);
+          const log = buildLog.join("").trim();
+          const detail = log ? `\n--- build log ---\n${log}\n-----------------` : "";
+          reject(new Error(`${err instanceof Error ? err.message : String(err)}${detail}`));
         } else if (res && res.length > 0 && res.at(-1).error) {
-          reject(new Error(res.at(-1).error));
+          const log = buildLog.join("").trim();
+          const detail = log ? `\n--- build log ---\n${log}\n-----------------` : "";
+          reject(new Error(`${res.at(-1).error}${detail}`));
         } else {
           resolve();
         }
@@ -374,6 +391,7 @@ export async function buildCustomImage(
       // biome-ignore lint/suspicious/noExplicitAny: stream chunk type is ambiguous
       (event: any) => {
         if (event.stream) {
+          buildLog.push(event.stream);
           onProgress?.({ runtime: String(runtime), status: "building", message: event.stream });
         } else if (event.error) {
           onProgress?.({ runtime: String(runtime), status: "error", message: event.error });
