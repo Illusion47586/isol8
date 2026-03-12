@@ -110,7 +110,7 @@ program
     }
 
     // Auto-build prebuilt images from config
-    const config = loadConfig();
+    const config = loadConfig(process.cwd());
     if (config.prebuiltImages.length > 0) {
       console.log("");
       spinner.start("Checking prebuilt images from config...");
@@ -925,7 +925,7 @@ program
   .description("Show the resolved isol8 configuration")
   .option("--json", "Output as raw JSON")
   .action((opts) => {
-    const config = loadConfig();
+    const config = loadConfig(process.cwd());
 
     // Determine which config file was loaded
     const searchPaths = [
@@ -1382,7 +1382,7 @@ sessionCmd
 
 // biome-ignore lint/suspicious/noExplicitAny: commander opts are untyped
 async function resolveRunInput(file: string | undefined, opts: any) {
-  const config = loadConfig();
+  const config = loadConfig(process.cwd());
   logger.debug("[Run] Config loaded");
   const hasExplicitNetFlag = process.argv.some((arg) => arg === "--net");
 
