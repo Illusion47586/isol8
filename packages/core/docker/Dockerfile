@@ -16,7 +16,7 @@ FROM python:3.12-slim AS python
 RUN apt-get update && apt-get install -y --no-install-recommends \
         tini curl ca-certificates iptables bash git \
     && rm -rf /var/lib/apt/lists/* \
-    && groupadd -r sandbox && useradd -r -g sandbox -d /sandbox -s /bin/bash sandbox \
+    && groupadd -r --gid 101 sandbox && useradd -r --uid 100 -g sandbox -d /sandbox -s /bin/bash sandbox \
     && mkdir -p /sandbox && chown sandbox:sandbox /sandbox
 COPY proxy.sh /usr/local/bin/proxy.sh
 COPY proxy-handler.sh /usr/local/bin/proxy-handler.sh
