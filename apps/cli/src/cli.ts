@@ -54,13 +54,42 @@ program
 
 // ─── setup ────────────────────────────────────────────────────────────
 
+const VALID_RUNTIMES = ["python", "node", "bun", "deno", "bash", "agent"];
+
 program
   .command("setup")
-  .description("Check Docker and build isol8 base images")
+  .description("Check Docker and build isol8 base images. Use --only to build a subset.")
   .option("--force", "Force rebuild even if images are up to date")
+  .option(
+    "--only <runtimes...>",
+    `Only build images for these runtimes (e.g. --only python, --only python node, --only python,node). Valid: ${VALID_RUNTIMES.join(", ")}`
+  )
   .action(async (opts) => {
     const docker = new Docker();
     logger.debug("[Setup] Connecting to Docker daemon");
+
+    // Parse and validate --only
+    const onlyRuntimes: string[] | undefined = opts.only
+      ? [
+          ...new Set(
+            (opts.only as string[])
+              .flatMap((r: string) => r.split(","))
+              .map((r: string) => r.trim())
+              .filter(Boolean)
+          ),
+        ]
+      : undefined;
+
+    if (onlyRuntimes) {
+      const invalid = onlyRuntimes.filter((r) => !VALID_RUNTIMES.includes(r));
+      if (invalid.length > 0) {
+        console.error(
+          `[ERR] Unknown runtime(s): ${invalid.join(", ")}. Valid: ${VALID_RUNTIMES.join(", ")}`
+        );
+        process.exit(1);
+      }
+      logger.debug(`[Setup] Filtering to runtimes: ${onlyRuntimes.join(", ")}`);
+    }
 
     // Check Docker connection
     const spinner = ora("Checking Docker...").start();
@@ -99,22 +128,23 @@ program
           }
         }
       },
-      opts.force ?? false
+      opts.force ?? false,
+      onlyRuntimes
     );
     if (spinner.isSpinning) {
       spinner.stop();
     }
 
-    if (spinner.isSpinning) {
-      spinner.stop();
-    }
-
-    // Auto-build prebuilt images from config
+    // Auto-build prebuilt images from config (filtered by --only if specified)
     const config = loadConfig(process.cwd());
-    if (config.prebuiltImages.length > 0) {
+    const imagesToBuild = onlyRuntimes
+      ? config.prebuiltImages.filter((img) => onlyRuntimes.includes(img.runtime))
+      : config.prebuiltImages;
+
+    if (imagesToBuild.length > 0) {
       console.log("");
       spinner.start("Checking prebuilt images from config...");
-      for (const img of config.prebuiltImages) {
+      for (const img of imagesToBuild) {
         const exists = await imageExists(docker, img.tag);
         if (exists && !(opts.force ?? false)) {
           spinner.stopAndPersist({ symbol: "[OK]", text: `${img.tag} (already exists)` });
