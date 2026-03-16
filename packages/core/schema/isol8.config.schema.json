@@ -147,6 +147,49 @@
           },
           "type": "object"
         },
+        "dependencies": {
+          "additionalProperties": false,
+          "description": "Shorthand for declaring per-runtime package dependencies. Each key is a runtime name and the value is a list of packages to pre-install into a custom image for that runtime.\n\nEquivalent to `prebuiltImages` but more concise.  When both are specified, entries from `dependencies` are appended to `prebuiltImages`.",
+          "properties": {
+            "agent": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "bash": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "bun": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "deno": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "node": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "python": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
         "maxConcurrent": {
           "default": 10,
           "description": "Maximum number of containers that can run concurrently.",

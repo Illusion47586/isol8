@@ -722,4 +722,27 @@ export interface Isol8UserConfig {
    * unless `--force` is passed.
    */
   prebuiltImages?: PrebuiltImageConfig[];
+
+  /**
+   * Shorthand for declaring per-runtime package dependencies.
+   * Each key is a runtime name and the value is a list of packages to
+   * pre-install into a custom image for that runtime.
+   *
+   * Equivalent to `prebuiltImages` but more concise.  When both are
+   * specified, entries from `dependencies` are appended to `prebuiltImages`.
+   *
+   * @example
+   * ```json
+   * { "dependencies": { "python": ["numpy", "pandas", "scipy"] } }
+   * ```
+   * This is equivalent to:
+   * ```json
+   * {
+   *   "prebuiltImages": [
+   *     { "tag": "isol8:python-custom", "runtime": "python", "installPackages": ["numpy", "pandas", "scipy"] }
+   *   ]
+   * }
+   * ```
+   */
+  dependencies?: Partial<Record<Runtime, string[]>>;
 }
